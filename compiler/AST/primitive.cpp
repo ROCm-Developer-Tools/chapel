@@ -649,6 +649,9 @@ initPrimitive() {
   prim_def(PRIM_LOOKUP_FILENAME, "chpl_lookupFilename", returnInfoStringC, false, false);
 
   prim_def(PRIM_GET_COMPILER_VAR, "get compiler variable", returnInfoStringC);
+
+  prim_def(PRIM_GPU_REDUCE, "chpl_gpu_reduce", returnInfoFirst, true, true);
+  prim_def(PRIM_IS_GPU_SUBLOCALE, "chpl_is_gpu_sublocale", returnInfoBool, true, true);
 }
 
 Map<const char*, VarSymbol*> memDescsMap;

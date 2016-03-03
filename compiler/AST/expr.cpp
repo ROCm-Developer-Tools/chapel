@@ -1074,6 +1074,24 @@ GenRet codegenGetLocaleID(void)
   return ret;
 }
 
+// A construct which checks if the current sublocale is a gpu.
+static
+GenRet codegenIsGPUSublocale(void)
+{
+  GenRet ret =  codegenCallExpr("chpl_gen_isGPUSublocale");
+  ret.chplType = dtBool;
+#ifdef HAVE_LLVM
+  GenInfo* info = gGenInfo;
+  if (!info->cfile ) {
+    // Make sure that the result of gen_getLocaleID is
+    // the right type (since clang likes to fold int32/int32 into int32).
+    GenRet expectType = dtBool;
+    ret.val = convertValueToType(ret.val, expectType.type);
+    assert(ret.val);
+  }
+#endif
+  return ret;
+}
 
 static
 GenRet codegenUseGlobal(std::string str)
@@ -3961,7 +3979,7 @@ GenRet CallExpr::codegen() {
                                       codegenSizeof(eltType),
                                       get(4), get(5));
         call.chplType = get(1)->typeInfo(); 
-        alloced = codegenAddrOf(codegenWideAddr(locale, call, call.chplType)); 
+        alloced = codegenAddrOf(codegenWideAddr(locale, call, call.chplType));
       } else {
         Type* eltType =
           getDataClassType(get(1)->typeInfo()->symbol)->typeInfo();
@@ -4012,6 +4030,37 @@ GenRet CallExpr::codegen() {
         bool handled = true;
         switch (call->primitive->tag)
         {
+         case PRIM_IS_GPU_SUBLOCALE:
+         {
+           codegenAssign(get(1), codegenIsGPUSublocale());
+           break;
+         }
+         case PRIM_GPU_REDUCE:
+         {
+           Type *data_type = call->get(1)->typeInfo();
+           /*FIXME: After gpu kernels for all possible reductions have
+            * been implemented, remove this conditional.
+            */
+           if (is_int_type(data_type)) {
+             std::string reduce_fn = "hsa_reduce_int" +
+               numToString(get_width(data_type));
+             SymExpr* actual = toSymExpr(call->get(2));
+             VarSymbol* var_op = toVarSymbol(actual->var);
+             VarSymbol* var_src = toVarSymbol(toSymExpr(call->get(3))->var);
+             VarSymbol* var_len = toVarSymbol(toSymExpr(call->get(4))->var);
+             INT_ASSERT(var_op != NULL);
+             INT_ASSERT(var_src != NULL);
+             GenRet r = codegenCallExpr(reduce_fn.c_str(),
+                                        var_op,
+                                        var_src,
+                                        var_len);
+             codegenAssign(get(1), r);
+           } else {
+             INT_FATAL(data_type, "gpu reduction not implemented for given "
+                                  "element type");
+           }
+           break;
+         }
          case PRIM_GET_REAL:
          case PRIM_GET_IMAG:
          {
@@ -4345,6 +4394,8 @@ GenRet CallExpr::codegen() {
     case PRIM_ARRAY_GET:
     case PRIM_ARRAY_GET_VALUE:
     case PRIM_ON_LOCALE_NUM:
+    case PRIM_GPU_REDUCE:
+    case PRIM_IS_GPU_SUBLOCALE:
       // generated during generation of PRIM_MOVE
       break;
     case PRIM_WIDE_GET_LOCALE:

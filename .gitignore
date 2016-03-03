@@ -12,7 +12,7 @@ gen
 TAGS
 tags
 *.DS_Store
-
+cscope.*
 
 # Top level ignores.
 /BUILD_VERSION

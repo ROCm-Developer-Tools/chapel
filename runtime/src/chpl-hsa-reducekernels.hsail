@@ -1,0 +1,175 @@
+module &_tmp_cloc27022_chpl_hsa_reducekernels_opt_bc:1:0:$full:$large:$default;
+extension "amd:gcn";
+extension "IMAGE";
+
+decl prog function &abort()();
+
+prog kernel &__OpenCL_reduce_int64_sum_kernel(
+	kernarg_u64 %__global_offset_0,
+	kernarg_u64 %__global_offset_1,
+	kernarg_u64 %__global_offset_2,
+	kernarg_u64 %__printf_buffer,
+	kernarg_u64 %__vqueue_pointer,
+	kernarg_u64 %__aqlwrap_pointer,
+	kernarg_u64 %in,
+	kernarg_u64 %out,
+	kernarg_u64 %count)
+{
+	pragma "AMD RTI", "ARGSTART:__OpenCL_reduce_int64_sum_kernel";
+	pragma "AMD RTI", "version:3:1:104";
+	pragma "AMD RTI", "device:generic";
+	pragma "AMD RTI", "uniqueid:1024";
+	pragma "AMD RTI", "memory:private:0";
+	pragma "AMD RTI", "memory:region:0";
+	pragma "AMD RTI", "memory:local:16";
+	pragma "AMD RTI", "value:__global_offset_0:u64:1:1:0";
+	pragma "AMD RTI", "value:__global_offset_1:u64:1:1:16";
+	pragma "AMD RTI", "value:__global_offset_2:u64:1:1:32";
+	pragma "AMD RTI", "pointer:__printf_buffer:u8:1:1:48:uav:7:1:RW:0:0:0";
+	pragma "AMD RTI", "value:__vqueue_pointer:u64:1:1:64";
+	pragma "AMD RTI", "value:__aqlwrap_pointer:u64:1:1:80";
+	pragma "AMD RTI", "pointer:in:u64:1:1:96:uav:7:8:RW:0:0:0";
+	pragma "AMD RTI", "pointer:out:u64:1:1:112:uav:7:8:RW:0:0:0";
+	pragma "AMD RTI", "value:count:u64:1:1:128";
+	pragma "AMD RTI", "constarg:8:count";
+	pragma "AMD RTI", "function:1:0";
+	pragma "AMD RTI", "memory:64bitABI";
+	pragma "AMD RTI", "privateid:8";
+	pragma "AMD RTI", "enqueue_kernel:0";
+	pragma "AMD RTI", "kernel_index:0";
+	pragma "AMD RTI", "reflection:0:size_t";
+	pragma "AMD RTI", "reflection:1:size_t";
+	pragma "AMD RTI", "reflection:2:size_t";
+	pragma "AMD RTI", "reflection:3:size_t";
+	pragma "AMD RTI", "reflection:4:size_t";
+	pragma "AMD RTI", "reflection:5:size_t";
+	pragma "AMD RTI", "reflection:6:long*";
+	pragma "AMD RTI", "reflection:7:long*";
+	pragma "AMD RTI", "reflection:8:size_t";
+	pragma "AMD RTI", "ARGEND:__OpenCL_reduce_int64_sum_kernel";
+	group_u64 %reduce_int64_sum_temp;
+
+@__OpenCL_reduce_int64_sum_kernel_entry:
+	// BB#0:
+	workitemabsid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%__global_offset_0];
+	add_u64	$d0, $d0, $d1;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%count];
+	workitemid_u32	$s0, 0;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB0_2;
+	// BB#1:
+	st_group_align(8)_u64	0, [%reduce_int64_sum_temp];
+
+@BB0_2:
+	barrier;
+	cmp_ge_b1_u64	$c1, $d0, $d1;
+	cbr_b1	$c1, @BB0_4;
+	// BB#3:
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%in];
+	shl_u64	$d0, $d0, 3;
+	add_u64	$d0, $d1, $d0;
+	ld_global_align(8)_u64	$d0, [$d0];
+	atomicnoret_add_group_scacq_wg_s64	[%reduce_int64_sum_temp], $d0;
+
+@BB0_4:
+	barrier;
+	cbr_b1	$c0, @BB0_6;
+	// BB#5:
+	workgroupid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%out];
+	shl_u64	$d0, $d0, 3;
+	add_u64	$d0, $d1, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_temp];
+	st_global_align(8)_u64	$d1, [$d0];
+
+@BB0_6:
+	ret;
+};
+
+prog kernel &__OpenCL_reduce_int32_sum_kernel(
+	kernarg_u64 %__global_offset_0,
+	kernarg_u64 %__global_offset_1,
+	kernarg_u64 %__global_offset_2,
+	kernarg_u64 %__printf_buffer,
+	kernarg_u64 %__vqueue_pointer,
+	kernarg_u64 %__aqlwrap_pointer,
+	kernarg_u64 %in,
+	kernarg_u64 %out,
+	kernarg_u64 %count)
+{
+	pragma "AMD RTI", "ARGSTART:__OpenCL_reduce_int32_sum_kernel";
+	pragma "AMD RTI", "version:3:1:104";
+	pragma "AMD RTI", "device:generic";
+	pragma "AMD RTI", "uniqueid:1025";
+	pragma "AMD RTI", "memory:private:0";
+	pragma "AMD RTI", "memory:region:0";
+	pragma "AMD RTI", "memory:local:16";
+	pragma "AMD RTI", "value:__global_offset_0:u64:1:1:0";
+	pragma "AMD RTI", "value:__global_offset_1:u64:1:1:16";
+	pragma "AMD RTI", "value:__global_offset_2:u64:1:1:32";
+	pragma "AMD RTI", "pointer:__printf_buffer:u8:1:1:48:uav:7:1:RW:0:0:0";
+	pragma "AMD RTI", "value:__vqueue_pointer:u64:1:1:64";
+	pragma "AMD RTI", "value:__aqlwrap_pointer:u64:1:1:80";
+	pragma "AMD RTI", "pointer:in:u32:1:1:96:uav:7:4:RW:0:0:0";
+	pragma "AMD RTI", "pointer:out:u32:1:1:112:uav:7:4:RW:0:0:0";
+	pragma "AMD RTI", "value:count:u64:1:1:128";
+	pragma "AMD RTI", "constarg:8:count";
+	pragma "AMD RTI", "function:1:0";
+	pragma "AMD RTI", "memory:64bitABI";
+	pragma "AMD RTI", "privateid:8";
+	pragma "AMD RTI", "enqueue_kernel:0";
+	pragma "AMD RTI", "kernel_index:1";
+	pragma "AMD RTI", "reflection:0:size_t";
+	pragma "AMD RTI", "reflection:1:size_t";
+	pragma "AMD RTI", "reflection:2:size_t";
+	pragma "AMD RTI", "reflection:3:size_t";
+	pragma "AMD RTI", "reflection:4:size_t";
+	pragma "AMD RTI", "reflection:5:size_t";
+	pragma "AMD RTI", "reflection:6:int*";
+	pragma "AMD RTI", "reflection:7:int*";
+	pragma "AMD RTI", "reflection:8:size_t";
+	pragma "AMD RTI", "ARGEND:__OpenCL_reduce_int32_sum_kernel";
+	group_u32 %reduce_int32_sum_temp;
+
+@__OpenCL_reduce_int32_sum_kernel_entry:
+	// BB#0:
+	workitemabsid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%__global_offset_0];
+	add_u64	$d0, $d0, $d1;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%count];
+	workitemid_u32	$s0, 0;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB1_2;
+	// BB#1:
+	st_group_align(4)_u32	0, [%reduce_int32_sum_temp];
+
+@BB1_2:
+	barrier;
+	cmp_ge_b1_u64	$c1, $d0, $d1;
+	cbr_b1	$c1, @BB1_4;
+	// BB#3:
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%in];
+	shl_u64	$d0, $d0, 2;
+	add_u64	$d0, $d1, $d0;
+	ld_global_align(4)_u32	$s0, [$d0];
+	atomicnoret_add_group_scacq_wg_s32	[%reduce_int32_sum_temp], $s0;
+
+@BB1_4:
+	barrier;
+	cbr_b1	$c0, @BB1_6;
+	// BB#5:
+	workgroupid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d1, [%out];
+	shl_u64	$d0, $d0, 2;
+	add_u64	$d0, $d1, $d0;
+	ld_group_align(4)_u32	$s0, [%reduce_int32_sum_temp];
+	st_global_align(4)_u32	$s0, [$d0];
+
+@BB1_6:
+	ret;
+};

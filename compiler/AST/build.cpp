@@ -1503,6 +1503,165 @@ BlockStmt* buildSelectStmt(Expr* selectCond, BlockStmt* whenstmts) {
   return block;
 }
 
+/*
+ * Build a call expression to call a function that offloads the reduction to
+ * the HSA framework.
+ * FIXME: This does not insert any check to see if the source data is actually
+ * reducable on the GPU - currently only 1D default rectangular domain arrays
+ * can be reduced on GPUs. Insert this check.
+ */
+static
+CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, Symbol *eltType) {
+  static int uid = 1;
+
+  FnSymbol* fnred = new FnSymbol(astr("chpl__gpureduce", istr(uid++)));
+  fnred->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
+  fnred->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
+  fnred->addFlag(FLAG_INLINE);
+  fnred->retType = eltType->type;
+
+  BlockStmt *stmt = new BlockStmt();
+  fnred->body = stmt;
+
+  VarSymbol* gpu_result = newTemp("_gpureduce_result", eltType->type);
+  fnred->body->insertAtTail(new DefExpr(gpu_result));
+
+  VarSymbol* array_base = newTemp("_array_base");
+  fnred->body->insertAtTail(new DefExpr(array_base));
+
+  /* FIXME: We assume that if dataExpr is unresolved it is a variable name,
+   * which will be later resolved to an array of appropriate type. Otherwise
+   * we assume it is a more complicated iteratable expression and would not be
+   * fit for GPU offload. This is flaky.
+   */
+  if (!toUnresolvedSymExpr(dataExpr)) {
+    fnred->body->insertAtTail(new CallExpr(PRIM_ERROR));
+    fnred->body->insertAtTail("'return'(%S)", gpu_result);
+    return new CallExpr(new DefExpr(fnred));
+  }
+
+  const char* data_name = (toUnresolvedSymExpr(dataExpr))->unresolved;
+  const char* op_name = (toUnresolvedSymExpr(opExpr))->unresolved;
+
+  CallExpr* make_cptr = new CallExpr("c_ptrTo",
+                                     new UnresolvedSymExpr(data_name));
+  fnred->body->insertAtTail("'move'(%S, %E)", array_base, make_cptr);
+
+  Expr* get_length = new_Expr(".(%E, 'size')",
+                              new UnresolvedSymExpr(data_name));
+  fnred->body->insertAtTail("'move'(%S, 'chpl_gpu_reduce'(%S, %S, %S, %E ))",
+                            gpu_result,
+                            eltType,
+                            new_CStringSymbol(op_name),
+                            array_base,
+                            get_length);
+
+  fnred->insertAtTail("'return'(%S)", gpu_result);
+  return new CallExpr(new DefExpr(fnred));
+}
+
+/*
+ * Build a call expression to call a function that executes the reduction on
+ * the CPU.
+ */
+static
+CallExpr* buildCPUReduceExpr(VarSymbol *data,
+                             VarSymbol* globalOp,
+                             Expr* opExpr,
+                             Symbol* eltType,
+                             bool zippered) {
+  static int uid = 1;
+  FnSymbol* fn = new FnSymbol(astr("chpl__cpureduce", istr(uid++)));
+  fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
+  fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
+  fn->addFlag(FLAG_INLINE);
+
+  BlockStmt* serialBlock = buildChapelStmt();
+  VarSymbol* index = newTemp("_index");
+  serialBlock->insertAtTail(new DefExpr(index));
+  serialBlock->insertAtTail(
+      ForLoop::buildForLoop(
+        new SymExpr(index),
+        new SymExpr(data),
+        new BlockStmt(new CallExpr(new CallExpr(
+              ".", globalOp, new_CStringSymbol("accumulate")), index)),
+        false,
+        zippered));
+
+  VarSymbol* leadIdx     = newTemp("chpl__leadIdx");
+  VarSymbol* leadIter    = newTemp("chpl__leadIter");
+  VarSymbol* leadIdxCopy = newTemp("chpl__leadIdxCopy");
+  VarSymbol* followIdx   = newTemp("chpl__followIdx");
+  VarSymbol* followIter  = newTemp("chpl__followIter");
+  VarSymbol* localOp     = newTemp();
+
+  leadIdxCopy->addFlag(FLAG_INDEX_VAR);
+  leadIdxCopy->addFlag(FLAG_INSERT_AUTO_DESTROY);
+
+  ForLoop* followBody = new ForLoop(followIdx, followIter, NULL, zippered);
+
+  followBody->insertAtTail(".(%S, 'accumulate')(%S)", localOp, followIdx);
+
+  BlockStmt* followBlock = new BlockStmt();
+
+  followBlock->insertAtTail(new DefExpr(followIter));
+  followBlock->insertAtTail(new DefExpr(followIdx));
+  followBlock->insertAtTail(new DefExpr(localOp));
+
+  if( !zippered ) {
+    followBlock->insertAtTail("'move'(%S, _getIterator(_toFollower(%S, %S)))",
+                              followIter, data, leadIdxCopy);
+  } else {
+    followBlock->insertAtTail(
+        "'move'(%S, _getIteratorZip(_toFollowerZip(%S, %S)))",
+        followIter, data, leadIdxCopy);
+  }
+
+  followBlock->insertAtTail("{TYPE 'move'(%S, iteratorIndex(%S))}",
+                            followIdx, followIter);
+  followBlock->insertAtTail("'move'(%S, 'new'(%E(%E)))",
+                            localOp, opExpr->copy(),
+                            new NamedExpr("eltType", new SymExpr(eltType)));
+  followBlock->insertAtTail(followBody);
+  followBlock->insertAtTail("chpl__reduceCombine(%S, %S)", globalOp, localOp);
+  followBlock->insertAtTail("'delete'(%S)", localOp);
+  followBlock->insertAtTail("_freeIterator(%S)", followIter);
+
+  ForLoop* leadBody = new ForLoop(leadIdx, leadIter, NULL, zippered);
+
+  leadBody->insertAtTail(new DefExpr(leadIdxCopy));
+  leadBody->insertAtTail("'move'(%S, %S)", leadIdxCopy, leadIdx);
+  leadBody->insertAtTail(followBlock);
+
+  BlockStmt* leadBlock = buildChapelStmt();
+  leadBlock->insertAtTail(new DefExpr(leadIdx));
+  leadBlock->insertAtTail(new DefExpr(leadIter));
+
+  if( !zippered ) {
+    leadBlock->insertAtTail("'move'(%S, _getIterator(_toLeader(%S)))",
+                            leadIter, data);
+  } else {
+    leadBlock->insertAtTail("'move'(%S, _getIterator(_toLeaderZip(%S)))",
+                            leadIter, data);
+  }
+
+  leadBlock->insertAtTail("{TYPE 'move'(%S, iteratorIndex(%S))}",
+                          leadIdx, leadIter);
+  leadBlock->insertAtTail(leadBody);
+  leadBlock->insertAtTail("_freeIterator(%S)", leadIter);
+  serialBlock->insertAtHead("compilerWarning('reduce has been serialized (see note in $CHPL_HOME/STATUS)')");
+
+  fn->insertAtTail(new CondStmt(new SymExpr(gTryToken), leadBlock,
+                                serialBlock));
+
+  VarSymbol* result = new VarSymbol("_res");
+  fn->insertAtTail(new DefExpr(
+        result, new CallExpr(new CallExpr(
+            ".", globalOp, new_CStringSymbol("generate")))));
+  fn->insertAtTail("'return'(%S)", result);
+  return new CallExpr(new DefExpr(fn));
+}
+
 
 static void
 buildReduceScanPreface(FnSymbol* fn, Symbol* data, Symbol* eltType, Symbol* globalOp,
@@ -1532,6 +1691,10 @@ buildReduceScanPreface(FnSymbol* fn, Symbol* data, Symbol* eltType, Symbol* glob
 }
 
 
+/*
+ * Based on the locale of the expression, call either the CPU or the GPU
+ * version of the reduction.
+ */
 CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   static int uid = 1;
 
@@ -1539,83 +1702,33 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
-
-  VarSymbol* data = newTemp();
+  VarSymbol* data = newTemp("_datadef");
   VarSymbol* eltType = newTemp();
   VarSymbol* globalOp = newTemp();
 
-  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr, zippered);
+  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr,
+                         zippered);
+  CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, opExpr, eltType,
+                                              zippered);
+  CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
 
-  BlockStmt* serialBlock = buildChapelStmt();
-  VarSymbol* index = newTemp("_index");
-  serialBlock->insertAtTail(new DefExpr(index));
-  serialBlock->insertAtTail(ForLoop::buildForLoop(new SymExpr(index),
-                                                  new SymExpr(data),
-                                                  new BlockStmt(new CallExpr(new CallExpr(".", globalOp,
-                                                                                          new_CStringSymbol("accumulate")), index)),
-                                                  false,
-                                                  zippered));
+  VarSymbol* is_gpu = newTemp("_is_gpu");
+  fn->insertAtTail(new DefExpr(is_gpu));
+  fn->insertAtTail(new CallExpr(PRIM_MOVE, is_gpu,
+                                new CallExpr(PRIM_IS_GPU_SUBLOCALE)));
 
-  VarSymbol* leadIdx     = newTemp("chpl__leadIdx");
-  VarSymbol* leadIter    = newTemp("chpl__leadIter");
-  VarSymbol* leadIdxCopy = newTemp("chpl__leadIdxCopy");
-  VarSymbol* followIdx   = newTemp("chpl__followIdx");
-  VarSymbol* followIter  = newTemp("chpl__followIter");
-  VarSymbol* localOp     = newTemp();
-
-  leadIdxCopy->addFlag(FLAG_INDEX_VAR);
-  leadIdxCopy->addFlag(FLAG_INSERT_AUTO_DESTROY);
-
-  ForLoop* followBody = new ForLoop(followIdx, followIter, NULL, zippered);
-
-  followBody->insertAtTail(".(%S, 'accumulate')(%S)", localOp, followIdx);
-
-  BlockStmt* followBlock = new BlockStmt();
-
-  followBlock->insertAtTail(new DefExpr(followIter));
-  followBlock->insertAtTail(new DefExpr(followIdx));
-  followBlock->insertAtTail(new DefExpr(localOp));
-
-  if( !zippered ) {
-    followBlock->insertAtTail("'move'(%S, _getIterator(_toFollower(%S, %S)))", followIter, data, leadIdxCopy);
-  } else {
-    followBlock->insertAtTail("'move'(%S, _getIteratorZip(_toFollowerZip(%S, %S)))", followIter, data, leadIdxCopy);
-  }
-
-  followBlock->insertAtTail("{TYPE 'move'(%S, iteratorIndex(%S))}", followIdx, followIter);
-  followBlock->insertAtTail("'move'(%S, 'new'(%E(%E)))", localOp, opExpr->copy(), new NamedExpr("eltType", new SymExpr(eltType)));
-  followBlock->insertAtTail(followBody);
-  followBlock->insertAtTail("chpl__reduceCombine(%S, %S)", globalOp, localOp);
-  followBlock->insertAtTail("'delete'(%S)", localOp);
-  followBlock->insertAtTail("_freeIterator(%S)", followIter);
-
-  ForLoop* leadBody = new ForLoop(leadIdx, leadIter, NULL, zippered);
-
-  leadBody->insertAtTail(new DefExpr(leadIdxCopy));
-  leadBody->insertAtTail("'move'(%S, %S)", leadIdxCopy, leadIdx);
-  leadBody->insertAtTail(followBlock);
-
-  BlockStmt* leadBlock = buildChapelStmt();
-  leadBlock->insertAtTail(new DefExpr(leadIdx));
-  leadBlock->insertAtTail(new DefExpr(leadIter));
-
-  if( !zippered ) {
-    leadBlock->insertAtTail("'move'(%S, _getIterator(_toLeader(%S)))", leadIter, data);
-  } else {
-    leadBlock->insertAtTail("'move'(%S, _getIterator(_toLeaderZip(%S)))", leadIter, data);
-  }
-
-  leadBlock->insertAtTail("{TYPE 'move'(%S, iteratorIndex(%S))}", leadIdx, leadIter);
-  leadBlock->insertAtTail(leadBody);
-  leadBlock->insertAtTail("_freeIterator(%S)", leadIter);
-  serialBlock->insertAtHead("compilerWarning('reduce has been serialized (see note in $CHPL_HOME/STATUS)')");
-
-  fn->insertAtTail(new CondStmt(new SymExpr(gTryToken), leadBlock, serialBlock));
-
-  VarSymbol* result = new VarSymbol("result");
-  fn->insertAtTail(new DefExpr(result, new CallExpr(new CallExpr(".", globalOp, new_CStringSymbol("generate")))));
-  fn->insertAtTail("'delete'(%S)", globalOp);
-  fn->insertAtTail("'return'(%S)", result);
+  VarSymbol* resultcpu = new VarSymbol("_resultcpu");
+  VarSymbol* resultgpu = new VarSymbol("_resultgpu");
+  BlockStmt* thenBlock = buildChapelStmt();
+  thenBlock->insertAtTail(new DefExpr(resultgpu, gpu_reduce));
+  thenBlock->insertAtTail("'delete'(%S)", globalOp);
+  thenBlock->insertAtTail("'return'(%S)", resultgpu);
+  BlockStmt* elseBlock = buildChapelStmt();
+  elseBlock->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
+  elseBlock->insertAtTail("'delete'(%S)", globalOp);
+  elseBlock->insertAtTail("'return'(%S)", resultcpu);
+  fn->insertAtTail(new CondStmt(new SymExpr(is_gpu),
+                                thenBlock, elseBlock));
   return new CallExpr(new DefExpr(fn));
 }
 
@@ -2072,11 +2185,12 @@ buildOnStmt(Expr* expr, Expr* stmt) {
   // If the locale model doesn't require outlined on functions and this is a
   // --local compile, then we take the on-expression, execute it to evaluate
   // it for side effects, and then evaluate the body directly.
+  /* mchu
   if (!requireOutlinedOn()) {
     BlockStmt* block = new BlockStmt(stmt);
     block->insertAtHead(onExpr); // evaluate the expression for side effects
     return buildChapelStmt(block);
-  }
+  }*/
 
   if (beginBlock) {
     // OPTIMIZATION: If "on x" is immediately followed by a "begin", then collapse

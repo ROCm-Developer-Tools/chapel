@@ -62,7 +62,8 @@ static int err_ignore;
 static FnSymbol* err_fn = NULL;
 
 bool forceWidePtrs() {
-  return !strcmp(CHPL_LOCALE_MODEL, "numa");
+  return !(strcmp(CHPL_LOCALE_MODEL, "numa") &&
+           strcmp(CHPL_LOCALE_MODEL, "hsa"));
 }
 
 bool forceWidePtrsForLocal() {

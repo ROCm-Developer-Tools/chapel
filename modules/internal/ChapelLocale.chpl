@@ -56,6 +56,7 @@ module ChapelLocale {
 
     proc id : int return chpl_id();  // just the node part
     proc localeid : chpl_localeID_t return chpl_localeid(); // full locale id
+    proc sublocid : chpl_sublocID_t return chpl_sublocFromLocaleID(localeid);
     proc name return chpl_name() : string;
 
     // This many tasks are running on this locale.
@@ -240,6 +241,17 @@ module ChapelLocale {
         }
       }
     }
+    iter chpl_initOnLocales(param tag: iterKind)
+      where tag==iterKind.leader {
+        halt("Not implemented");
+        yield 1;
+    }
+
+    iter chpl_initOnLocales(param tag: iterKind, followThis)
+      where tag==iterKind.follower {
+        halt("Not implemented");
+        yield followThis;
+    }
   }
 
   //
@@ -361,6 +373,15 @@ module ChapelLocale {
   export
   proc chpl_getLocaleID(ref localeID: chpl_localeID_t) {
     localeID = here_id;
+  }
+
+  pragma "insert line file info"
+  export
+  proc chpl_isGPUSublocale(ref isGPU: bool ) {
+     if chpl_task_getRequestedSubloc() == 1 then
+       isGPU = true;
+    else
+       isGPU = false;
   }
 
   // Return the locale ID of the current locale

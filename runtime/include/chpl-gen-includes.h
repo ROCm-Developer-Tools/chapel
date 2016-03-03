@@ -29,6 +29,7 @@
 #include "chpl-locale-model.h"
 #include "chpl-tasks.h"
 #include "chpltypes.h"
+#include "chpl-hsa.h"
 
 //
 // Call a function in the compiler-produced function table, passing it
@@ -63,4 +64,14 @@ chpl_localeID_t chpl_gen_getLocaleID(void)
   chpl_localeID_t localeID;
   chpl_getLocaleID(&localeID, 0, NULL);
   return localeID;
+}
+
+extern void chpl_isGPUSublocale(bool * isGPU, int64_t _ln, c_string _fn);
+
+static inline
+bool chpl_gen_isGPUSublocale(void)
+{
+  bool isGPU;
+  chpl_isGPUSublocale(&isGPU, 0, NULL);
+  return isGPU;
 }
