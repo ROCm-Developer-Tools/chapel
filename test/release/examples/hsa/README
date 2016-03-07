@@ -1,0 +1,23 @@
+=========================================================
+Chapel HSA: Examples Demonstrating HSA Support for Chapel
+=========================================================
+
+This directory contains a few simple example codes to show how execution
+can be offloaded to a GPU using the hierarchical hsa locale.
+The CHPL_LOCALE_MODEL should be set to 'hsa'.
+
+Example programs:
+
+     hello-sublocale.chpl   : a program to say hello from the hsa sublocales
+     array-reduce.chpl      : a program for gpu-offload of 1D-array reduction
+
+---------------------
+Building the examples
+---------------------
+
+Most of the examples can be compiled without explicitly listing any
+additional source files.  For example, the canonical "Hello, world!"
+program can be compiled as follows:
+
+     chpl -o hello hello-sublocale.chpl
+
