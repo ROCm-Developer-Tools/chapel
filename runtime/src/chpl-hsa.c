@@ -125,7 +125,8 @@ err_close_file:
 int chpl_hsa_initialize(void)
 {
     uint32_t gpu_max_queue_size;
-    int rc;
+    char reduce_kernel_filename[256];
+    int cx;
     hsa_status_t st = hsa_init();
     OUTPUT_HSA_STATUS(st, HSA initialization);
     if (HSA_STATUS_SUCCESS != st) {
@@ -184,13 +185,19 @@ int chpl_hsa_initialize(void)
         hsa_shut_down();
         return ERROR;
     }
-    char reduce_kernel_filename[128];
-    rc = snprintf(reduce_kernel_filename, 128,
+    cx = snprintf(reduce_kernel_filename, 256,
                   "%s/runtime/src/chpl-hsa-reducekernels.brig", CHPL_HOME);
-    assert(rc < 128);
+    if (cx < 0 || cx  >= 256) {
+      OUTPUT_HSA_STATUS(ERROR, Creating reduce kernel filename);
+        hsa_queue_destroy(hsa_device.command_queue);
+        hsa_shut_down();
+        return ERROR;
+    }
     /* FIXME: Create all reduction kernels, not just the int32-sum kernel */
     if (ERROR == hsa_create_executable("reduce_int32_sum",
                                        reduce_kernel_filename)) {
+      hsa_queue_destroy(hsa_device.command_queue);
+      hsa_shut_down();
       return ERROR;
     }
 

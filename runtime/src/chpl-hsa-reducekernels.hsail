@@ -1,4 +1,4 @@
-module &_tmp_cloc27022_chpl_hsa_reducekernels_opt_bc:1:0:$full:$large:$default;
+module &_tmp_cloc7950_chpl_hsa_reducekernels_opt_bc:1:0:$full:$large:$default;
 extension "amd:gcn";
 extension "IMAGE";
 
@@ -21,7 +21,7 @@ prog kernel &__OpenCL_reduce_int64_sum_kernel(
 	pragma "AMD RTI", "uniqueid:1024";
 	pragma "AMD RTI", "memory:private:0";
 	pragma "AMD RTI", "memory:region:0";
-	pragma "AMD RTI", "memory:local:16";
+	pragma "AMD RTI", "memory:local:16384";
 	pragma "AMD RTI", "value:__global_offset_0:u64:1:1:0";
 	pragma "AMD RTI", "value:__global_offset_1:u64:1:1:16";
 	pragma "AMD RTI", "value:__global_offset_2:u64:1:1:32";
@@ -47,45 +47,203 @@ prog kernel &__OpenCL_reduce_int64_sum_kernel(
 	pragma "AMD RTI", "reflection:7:long*";
 	pragma "AMD RTI", "reflection:8:size_t";
 	pragma "AMD RTI", "ARGEND:__OpenCL_reduce_int64_sum_kernel";
-	group_u64 %reduce_int64_sum_temp;
+	group_u64 %reduce_int64_sum_scratch[2048];
 
 @__OpenCL_reduce_int64_sum_kernel_entry:
 	// BB#0:
 	workitemabsid_u32	$s0, 0;
-	cvt_u64_u32	$d0, $s0;
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%__global_offset_0];
-	add_u64	$d0, $d0, $d1;
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%count];
-	workitemid_u32	$s0, 0;
-	cmp_ne_b1_s32	$c0, $s0, 0;
-	cbr_b1	$c0, @BB0_2;
-	// BB#1:
-	st_group_align(8)_u64	0, [%reduce_int64_sum_temp];
+	cvt_u64_u32	$d1, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d0, [%count];
+	ld_kernarg_align(8)_width(all)_u64	$d2, [%__global_offset_0];
+	add_u64	$d3, $d1, $d2;
+	cmp_ge_b1_u64	$c0, $d3, $d0;
+	cbr_b1	$c0, @BB0_1;
+	// BB#2:                                // %.lr.ph
+	ld_kernarg_align(8)_width(all)_u64	$d3, [%in];
+	add_u64	$d2, $d2, $d1;
+	shl_u64	$d1, $d2, 3;
+	gridsize_u32	$s0, 0;
+	add_u64	$d5, $d3, $d1;
+	cvt_u64_u32	$d3, $s0;
+	shl_u64	$d4, $d3, 3;
+	mov_b64	$d1, 0;
 
-@BB0_2:
-	barrier;
-	cmp_ge_b1_u64	$c1, $d0, $d1;
-	cbr_b1	$c1, @BB0_4;
-	// BB#3:
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%in];
-	shl_u64	$d0, $d0, 3;
-	add_u64	$d0, $d1, $d0;
-	ld_global_align(8)_u64	$d0, [$d0];
-	atomicnoret_add_group_scacq_wg_s64	[%reduce_int64_sum_temp], $d0;
+@BB0_3:
+	add_u64	$d6, $d5, $d4;
+	ld_global_align(8)_u64	$d5, [$d5];
+	add_u64	$d1, $d5, $d1;
+	add_u64	$d2, $d2, $d3;
+	cmp_lt_b1_u64	$c0, $d2, $d0;
+	mov_b64	$d5, $d6;
+	cbr_b1	$c0, @BB0_3;
+	br	@BB0_4;
+
+@BB0_1:
+	mov_b64	$d1, 0;
 
 @BB0_4:
+	// %._crit_edge
+	workitemid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	shl_u64	$d0, $d0, 3;
+	cvt_u32_u64	$s1, $d0;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
 	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 0x3ff;
 	cbr_b1	$c0, @BB0_6;
 	// BB#5:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+8192];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_6:
+	barrier;
+	cmp_ge_b1_u32	$c0, $s0, 512;
+	cbr_b1	$c0, @BB0_8;
+	// BB#7:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+4096];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_8:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 255;
+	cbr_b1	$c0, @BB0_10;
+	// BB#9:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+2048];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_10:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 127;
+	cbr_b1	$c0, @BB0_12;
+	// BB#11:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+1024];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_12:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 63;
+	cbr_b1	$c0, @BB0_14;
+	// BB#13:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+512];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_14:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 31;
+	cbr_b1	$c0, @BB0_16;
+	// BB#15:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+256];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_16:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 15;
+	cbr_b1	$c0, @BB0_18;
+	// BB#17:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+128];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_18:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 7;
+	cbr_b1	$c0, @BB0_20;
+	// BB#19:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+64];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_20:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 3;
+	cbr_b1	$c0, @BB0_22;
+	// BB#21:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+32];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_22:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 1;
+	cbr_b1	$c0, @BB0_24;
+	// BB#23:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s3+16];
+	ld_group_align(8)_u64	$d2, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d1, $d2, $d1;
+	st_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_24:
+	barrier;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB0_26;
+	// BB#25:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(8)_u64	$d0, [%reduce_int64_sum_scratch][$s3+8];
+	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_scratch][$s2];
+	add_u64	$d0, $d1, $d0;
+	st_group_align(8)_u64	$d0, [%reduce_int64_sum_scratch][$s1];
+
+@BB0_26:
+	barrier;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB0_28;
+	// BB#27:
 	workgroupid_u32	$s0, 0;
 	cvt_u64_u32	$d0, $s0;
 	ld_kernarg_align(8)_width(all)_u64	$d1, [%out];
 	shl_u64	$d0, $d0, 3;
 	add_u64	$d0, $d1, $d0;
-	ld_group_align(8)_u64	$d1, [%reduce_int64_sum_temp];
+	ld_group_align(8)_width(WAVESIZE)_u64	$d1, [%reduce_int64_sum_scratch];
 	st_global_align(8)_u64	$d1, [$d0];
 
-@BB0_6:
+@BB0_28:
 	ret;
 };
 
@@ -106,7 +264,7 @@ prog kernel &__OpenCL_reduce_int32_sum_kernel(
 	pragma "AMD RTI", "uniqueid:1025";
 	pragma "AMD RTI", "memory:private:0";
 	pragma "AMD RTI", "memory:region:0";
-	pragma "AMD RTI", "memory:local:16";
+	pragma "AMD RTI", "memory:local:8192";
 	pragma "AMD RTI", "value:__global_offset_0:u64:1:1:0";
 	pragma "AMD RTI", "value:__global_offset_1:u64:1:1:16";
 	pragma "AMD RTI", "value:__global_offset_2:u64:1:1:32";
@@ -132,44 +290,202 @@ prog kernel &__OpenCL_reduce_int32_sum_kernel(
 	pragma "AMD RTI", "reflection:7:int*";
 	pragma "AMD RTI", "reflection:8:size_t";
 	pragma "AMD RTI", "ARGEND:__OpenCL_reduce_int32_sum_kernel";
-	group_u32 %reduce_int32_sum_temp;
+	group_u32 %reduce_int32_sum_scratch[2048];
 
 @__OpenCL_reduce_int32_sum_kernel_entry:
 	// BB#0:
 	workitemabsid_u32	$s0, 0;
-	cvt_u64_u32	$d0, $s0;
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%__global_offset_0];
-	add_u64	$d0, $d0, $d1;
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%count];
-	workitemid_u32	$s0, 0;
-	cmp_ne_b1_s32	$c0, $s0, 0;
-	cbr_b1	$c0, @BB1_2;
-	// BB#1:
-	st_group_align(4)_u32	0, [%reduce_int32_sum_temp];
+	cvt_u64_u32	$d1, $s0;
+	ld_kernarg_align(8)_width(all)_u64	$d0, [%count];
+	ld_kernarg_align(8)_width(all)_u64	$d2, [%__global_offset_0];
+	add_u64	$d3, $d1, $d2;
+	cmp_ge_b1_u64	$c0, $d3, $d0;
+	cbr_b1	$c0, @BB1_1;
+	// BB#2:                                // %.lr.ph
+	ld_kernarg_align(8)_width(all)_u64	$d3, [%in];
+	add_u64	$d1, $d2, $d1;
+	shl_u64	$d2, $d1, 2;
+	gridsize_u32	$s0, 0;
+	add_u64	$d4, $d3, $d2;
+	cvt_u64_u32	$d2, $s0;
+	shl_u64	$d3, $d2, 2;
+	mov_b32	$s1, 0;
 
-@BB1_2:
-	barrier;
-	cmp_ge_b1_u64	$c1, $d0, $d1;
-	cbr_b1	$c1, @BB1_4;
-	// BB#3:
-	ld_kernarg_align(8)_width(all)_u64	$d1, [%in];
-	shl_u64	$d0, $d0, 2;
-	add_u64	$d0, $d1, $d0;
-	ld_global_align(4)_u32	$s0, [$d0];
-	atomicnoret_add_group_scacq_wg_s32	[%reduce_int32_sum_temp], $s0;
+@BB1_3:
+	add_u64	$d5, $d4, $d3;
+	ld_global_align(4)_u32	$s0, [$d4];
+	add_u32	$s1, $s0, $s1;
+	add_u64	$d1, $d1, $d2;
+	cmp_lt_b1_u64	$c0, $d1, $d0;
+	mov_b64	$d4, $d5;
+	cbr_b1	$c0, @BB1_3;
+	br	@BB1_4;
+
+@BB1_1:
+	mov_b32	$s1, 0;
 
 @BB1_4:
+	// %._crit_edge
+	workitemid_u32	$s0, 0;
+	cvt_u64_u32	$d0, $s0;
+	shl_u64	$d0, $d0, 2;
+	cvt_u32_u64	$s2, $d0;
+	st_group_align(4)_u32	$s1, [%reduce_int32_sum_scratch][$s2];
 	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 0x3ff;
 	cbr_b1	$c0, @BB1_6;
 	// BB#5:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+4096];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_6:
+	barrier;
+	cmp_ge_b1_u32	$c0, $s0, 512;
+	cbr_b1	$c0, @BB1_8;
+	// BB#7:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+2048];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_8:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 255;
+	cbr_b1	$c0, @BB1_10;
+	// BB#9:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+1024];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_10:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 127;
+	cbr_b1	$c0, @BB1_12;
+	// BB#11:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+512];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_12:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 63;
+	cbr_b1	$c0, @BB1_14;
+	// BB#13:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+256];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_14:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 31;
+	cbr_b1	$c0, @BB1_16;
+	// BB#15:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+128];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_16:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 15;
+	cbr_b1	$c0, @BB1_18;
+	// BB#17:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+64];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_18:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 7;
+	cbr_b1	$c0, @BB1_20;
+	// BB#19:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+32];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_20:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 3;
+	cbr_b1	$c0, @BB1_22;
+	// BB#21:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+16];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_22:
+	barrier;
+	cmp_gt_b1_u32	$c0, $s0, 1;
+	cbr_b1	$c0, @BB1_24;
+	// BB#23:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+8];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_24:
+	barrier;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB1_26;
+	// BB#25:
+	cvt_u32_u64	$s1, $d0;
+	cvt_u32_u64	$s2, $d0;
+	cvt_u32_u64	$s3, $d0;
+	ld_group_align(4)_u32	$s3, [%reduce_int32_sum_scratch][$s3+4];
+	ld_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s2];
+	add_u32	$s2, $s2, $s3;
+	st_group_align(4)_u32	$s2, [%reduce_int32_sum_scratch][$s1];
+
+@BB1_26:
+	barrier;
+	cmp_ne_b1_s32	$c0, $s0, 0;
+	cbr_b1	$c0, @BB1_28;
+	// BB#27:
 	workgroupid_u32	$s0, 0;
 	cvt_u64_u32	$d0, $s0;
 	ld_kernarg_align(8)_width(all)_u64	$d1, [%out];
 	shl_u64	$d0, $d0, 2;
 	add_u64	$d0, $d1, $d0;
-	ld_group_align(4)_u32	$s0, [%reduce_int32_sum_temp];
+	ld_group_align(4)_width(WAVESIZE)_u32	$s0, [%reduce_int32_sum_scratch];
 	st_global_align(4)_u32	$s0, [$d0];
 
-@BB1_6:
+@BB1_28:
 	ret;
 };

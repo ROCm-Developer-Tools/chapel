@@ -4,6 +4,7 @@
 #include <hsa.h>
 #include <hsa_ext_finalize.h>
 #include "chpltypes.h"
+#include "chpl-hsa-kernelparams.h"
 
 #define HSA_ARGUMENT_ALIGN_BYTES 16
 
@@ -52,6 +53,7 @@ int chpl_hsa_initialize(void);
 int hsa_shutdown(void);
 int hsa_create_executable(const char * fn_name, const char * file_name);
 void hsa_enqueue_kernel(void *inbuf, void *outbuf, size_t count,
+                        uint32_t grid_size_x,
                         hsa_signal_t completion_signal,
                         hsa_symbol_info_t * symbol_info,
                         hsail_kernarg_t * args);

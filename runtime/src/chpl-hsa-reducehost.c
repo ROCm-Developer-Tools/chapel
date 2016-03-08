@@ -21,13 +21,13 @@
  * Enqueue a kernel
  */
 void hsa_enqueue_kernel(void *inbuf, void *outbuf, size_t count,
+                        uint32_t grid_size_x,
                         hsa_signal_t completion_signal,
                         hsa_symbol_info_t *symbol_info,
                         hsail_kernarg_t *args)
 {
   hsa_kernel_dispatch_packet_t * dispatch_packet;
   hsa_queue_t *command_queue = hsa_device.command_queue;
-  uint16_t group_size = hsa_device.max_items_per_group_dim;
 
   uint64_t index = hsa_queue_add_write_index_acq_rel(command_queue, 1);
   while (index - hsa_queue_load_read_index_acquire(command_queue) >=
@@ -43,10 +43,10 @@ void hsa_enqueue_kernel(void *inbuf, void *outbuf, size_t count,
   dispatch_packet->header |= HSA_FENCE_SCOPE_SYSTEM <<
     HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
   dispatch_packet->header |= 1 << HSA_PACKET_HEADER_BARRIER;
-  dispatch_packet->grid_size_x = count;
+  dispatch_packet->grid_size_x = grid_size_x;
   dispatch_packet->grid_size_y = 1;
   dispatch_packet->grid_size_z = 1;
-  dispatch_packet->workgroup_size_x = group_size;
+  dispatch_packet->workgroup_size_x = WKGRP_SIZE;
   dispatch_packet->workgroup_size_y = 1;
   dispatch_packet->workgroup_size_z = 1;
   dispatch_packet->private_segment_size = symbol_info->private_segment_size;
@@ -78,7 +78,7 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   int32_t res;
   int incount, outcount, iter, i, in, out;
   int32_t * darray[2];
-  int group_size;
+  uint32_t max_num_wkgrps, num_wkgroups, grid_size_x;
   hsa_signal_t completion_signal;
   hsail_kernarg_t **args;
   hsa_symbol_info_t * symbol_info;
@@ -89,9 +89,11 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
                                count * sizeof(int32_t))) {
     chpl_exit_any(1);
   }
+  /*FIXME: This is an overestimation. Allocation count should be equal to the
+   * number of iters.
+   */
   args = chpl_malloc(count * sizeof (hsail_kernarg_t*));
   hsa_signal_create(count, 0, NULL, &completion_signal);
-  group_size = (int)hsa_device.max_items_per_group_dim;
 
   /*for (i = 0; i < count; ++i ) {
     printf("value for %d is %d\n", i, *(darray[0] + i));
@@ -99,27 +101,34 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   }*/
 
   incount = count;
-  outcount = (incount + group_size - 1) / group_size;
+  max_num_wkgrps = incount / WKGRP_SIZE;
+  num_wkgroups = (max_num_wkgrps + SEQ_CHUNK_SIZE  - 1) / SEQ_CHUNK_SIZE;
+  grid_size_x = num_wkgroups * WKGRP_SIZE;
+  outcount = num_wkgroups;
   iter = 0;
-  while (incount > 1) {
+  while (incount > WKGRP_SIZE) {
     in = (iter & 1);
     out = (iter & 1) ^ 1;
     hsa_memory_allocate(hsa_device.kernarg_region,
                         symbol_info->kernarg_segment_size,
                         (void**)&args[iter]);
     hsa_enqueue_kernel((void*)darray[in], (void*)darray[out], incount,
-                       completion_signal, symbol_info, args[iter]);
+                       grid_size_x, completion_signal, symbol_info, 
+                       args[iter]);
 
     iter += 1;
     incount = outcount;
-    outcount = (incount + group_size - 1) / group_size;
+    max_num_wkgrps = incount / WKGRP_SIZE;
+    num_wkgroups = (max_num_wkgrps + SEQ_CHUNK_SIZE  - 1) / SEQ_CHUNK_SIZE;
+    grid_size_x = num_wkgroups * WKGRP_SIZE;
+    outcount = num_wkgroups;
   }
 
   iter -= 1;
   while (hsa_signal_wait_acquire(completion_signal, HSA_SIGNAL_CONDITION_LT,
          count - iter, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > count - iter - 1);
-
-  res = darray[(iter & 1) ^ 1][0];
+  res = 0;
+  for (i = 0; i < incount; ++i) res += darray[(iter & 1) ^ 1][i];
 
   for (i = 0; i <= iter; ++i) {
     hsa_memory_free((void*)args[i]);
@@ -134,7 +143,7 @@ int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count) {
   int64_t res;
   int incount, outcount, iter, i, in, out;
   int64_t * darray[2];
-  int group_size;
+  uint32_t max_num_wkgrps, num_wkgroups, grid_size_x;
   hsa_signal_t completion_signal;
   hsail_kernarg_t **args;
   hsa_symbol_info_t * symbol_info;
@@ -165,29 +174,35 @@ int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count) {
   }
   args = chpl_malloc(count * sizeof (hsail_kernarg_t*));
   hsa_signal_create(count, 0, NULL, &completion_signal);
-  group_size = (int)hsa_device.max_items_per_group_dim;
 
   incount = count;
-  outcount = (incount + group_size - 1) / group_size;
+  max_num_wkgrps = incount / WKGRP_SIZE;
+  num_wkgroups = (max_num_wkgrps + SEQ_CHUNK_SIZE  - 1) / SEQ_CHUNK_SIZE;
+  grid_size_x = num_wkgroups * WKGRP_SIZE;
+  outcount = num_wkgroups;
   iter = 0;
-  while (incount > 1) {
+  while (incount > WKGRP_SIZE) {
     in = (iter & 1);
     out = (iter & 1) ^ 1;
     hsa_memory_allocate(hsa_device.kernarg_region,
                         symbol_info->kernarg_segment_size,
                         (void**)&args[iter]);
     hsa_enqueue_kernel((void*)darray[in], (void*)darray[out], incount,
-                       completion_signal, symbol_info, args[iter]);
+                        grid_size_x, completion_signal, symbol_info,
+                        args[iter]);
     iter += 1;
     incount = outcount;
-    outcount = (incount + group_size - 1) / group_size;
+    max_num_wkgrps = incount / WKGRP_SIZE;
+    num_wkgroups = (max_num_wkgrps + SEQ_CHUNK_SIZE  - 1) / SEQ_CHUNK_SIZE;
+    grid_size_x = num_wkgroups * WKGRP_SIZE;
+    outcount = num_wkgroups;
   }
 
   iter -= 1;
   while (hsa_signal_wait_acquire(completion_signal, HSA_SIGNAL_CONDITION_LT,
          count - iter, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > count - iter - 1);
-
-  res = darray[(iter & 1) ^ 1][0];
+  res = 0;
+  for (i = 0; i < incount; ++i) res += darray[(iter & 1) ^ 1][i];
 
   for (i = 0; i <= iter; ++i) {
     hsa_memory_free((void*)args[i]);
