@@ -430,12 +430,12 @@ module LocaleModel {
 
     const node = chpl_nodeFromLocaleID(loc);
     const subloc = chpl_sublocFromLocaleID(loc);
-    if (subloc == 0) {
-      warning("executing on CPU");
-    }
-    else if (subloc == 1) {
-      warning("executing on GPU");
-    }
+    //if (subloc == 0) {
+      //warning("executing on CPU");
+    //}
+    //else if (subloc == 1) {
+      //warning("executing on GPU");
+    //}
 
     if (node == chpl_nodeID) {
       const origSubloc = chpl_task_getRequestedSubloc();
@@ -462,15 +462,15 @@ module LocaleModel {
                           args: c_void_ptr,     // function args
                           args_size: int(32)    // args size
                          ) {
-    warning("in ExecuteOnFast");
+    //warning("in ExecuteOnFast");
     const node = chpl_nodeFromLocaleID(loc);
     const subloc = chpl_sublocFromLocaleID(loc);
-    if (subloc == 0) {
-      warning("executing on CPU");
-    }
-    else if (subloc == 1) {
-      warning("executing on GPU");
-    }
+    //if (subloc == 0) {
+      //warning("executing on CPU");
+    //}
+    //else if (subloc == 1) {
+      //warning("executing on GPU");
+    //}
     if (node == chpl_nodeID) {
       const origSubloc = chpl_task_getRequestedSubloc();
       chpl_task_setSubloc(subloc);
@@ -497,7 +497,7 @@ module LocaleModel {
     // If we're in serial mode, we should use blocking rather than
     // non-blocking "on" in order to serialize the forks.
     //
-    warning("in ExecuteOnNB");
+    //warning("in ExecuteOnNB");
     const node = chpl_nodeFromLocaleID(loc);
     if (node == chpl_nodeID) {
       if __primitive("task_get_serial") then
