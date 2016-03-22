@@ -15,5 +15,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-LIBS += -lhsa-runtime64 -lhsa-runtime-ext64
-GEN_LFLAGS += -L/opt/hsa/lib
+LIBS += -lhsa-runtime64 -lhsa-ext-finalize64 -lhsa-ext-image64 -lhsakmt -lm
+GEN_LFLAGS += -L$(THIRD_PARTY_DIR)/hsa/HSA-Runtime-AMD/lib

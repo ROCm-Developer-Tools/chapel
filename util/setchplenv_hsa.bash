@@ -52,9 +52,9 @@ echo "                     and $CHPL_HOME/util"
 #export PATH="$PORTAL_HOME"/bin:"$PATH"
 #echo " $PORTAL_HOME/bin"
 
-echo -n "Updating LD_LIBRARY_PATH "
-export LD_LIBRARY_PATH="$CHPL_HOME"/third-party/hsa/HSA-Runtime-AMD/lib:$LD_LIBRARY_PATH
-echo " to $LD_LIBRARY_PATH"
+#echo -n "Updating LD_LIBRARY_PATH "
+#export LD_LIBRARY_PATH="$CHPL_HOME"/third-party/hsa/HSA-Runtime-AMD/lib:$LD_LIBRARY_PATH
+#echo " to $LD_LIBRARY_PATH"
 
 echo -n "Setting CHPL_COMM "
 export CHPL_COMM=none
