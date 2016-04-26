@@ -10,6 +10,7 @@ Example programs:
 
      hello-sublocale.chpl   : a program to say hello from the hsa sublocales
      array-reduce.chpl      : a program for gpu-offload of 1D-array reduction
+     mycoforall.chpl        : a program for gpu-offload of a coforall loop
 
 ---------------------
 Building the examples
