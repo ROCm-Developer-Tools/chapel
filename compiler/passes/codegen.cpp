@@ -50,6 +50,10 @@ GenInfo* gGenInfo   =  0;
 int      gMaxVMT    = -1;
 int      gStmtCount =  0;
 
+#ifdef TARGET_HSA
+  fileinfo gGPUsrcfile = { NULL, NULL, NULL };
+#endif
+
 
 static const char*
 subChar(Symbol* sym, const char* ch, const char* x) {
@@ -213,6 +217,32 @@ genClassIDs(Vec<TypeSymbol*> & typeSymbols) {
     }
   }
 }
+
+#ifdef TARGET_HSA
+static void
+genGPUKernelTable(Vec<FnSymbol*> & kernelFns) {
+  GenInfo* info = gGenInfo;
+  const char* ktable_name = "chpl_gpu_kernels";
+  const char* ktable_count = "chpl_num_gpu_kernels";
+  if( info->cfile ) {
+    FILE* hdrfile = info->cfile;
+    fprintf(hdrfile, "const char * %s[] = {\n", ktable_name);
+    bool first = true;
+    forv_Vec(FnSymbol, fn, kernelFns) {
+      if (!first)
+        fprintf(hdrfile, ",\n");
+      fprintf(hdrfile, "\"%s\"", fn->cname);
+      first = false;
+    }
+
+    //if (kernelNames.n == 0)
+     // fprintf(hdrfile, "\"\"");
+    fprintf(hdrfile, "\n};\n");
+    genGlobalInt64(ktable_count, kernelFns.n);
+  }
+}
+#endif
+
 static void
 genFtable(Vec<FnSymbol*> & fSymbols) {
   GenInfo* info = gGenInfo;
@@ -1005,6 +1035,10 @@ static void codegen_header() {
 
   genFtable(ftableVec);
 
+#ifdef TARGET_HSA
+  genComment("GPU Kernel Name Table");
+  genGPUKernelTable(gpuKernelVec);
+#endif
   genComment("Virtual Method Table");
   genVirtualMethodTable(types);
 
@@ -1358,7 +1392,18 @@ void codegen(void) {
 
     fprintf(mainfile.fptr, "#include \"chpl__header.h\"\n");
 
+#ifdef TARGET_HSA
+    openCFile(&gGPUsrcfile, "chplGPU", "cl");
+    forv_Vec(FnSymbol, fn, gFnSymbols) {
+      if (fn->hasFlag(FLAG_GPU_ON)) {
+        fprintf(gGPUsrcfile.fptr, "#include \"chpl__header.h\"\n");
+        break;
+      }
+    }
+    codegen_makefile(&mainfile, &gGPUsrcfile);
+#else
     codegen_makefile(&mainfile);
+#endif
   }
 
   // This dumps the generated sources into the build directory.
@@ -1445,6 +1490,9 @@ void codegen(void) {
 
     closeCFile(&hdrfile);
     closeCFile(&mainfile);
+#ifdef TARGET_HSA
+    closeCFile(&gGPUsrcfile);
+#endif
   }
 
   if (fPrintEmittedCodeSize)

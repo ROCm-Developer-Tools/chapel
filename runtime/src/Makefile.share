@@ -15,9 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 HSA_SRCS = \
 	chpl-hsa.c \
-	chpl-hsa-reducehost.c \
+	chpl-hsa-reducekernels.cl \
+	chpl-hsa-reducehost.c
+endif
 
 COMMON_LAUNCHER_SRCS = \
 	arg.c \
@@ -29,7 +32,6 @@ COMMON_LAUNCHER_SRCS = \
 
 COMMON_NOGEN_SRCS = \
 	$(COMMON_LAUNCHER_SRCS) \
-  $(HSA_SRCS) \
 	chpl-bitops.c \
 	chpl-cache.c \
 	chpl-comm.c \
@@ -75,6 +77,16 @@ SRCS = $(SVN_SRCS)
 COMMON_OBJS = \
 	$(COMMON_SRCS:%.c=$(COMMON_OBJDIR)/%.o)
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+HSA_SRCS_C = $(filter %.c, $(HSA_SRCS))
+COMMON_OBJS += \
+	$(HSA_SRCS_C:%.c=$(COMMON_OBJDIR)/%.o)
+
+HSA_SRCS_CL = $(filter %.cl, $(HSA_SRCS))
+COMMON_OBJS += \
+	$(HSA_SRCS_CL:%.cl=$(COMMON_OBJDIR)/%.o)
+endif
+#$(info COMMON_OBJS is $(COMMON_OBJS))
 MAIN_OBJS = \
 	$(MAIN_SRCS:%.c=$(COMMON_OBJDIR)/%.o)
 

@@ -327,5 +327,6 @@ GenRet codegenImmediate(Immediate* i);
 #define LOCALE_TYPE dtLocale->typeInfo()
 #define LOCALE_ID_TYPE dtLocaleID->typeInfo()
 #define NODE_ID_TYPE dtInt[INT_SIZE_32]
+#define SUBLOCALE_ID_TYPE dtInt[INT_SIZE_32]
 
 #endif

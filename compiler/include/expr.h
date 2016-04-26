@@ -275,6 +275,9 @@ static inline bool isTaskFun(FnSymbol* fn) {
   // Testing individual flags is more efficient than ops on entire FlagSet?
   return fn->hasFlag(FLAG_BEGIN) ||
          fn->hasFlag(FLAG_COBEGIN_OR_COFORALL) ||
+#ifdef TARGET_HSA
+         fn->hasFlag(FLAG_COFORALL_GPU) ||
+#endif
          fn->hasFlag(FLAG_ON);
 }
 
@@ -292,6 +295,9 @@ static inline FnSymbol* resolvedToTaskFun(CallExpr* call) {
 static inline bool needsCapture(FnSymbol* taskFn) {
   return taskFn->hasFlag(FLAG_BEGIN) ||
          taskFn->hasFlag(FLAG_COBEGIN_OR_COFORALL) ||
+#ifdef TARGET_HSA
+         taskFn->hasFlag(FLAG_COFORALL_GPU) ||
+#endif
          taskFn->hasFlag(FLAG_NON_BLOCKING);
 }
 

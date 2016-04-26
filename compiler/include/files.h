@@ -41,7 +41,13 @@ struct fileinfo {
   const char* pathname;
 };
 
+#ifdef TARGET_HSA
+void codegen_makefile(fileinfo* mainfile, fileinfo *gpusrcfile,
+                      const char** tmpbinname=NULL,
+                      bool skip_compile_link=false);
+#else
 void codegen_makefile(fileinfo* mainfile, const char** tmpbinname=NULL, bool skip_compile_link=false);
+#endif
 
 void ensureDirExists(const char* /* dirname */, const char* /* explanation */);
 const char* getCwd();

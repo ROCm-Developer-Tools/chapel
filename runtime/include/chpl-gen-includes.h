@@ -29,7 +29,9 @@
 #include "chpl-locale-model.h"
 #include "chpl-tasks.h"
 #include "chpltypes.h"
+#ifdef TARGET_HSA
 #include "chpl-hsa.h"
+#endif
 
 //
 // Call a function in the compiler-produced function table, passing it
@@ -57,6 +59,16 @@ chpl_localeID_t id_rt2pub(c_localeid_t i)
 {
   return chpl_rt_buildLocaleID(i >> 32, i & 0xffffffff);
 }
+
+extern void
+chpl_getSublocaleID (int32_t *sublocaleID, int64_t _ln, c_string _fn);
+static inline
+int32_t chpl_gen_getSublocaleID(void)
+{
+  int32_t sublocaleID;
+  chpl_getSublocaleID(&sublocaleID, 0, NULL);
+  return sublocaleID;
+}
 extern void chpl_getLocaleID (chpl_localeID_t* localeID,  int64_t _ln, c_string _fn);
 static inline
 chpl_localeID_t chpl_gen_getLocaleID(void)
@@ -66,6 +78,7 @@ chpl_localeID_t chpl_gen_getLocaleID(void)
   return localeID;
 }
 
+#ifdef TARGET_HSA
 extern void chpl_isGPUSublocale(bool * isGPU, int64_t _ln, c_string _fn);
 
 static inline
@@ -75,3 +88,4 @@ bool chpl_gen_isGPUSublocale(void)
   chpl_isGPUSublocale(&isGPU, 0, NULL);
   return isGPU;
 }
+#endif

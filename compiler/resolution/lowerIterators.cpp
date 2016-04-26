@@ -99,6 +99,9 @@ static void nonLeaderParCheckInt(FnSymbol* fn, bool allowYields)
   for_vector(CallExpr, call, calls) {
     if ((call->isPrimitive(PRIM_BLOCK_BEGIN)) ||
         (call->isPrimitive(PRIM_BLOCK_COBEGIN)) ||
+#ifdef TARGET_HSA
+        (call->isPrimitive(PRIM_BLOCK_GPU_COFORALL)) ||
+#endif
         (call->isPrimitive(PRIM_BLOCK_COFORALL))) {
       // begin/cobegin/coforall *blocks* are eliminated earlier.
       // If they are not, need issue the USR_FATAL_CONT like below.
@@ -107,6 +110,9 @@ static void nonLeaderParCheckInt(FnSymbol* fn, bool allowYields)
     FnSymbol* taskFn = resolvedToTaskFun(call);
     bool isParallelConstruct = taskFn &&
       (taskFn->hasFlag(FLAG_BEGIN) ||
+#ifdef TARGET_HSA
+       taskFn->hasFlag(FLAG_COFORALL_GPU) ||
+#endif
        taskFn->hasFlag(FLAG_COBEGIN_OR_COFORALL));
     if (isParallelConstruct ||
         call->isNamed("_toLeader") ||

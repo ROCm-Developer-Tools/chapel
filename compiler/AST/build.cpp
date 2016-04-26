@@ -1344,13 +1344,139 @@ addByrefVars(BlockStmt* target, CallExpr* byrefVarsSource) {
   // will be automatically resolved in resolve().
 }
 
-BlockStmt* buildCoforallLoopStmt(Expr* indices,
+#ifdef TARGET_HSA
+static void DetermineGPUExecInfo(Expr* iterator,
+                                 BlockStmt* body,
+                                 bool zippered,
+                                 VarSymbol *wkgrpCount,
+                                 VarSymbol *wkgrpSize,
+                                 BlockStmt **gpuParamLoop,
+                                 BlockStmt **gpuKernelBlock) {
+  /*FIXME: we should handle only a single inner for loop for gpu? */
+  Expr *innerIterator = NULL;
+  bool isInnerZippered = false;
+  std::vector<Expr*> stmts, exprs;
+  collect_stmts(body, stmts);
+
+  for_vector (Expr, stmt, stmts) {
+    BlockStmt* block = toBlockStmt(stmt);
+    if (ForLoop* loop = toForLoop(block)) {
+      *gpuKernelBlock = loop->copyBody();
+      SymExpr *se = loop->iteratorGet();
+      innerIterator = new SymExpr(toVarSymbol(se->var));
+      isInnerZippered = loop->zipperedGet();
+    }
+  }
+  if (!innerIterator) return;
+
+  BlockStmt* outerLoopBlk = new BlockStmt();
+  CallExpr *outerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
+                                    new SymExpr(wkgrpCount),
+                                    buildIntLiteral("1"));
+  outerLoopBlk->insertAtTail(outerIncCount);
+
+  BlockStmt* innerLoopBlk = new BlockStmt();
+  CallExpr *innerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
+                                    new SymExpr(wkgrpSize),
+                                    buildIntLiteral("1"));
+  innerLoopBlk->insertAtTail(innerIncCount);
+  BlockStmt* innerLoop = ForLoop::buildForLoop(NULL, innerIterator,
+                                               innerLoopBlk, false,
+                                               isInnerZippered);
+  outerLoopBlk->insertAtTail(innerLoop);
+  *gpuParamLoop = ForLoop::buildForLoop(NULL, iterator->copy(), outerLoopBlk,
+                                        false, zippered);
+  BlockStmt *gpuBlock = *gpuKernelBlock;
+  collect_stmts(gpuBlock, exprs);
+  for_vector (Expr, expr, exprs) {
+    if (CallExpr* call = toCallExpr(expr)) {
+      if ((call->primitive) && (call->primitive->tag == PRIM_MOVE)) {
+        Expr* rhs = call->get(2);
+        Symbol* lhs = NULL;
+        if (SymExpr* se = toSymExpr(call->get(1))) {
+          lhs = se->var;
+        }
+        INT_ASSERT(lhs);
+        if (SymExpr* rhsSE = toSymExpr(rhs)) {
+          if (rhsSE->var->hasFlag(FLAG_INDEX_OF_INTEREST)) {
+            INT_ASSERT(lhs->hasFlag(FLAG_INDEX_VAR));
+            call->get(2)->remove();
+            call->insertAtTail(new CallExpr(PRIM_GET_GLOBAL_ID));
+          }
+        }
+      }
+    }
+    if (DefExpr* def = toDefExpr(expr)) {
+      if (isLabelSymbol(def->sym)) def->remove();
+    }
+  }
+  return;
+}
+
+static BlockStmt* buildGPUCoforallLoopStmt(Expr* indices,
                                  Expr* iterator,
                                  CallExpr* byref_vars,
                                  BlockStmt* body,
                                  bool zippered)
 {
-  checkControlFlow(body, "coforall statement");
+
+  //
+  // insert temporary index when elided by user
+  //
+  if (!indices)
+    indices = new UnresolvedSymExpr("chpl__elidedIdx");
+
+  checkIndices(indices);
+
+  BlockStmt* block = buildChapelStmt();
+  // on-statements directly inside coforall-loops not supported for GPUs
+  // TODO: is the above restriction required?
+  BlockStmt* onBlock = findStmtWithTag(PRIM_BLOCK_ON, body);
+  
+  //try to generate a nested loop that gives us the workgroup count and size
+  //for GPU execution. If not possible, the no point proceeding further
+  VarSymbol *wkgrpCount = newTemp("_wkgrpCount", dtInt[INT_SIZE_64]);
+  VarSymbol *wkgrpSize = newTemp("_wkgrpSize", dtInt[INT_SIZE_64]);
+  wkgrpCount->addFlag(FLAG_WKGRP_COUNT_VAR);
+  wkgrpSize->addFlag(FLAG_WKGRP_SIZE_VAR);
+  BlockStmt *gpuParamLoop = NULL, *gpuKernelBlock = NULL;
+  DetermineGPUExecInfo(iterator, body, zippered, wkgrpCount, wkgrpSize,
+                       &gpuParamLoop, &gpuKernelBlock);
+    
+  if (onBlock || !gpuParamLoop || !gpuKernelBlock) {
+    block->insertAtTail(new CallExpr(PRIM_ERROR));
+    return block;
+  }
+
+  VarSymbol* coforallCount = newTemp("_coforallCount");
+  BlockStmt* beginBlk = buildChapelStmt();
+  beginBlk->blockInfoSet(new CallExpr(PRIM_BLOCK_GPU_COFORALL));
+  addByrefVars(beginBlk, byref_vars);
+  gpuKernelBlock->blockInfoSet(new CallExpr(PRIM_BLOCK_GPU_KERNEL));
+  beginBlk->insertAtHead(gpuKernelBlock);
+  beginBlk->insertAtHead(gpuParamLoop);
+  beginBlk->insertAtTail(new CallExpr("_downEndCount", coforallCount));
+  block->insertAtTail(beginBlk);
+  block->insertAtHead(new CallExpr(PRIM_MOVE, coforallCount,
+                      new CallExpr("_endCountAlloc",
+                      /* forceLocalTypes= */gTrue)));
+  block->insertAtHead(new DefExpr(coforallCount));
+  block->insertAtTail(new CallExpr(PRIM_PROCESS_TASK_LIST, coforallCount));
+  block->insertAtTail(new CallExpr("_waitEndCount", coforallCount));
+  block->insertAtTail(new CallExpr("_endCountFree", coforallCount));
+  beginBlk->insertAtHead(new CallExpr("_upEndCount", coforallCount));
+  beginBlk->insertAtHead(new DefExpr(wkgrpSize));
+  beginBlk->insertAtHead(new DefExpr(wkgrpCount));
+  return block;
+}
+#endif
+
+static BlockStmt* buildCPUCoforallLoopStmt(Expr* indices,
+                                 Expr* iterator,
+                                 CallExpr* byref_vars,
+                                 BlockStmt* body,
+                                 bool zippered)
+{
 
   //
   // insert temporary index when elided by user
@@ -1365,7 +1491,6 @@ BlockStmt* buildCoforallLoopStmt(Expr* indices,
   //
   BlockStmt* onBlock = findStmtWithTag(PRIM_BLOCK_ON, body);
 
-  SET_LINENO(body);
 
   if (onBlock) {
     //
@@ -1408,6 +1533,49 @@ BlockStmt* buildCoforallLoopStmt(Expr* indices,
     block->insertAtTail(new CallExpr("_endCountFree", coforallCount));
     return block;
   }
+}
+
+BlockStmt* buildCoforallLoopStmt(Expr* indices,
+                                 Expr* iterator,
+                                 CallExpr* byref_vars,
+                                 BlockStmt* body,
+                                 bool zippered)
+{
+  checkControlFlow(body, "coforall statement");
+
+  SET_LINENO(body);
+
+#ifdef TARGET_HSA
+  BlockStmt *block = buildChapelStmt();
+  BlockStmt * gpu_coforall;
+  BlockStmt * cpu_coforall = buildCPUCoforallLoopStmt(indices, iterator,
+                                                       byref_vars, body,
+                                                       zippered);
+  UnresolvedSymExpr *sym = NULL;
+  if ((sym = toUnresolvedSymExpr(indices)) &&
+      (!strcmp(sym->unresolved, "wid"))) {
+    gpu_coforall =  buildGPUCoforallLoopStmt(indices, iterator,
+                                             byref_vars, body,
+                                              zippered);
+
+
+    VarSymbol* isGpu = newTemp("_is_gpu");
+    block->insertAtTail(new DefExpr(isGpu));
+    block->insertAtTail(new CallExpr(PRIM_MOVE, isGpu,
+                                     new CallExpr(PRIM_IS_GPU_SUBLOCALE)));
+
+    block->insertAtTail(new CondStmt(new SymExpr(isGpu),
+                        gpu_coforall, cpu_coforall));
+  } else {
+    block->insertAtTail(cpu_coforall);
+  }
+#else
+  BlockStmt * block = buildCPUCoforallLoopStmt(indices, iterator,
+                                               byref_vars, body,
+                                               zippered);
+#endif
+
+  return block;
 }
 
 BlockStmt* buildParamForLoopStmt(const char* index, Expr* range, BlockStmt* stmts) {
@@ -1712,9 +1880,9 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
                                               zippered);
   CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
 
-  VarSymbol* is_gpu = newTemp("_is_gpu");
-  fn->insertAtTail(new DefExpr(is_gpu));
-  fn->insertAtTail(new CallExpr(PRIM_MOVE, is_gpu,
+  VarSymbol* isGpu = newTemp("_is_gpu");
+  fn->insertAtTail(new DefExpr(isGpu));
+  fn->insertAtTail(new CallExpr(PRIM_MOVE, isGpu,
                                 new CallExpr(PRIM_IS_GPU_SUBLOCALE)));
 
   VarSymbol* resultcpu = new VarSymbol("_resultcpu");
@@ -1727,7 +1895,7 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   elseBlock->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
   elseBlock->insertAtTail("'delete'(%S)", globalOp);
   elseBlock->insertAtTail("'return'(%S)", resultcpu);
-  fn->insertAtTail(new CondStmt(new SymExpr(is_gpu),
+  fn->insertAtTail(new CondStmt(new SymExpr(isGpu),
                                 thenBlock, elseBlock));
   return new CallExpr(new DefExpr(fn));
 }

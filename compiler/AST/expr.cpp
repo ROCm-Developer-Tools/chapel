@@ -1055,6 +1055,25 @@ GenRet codegenGetNodeID(void)
   return ret;
 }
 
+// A construct which gives the current sublocale ID. (int32_t)
+static
+GenRet codegenGetSublocaleID(void)
+{
+  GenRet ret = codegenCallExpr("chpl_gen_getSublocaleID");
+  ret.chplType = SUBLOCALE_ID_TYPE;
+#ifdef HAVE_LLVM
+  GenInfo* info = gGenInfo;
+  if (!info->cfile ) {
+    // Make sure that the result of gen_getLocaleID is
+    // the right type (since clang likes to fold int32/int32 into int32).
+    GenRet expectType = LOCALE_ID_TYPE;
+    ret.val = convertValueToType(ret.val, expectType.type);
+    assert(ret.val);
+  }
+#endif
+  return ret;
+}
+
 // A construct which gives the current locale ID.
 static
 GenRet codegenGetLocaleID(void)
@@ -3611,6 +3630,7 @@ void CallExpr::verify() {
     case PRIM_BLOCK_FOR_LOOP:
     case PRIM_BLOCK_BEGIN:
     case PRIM_BLOCK_COBEGIN:
+    case PRIM_BLOCK_GPU_COFORALL:
     case PRIM_BLOCK_COFORALL:
     case PRIM_BLOCK_ON:
     case PRIM_BLOCK_BEGIN_ON:
@@ -4035,6 +4055,13 @@ GenRet CallExpr::codegen() {
            codegenAssign(get(1), codegenIsGPUSublocale());
            break;
          }
+         case PRIM_GET_GLOBAL_ID:
+         {
+           codegenAssign(get(1),
+                         codegenCallExpr("get_global_id",
+                                         new_IntSymbol(0, INT_SIZE_64)));
+           break;
+         }
          case PRIM_GPU_REDUCE:
          {
            Type *data_type = call->get(1)->typeInfo();
@@ -4396,6 +4423,7 @@ GenRet CallExpr::codegen() {
     case PRIM_ON_LOCALE_NUM:
     case PRIM_GPU_REDUCE:
     case PRIM_IS_GPU_SUBLOCALE:
+    case PRIM_GET_GLOBAL_ID:
       // generated during generation of PRIM_MOVE
       break;
     case PRIM_WIDE_GET_LOCALE:
@@ -5621,7 +5649,8 @@ GenRet CallExpr::codegen() {
     GenRet taskBundle = codegenValue(get(3));
 
     std::vector<GenRet> args(7);
-    args[0] = new_IntSymbol(-2 /* c_sublocid_any */, INT_SIZE_32);
+    //args[0] = new_IntSymbol(-2 /* c_sublocid_any */, INT_SIZE_32);
+    args[0] = codegenGetSublocaleID();
     args[1] = new_IntSymbol(ftableMap[fn], INT_SIZE_64);
     args[2] = codegenCastToVoidStar(taskBundle);
     args[3] = taskList;
@@ -5660,6 +5689,24 @@ GenRet CallExpr::codegen() {
     codegenCall(fname, args);
     return ret;
   }
+#ifdef TARGET_HSA
+  //Enqueue the kernel to the gpu instead of directly executing it
+  if (fn->hasFlag(FLAG_GPU_ON)) {
+    //Abhi
+    const char* enqueue_fn = "hsa_enqueue_kernel";
+    std::vector<GenRet> args(4);
+    args[0] = new_IntSymbol(gpuKernelMap[fn], INT_SIZE_64);
+    args[1] = get(1);
+    args[2] = get(2);
+    args[3] = get(3);
+    //args[4] = fn->linenum();
+    //args[5] = fn->fname();
+
+    //genComment(fn->cname, true);
+    codegenCall(enqueue_fn, args);
+    return ret;
+  }
+#endif
 
   // Do not code generate calls to functions marked FLAG_NO_CODEGEN.
   if (fn->hasFlag(FLAG_NO_CODEGEN)) return ret;

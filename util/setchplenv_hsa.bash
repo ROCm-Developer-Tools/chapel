@@ -105,5 +105,9 @@ echo -n "Setting CHPL_LOCALE_MODEL"
 export CHPL_LOCALE_MODEL=hsa
 echo " to hsa"
 
+echo -n "Setting CHPL_TARGET_COMPILER"
+export CHPL_TARGET_COMPILER=hsa
+echo " to hsa"
+
 export MANPATH="$CHPL_HOME"/man:"$MYMANPATH"
 echo "Updating MANPATH to include $CHPL_HOME/man"

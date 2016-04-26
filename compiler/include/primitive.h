@@ -169,6 +169,7 @@ enum PrimitiveTag {
 
   PRIM_GPU_REDUCE,
   PRIM_IS_GPU_SUBLOCALE,
+  PRIM_GET_GLOBAL_ID,
 
   PRIM_ERROR,
   PRIM_WARNING,
@@ -185,6 +186,7 @@ enum PrimitiveTag {
 
   PRIM_BLOCK_BEGIN,             // BlockStmt::blockInfo - begin block
   PRIM_BLOCK_COBEGIN,           // BlockStmt::blockInfo - cobegin block
+  PRIM_BLOCK_GPU_COFORALL,      // BlockStmt::blockInfo - gpu offloadable blk
   PRIM_BLOCK_COFORALL,          // BlockStmt::blockInfo - coforall block
   PRIM_BLOCK_ON,                // BlockStmt::blockInfo - on block
   PRIM_BLOCK_BEGIN_ON,          // BlockStmt::blockInfo - begin on block
@@ -192,6 +194,8 @@ enum PrimitiveTag {
   PRIM_BLOCK_COFORALL_ON,       // BlockStmt::blockInfo - coforall on block
   PRIM_BLOCK_LOCAL,             // BlockStmt::blockInfo - local block
   PRIM_BLOCK_UNLOCAL,           // BlockStmt::blockInfo - unlocal local block
+  PRIM_BLOCK_GPU_KERNEL,        // BlockStmt::blockInfo -
+                                //   requires code for gpu
 
   PRIM_FORALL_LOOP,             // BlockStmt::byrefVars - forall loop body
   PRIM_TO_LEADER,

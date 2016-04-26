@@ -73,7 +73,6 @@ RUNTIME_INCLS += \
         -I$(RUNTIME_INCLUDE_ROOT)/mem/$(CHPL_MAKE_MEM) \
         -I$(THIRD_PARTY_DIR)/utf8-decoder \
         -I$(CHPL_MAKE_HOME)/runtime/src/$(RUNTIME_OBJDIR) \
-        -I$(THIRD_PARTY_DIR)/hsa/HSA-Runtime-AMD/include \
 
 RUNTIME_CYGWIN=0
 ifeq ($(CHPL_MAKE_TARGET_PLATFORM),cygwin32)
@@ -101,6 +100,14 @@ GMP_INCLUDE=$(RUNTIME_ROOT)/make/Makefile.runtime.gmp-$(CHPL_MAKE_GMP)
 # Add any further includes for HWLOC.
 HWLOC_INCLUDE=$(RUNTIME_ROOT)/make/Makefile.runtime.hwloc-$(CHPL_MAKE_HWLOC)
 -include $(HWLOC_INCLUDE)
+
+# Add any further includes for HSA.
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+RUNTIME_INCLS += $(HSA_INCLUDES)
+RUNTIME_DEFS += -DCHPL_RUNTIME_OBJDIR="\"$(RUNTIME_OBJDIR)\""
+HSA_MAKE_INCLUDE=$(RUNTIME_ROOT)/make/Makefile.runtime.gpu-hsa
+-include $(HSA_MAKE_INCLUDE)
+endif
 
 #
 # For use with pyChapel / library-mode.

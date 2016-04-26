@@ -254,6 +254,13 @@ symbolFlag( FLAG_WIDE_CLASS , npr, "wide class" , ncm )
 symbolFlag( FLAG_WRAPPER , npr, "wrapper" , "wrapper function" )
 symbolFlag( FLAG_WRAP_WRITTEN_FORMAL , npr, "wrap written formal" , "formal argument for wrapper for out/inout intent" )
 
+#ifdef TARGET_HSA
+symbolFlag( FLAG_COFORALL_GPU , npr, "coforall on gpu" , ncm )
+symbolFlag( FLAG_GPU_ON , npr, "gpu on" , "Flag to mark GPU kernel" )
+symbolFlag( FLAG_WKGRP_COUNT_VAR , npr, "workgroup count" , ncm )
+symbolFlag( FLAG_WKGRP_SIZE_VAR , npr, "workgroup size" , ncm )
+#endif
+
 #undef ypr
 #undef npr
 #undef ncm

@@ -8,7 +8,7 @@
 // segment. But haven't found a way to access the base pointer without using
 // hsail assembly directly.
 
-#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+//#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #include "chpl-hsa-kernelparams.h"
 
 __kernel void reduce_int64_sum( __global long *in, __global long *out,
@@ -51,7 +51,7 @@ __kernel void reduce_int32_sum( __global int *in, __global int *out,
         tid += get_global_size(0);
     }
     scratch[lid] = temp;
-    barrier(CLK_LOCAL_MEM_FENCE );
+    barrier(CLK_LOCAL_MEM_FENCE);
     for (size_t local_offset = WKGRP_SIZE >> 1;
          local_offset > 0;
          local_offset = local_offset >> 1) {

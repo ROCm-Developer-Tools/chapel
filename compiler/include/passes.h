@@ -42,6 +42,9 @@ void cleanup();
 void codegen();
 void copyPropagation();
 void createTaskFunctions();
+#ifdef TARGET_HSA
+void createGPUOffloadFunctions();
+#endif
 void cullOverReferences();
 void deadCodeElimination();
 void docs();

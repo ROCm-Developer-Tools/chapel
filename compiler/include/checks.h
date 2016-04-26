@@ -34,6 +34,9 @@ void check_normalize();
 void check_checkNormalized();
 void check_buildDefaultFunctions();
 void check_createTaskFunctions();
+#ifdef TARGET_HSA
+void check_createGPUOffloadFunctions();
+#endif
 void check_resolve();
 void check_resolveIntents();
 void check_checkResolved();

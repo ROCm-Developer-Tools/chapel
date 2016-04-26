@@ -35,7 +35,7 @@ def using_chapel_module():
 @memoize
 def get_compiler_version(compiler):
     version_string = '0'
-    if 'gnu' in compiler:
+    if ('gnu' in compiler) or ('hsa' in compiler):
         version_string = run_command(['gcc', '-dumpversion'])
     elif 'cray-prgenv-cray' == compiler:
         version_string = os.environ.get('CRAY_CC_VERSION', '0')

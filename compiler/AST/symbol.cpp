@@ -100,6 +100,11 @@ Symbol *gCFile = NULL;
 std::map<FnSymbol*,int> ftableMap;
 Vec<FnSymbol*> ftableVec;
 
+#ifdef TARGET_HSA
+std::map<FnSymbol*,int> gpuKernelMap;
+Vec<FnSymbol*> gpuKernelVec;
+#endif
+
 Map<Type*,Vec<FnSymbol*>*> virtualMethodTable;
 Map<FnSymbol*,int> virtualMethodMap;
 Map<FnSymbol*,Vec<FnSymbol*>*> virtualChildrenMap;
@@ -1849,9 +1854,11 @@ void FnSymbol::codegenHeaderC(void) {
   if (!hasFlag(FLAG_EXPORT) && !hasFlag(FLAG_EXTERN)) {
     fprintf(outfile, "static ");
   }
+#ifdef TARGET_HSA
+  if (hasFlag(FLAG_GPU_ON)) fprintf(outfile, "__kernel ");
+#endif
   fprintf(outfile, "%s", codegenFunctionType(true).c.c_str());
 }
-
 
 GenRet FnSymbol::codegenCast(GenRet fnPtr) {
   GenInfo *info = gGenInfo;
@@ -1883,6 +1890,10 @@ void FnSymbol::codegenPrototype() {
   if (hasFlag(FLAG_EXTERN))       return;
   if (hasFlag(FLAG_NO_PROTOTYPE)) return;
   if (hasFlag(FLAG_NO_CODEGEN))   return;
+
+#ifdef TARGET_HSA
+  if (hasFlag(FLAG_GPU_ON)) return;
+#endif
 
   if( id == breakOnCodegenID ||
       (breakOnCodegenCname[0] &&
@@ -2554,6 +2565,10 @@ void ModuleSymbol::codegenDef() {
 
   std::vector<FnSymbol*> fns;
 
+#ifdef TARGET_HSA
+  std::vector<FnSymbol*> gpu_fns;
+#endif
+
   for_alist(expr, block->body) {
     if (DefExpr* def = toDefExpr(expr))
       if (FnSymbol* fn = toFnSymbol(def->sym)) {
@@ -2561,10 +2576,26 @@ void ModuleSymbol::codegenDef() {
         if (fn->hasFlag(FLAG_EXTERN) ||
             fn->hasFlag(FLAG_FUNCTION_PROTOTYPE))
           continue;
-
+#ifdef TARGET_HSA
+        if (fn->hasFlag(FLAG_GPU_ON)) gpu_fns.push_back(fn);
+        else  fns.push_back(fn);
+#else
         fns.push_back(fn);
+#endif
+
       }
   }
+
+#ifdef TARGET_HSA
+  std::sort(gpu_fns.begin(), gpu_fns.end(), compareLineno);
+  FILE* save_cfile = gGenInfo->cfile;
+  gGenInfo->cfile = gGPUsrcfile.fptr;
+  for_vector(FnSymbol, g_fn, gpu_fns) {
+    g_fn->codegenDef();
+  }
+  flushStatements();
+  gGenInfo->cfile = save_cfile;
+#endif
 
   std::sort(fns.begin(), fns.end(), compareLineno);
 

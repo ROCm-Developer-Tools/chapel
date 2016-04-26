@@ -21,6 +21,10 @@
 
 include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.include
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+CHPL_GPU_DEST = $(patsubst %.cl,%.o,$(CHPL_GPU_SRC))
+endif
+
 all: $(TMPBINNAME)
 
 $(TMPBINNAME): $(CHPL_CL_OBJS) checkRtLibDir FORCE
@@ -32,6 +36,10 @@ ifneq ($(SKIP_COMPILE_LINK),skip)
 endif
 ifneq ($(CHPL_MAKE_LAUNCHER),none)
 	$(MAKE) -f $(CHPL_MAKE_HOME)/runtime/etc/Makefile.launcher all CHPL_MAKE_HOME=$(CHPL_MAKE_HOME) TMPBINNAME=$(TMPBINNAME) BINNAME=$(BINNAME) TMPDIRNAME=$(TMPDIRNAME)
+endif
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+	$(CLOC) $(CLOC_FLAGS) $(CHPL_GPU_SRC)
+	$(HOF) $(HOF_FLAGS) -output=$(notdir $(CHPL_GPU_DEST)) -brig $(subst .cl,.brig,$(CHPL_GPU_SRC))
 endif
 ifneq ($(TMPBINNAME),$(BINNAME))
 	rm -f $(BINNAME)

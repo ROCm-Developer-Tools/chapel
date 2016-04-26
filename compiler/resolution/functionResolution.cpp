@@ -3017,7 +3017,12 @@ static void handleTaskIntentArgs(CallExpr* call, FnSymbol* taskFn,
     // by blank or const intent. As of this writing (6'2015)
     // records and strings are (incorrectly) captured at the point
     // when the task function/arg bundle is created.
+#ifdef TARGET_HSA
+    if ((taskFn->hasFlag(FLAG_COBEGIN_OR_COFORALL) ||
+         taskFn->hasFlag(FLAG_COFORALL_GPU)) &&
+#else
     if (taskFn->hasFlag(FLAG_COBEGIN_OR_COFORALL) &&
+#endif
         !isConstValWillNotChange(varActual) &&
         (concreteIntent(formal->intent, formal->type->getValType())
          & INTENT_FLAG_IN))

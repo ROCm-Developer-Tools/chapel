@@ -71,6 +71,10 @@ extern char* chpl_executionCommand;
 /* generated */
 extern chpl_fn_p chpl_ftable[];
 
+#ifdef TARGET_HSA
+extern const char* chpl_gpu_kernels[];
+extern const int64_t chpl_num_gpu_kernels;
+#endif
 // Sorted lookup table of filenames used with insertLineNumbers for error
 // messages and logging
 extern c_string chpl_filenameTable[];

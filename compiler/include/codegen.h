@@ -148,6 +148,10 @@ extern GenInfo* gGenInfo;
 extern int      gMaxVMT;
 extern int      gStmtCount;
 
+#ifdef TARGET_HSA
+extern fileinfo gGPUsrcfile;
+#endif
+
 #ifdef HAVE_LLVM
 void setupClang(GenInfo* info, std::string rtmain);
 #endif

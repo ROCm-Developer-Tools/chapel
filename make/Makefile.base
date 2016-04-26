@@ -111,6 +111,10 @@ CHPL_MAKE_PLATFORM = $(CHPL_MAKE_HOST_PLATFORM)
 CHPL_MAKE_MEM = $(CHPL_MAKE_HOST_MEM)
 endif
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+CFLAGS += -DTARGET_HSA
+endif
+
 #
 # default CFLAGS, based on other settings
 #

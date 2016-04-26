@@ -371,6 +371,12 @@ module ChapelLocale {
 
   pragma "insert line file info"
   export
+  proc chpl_getSublocaleID(ref localeID: int(32)) {
+    localeID = chpl_task_getRequestedSubloc();
+  }
+
+  pragma "insert line file info"
+  export
   proc chpl_getLocaleID(ref localeID: chpl_localeID_t) {
     localeID = here_id;
   }

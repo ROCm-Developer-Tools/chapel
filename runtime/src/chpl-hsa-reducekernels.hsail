@@ -1,4 +1,4 @@
-module &_tmp_cloc7950_chpl_hsa_reducekernels_opt_bc:1:0:$full:$large:$default;
+module &_tmp_cloc15689_chpl_hsa_reducekernels_opt_bc:1:0:$full:$large:$default;
 extension "amd:gcn";
 extension "IMAGE";
 

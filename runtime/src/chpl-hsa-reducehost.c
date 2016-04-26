@@ -18,13 +18,14 @@
 */
 
 /*
- * Enqueue a kernel
+ * Enqueue a reduction kernel
  */
-void hsa_enqueue_kernel(void *inbuf, void *outbuf, size_t count,
-                        uint32_t grid_size_x,
-                        hsa_signal_t completion_signal,
-                        hsa_symbol_info_t *symbol_info,
-                        hsail_kernarg_t *args)
+static inline
+void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, size_t count,
+                              uint32_t grid_size_x,
+                              hsa_signal_t completion_signal,
+                              hsa_symbol_info_t *symbol_info,
+                              hsail_reduce_kernarg_t *args)
 {
   hsa_kernel_dispatch_packet_t * dispatch_packet;
   hsa_queue_t *command_queue = hsa_device.command_queue;
@@ -78,9 +79,11 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   int32_t res;
   int incount, outcount, iter, i, in, out;
   int32_t * darray[2];
+//  struct timeval start, end, int1, int2, int3, int15;
+//  double elapsed_time = 0.0;
   uint32_t max_num_wkgrps, num_wkgroups, grid_size_x;
   hsa_signal_t completion_signal;
-  hsail_kernarg_t **args;
+  hsail_reduce_kernarg_t **args;
   hsa_symbol_info_t * symbol_info;
   //printf ("count is %lu\n", count);
   symbol_info = &kernel.symbol_info[0];
@@ -92,7 +95,8 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   /*FIXME: This is an overestimation. Allocation count should be equal to the
    * number of iters.
    */
-  args = chpl_malloc(count * sizeof (hsail_kernarg_t*));
+  args = chpl_malloc(count * sizeof (hsail_reduce_kernarg_t*));
+ // gettimeofday(&start, NULL);
   hsa_signal_create(count, 0, NULL, &completion_signal);
 
   /*for (i = 0; i < count; ++i ) {
@@ -109,13 +113,15 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   while (incount > WKGRP_SIZE) {
     in = (iter & 1);
     out = (iter & 1) ^ 1;
+  //  gettimeofday(&int1, NULL);
     hsa_memory_allocate(hsa_device.kernarg_region,
                         symbol_info->kernarg_segment_size,
                         (void**)&args[iter]);
-    hsa_enqueue_kernel((void*)darray[in], (void*)darray[out], incount,
-                       grid_size_x, completion_signal, symbol_info, 
-                       args[iter]);
-
+   // gettimeofday(&int15, NULL);
+    hsa_enqueue_reducekernel((void*)darray[in], (void*)darray[out], incount,
+                              grid_size_x, completion_signal, symbol_info,
+                              args[iter]);
+    //gettimeofday(&int2, NULL);
     iter += 1;
     incount = outcount;
     max_num_wkgrps = incount / WKGRP_SIZE;
@@ -127,6 +133,7 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   iter -= 1;
   while (hsa_signal_wait_acquire(completion_signal, HSA_SIGNAL_CONDITION_LT,
          count - iter, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > count - iter - 1);
+  //gettimeofday(&int3, NULL);
   res = 0;
   for (i = 0; i < incount; ++i) res += darray[(iter & 1) ^ 1][i];
 
@@ -136,6 +143,23 @@ int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count) {
   chpl_free (args);
   hsa_signal_destroy(completion_signal);
   chpl_free (darray[1]);
+/*  gettimeofday(&end, NULL);
+  elapsed_time = ((int1.tv_sec * 1000000 + int1.tv_usec) -
+      (start.tv_sec * 1000000 + start.tv_usec));
+  printf("time taken, first: %lf msec\n", elapsed_time / 1000.00);
+  elapsed_time = ((int15.tv_sec * 1000000 + int15.tv_usec) -
+      (int1.tv_sec * 1000000 + int1.tv_usec));
+  printf("time taken, 1.5: %lf msec\n", elapsed_time / 1000.00);
+  elapsed_time = ((int2.tv_sec * 1000000 + int2.tv_usec) -
+      (int15.tv_sec * 1000000 + int15.tv_usec));
+  printf("time taken, second: %lf msec\n", elapsed_time / 1000.00);
+  elapsed_time = ((int3.tv_sec * 1000000 + int3.tv_usec) -
+      (int2.tv_sec * 1000000 + int2.tv_usec));
+  printf("time taken, third: %lf msec\n", elapsed_time / 1000.00);
+
+  elapsed_time = ((end.tv_sec * 1000000 + end.tv_usec) -
+      (start.tv_sec * 1000000 + start.tv_usec));
+  printf("time taken: %lf msec\n", elapsed_time / 1000.00);*/
   return res;
 }
 
@@ -145,7 +169,7 @@ int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count) {
   int64_t * darray[2];
   uint32_t max_num_wkgrps, num_wkgroups, grid_size_x;
   hsa_signal_t completion_signal;
-  hsail_kernarg_t **args;
+  hsail_reduce_kernarg_t **args;
   hsa_symbol_info_t * symbol_info;
   //FIXME: use the op argument
   /*if (!strcasecmp(op, "Max"))
@@ -172,7 +196,7 @@ int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count) {
                                count * sizeof(int64_t))) {
     chpl_exit_any(1);
   }
-  args = chpl_malloc(count * sizeof (hsail_kernarg_t*));
+  args = chpl_malloc(count * sizeof (hsail_reduce_kernarg_t*));
   hsa_signal_create(count, 0, NULL, &completion_signal);
 
   incount = count;
@@ -187,9 +211,9 @@ int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count) {
     hsa_memory_allocate(hsa_device.kernarg_region,
                         symbol_info->kernarg_segment_size,
                         (void**)&args[iter]);
-    hsa_enqueue_kernel((void*)darray[in], (void*)darray[out], incount,
-                        grid_size_x, completion_signal, symbol_info,
-                        args[iter]);
+    hsa_enqueue_reducekernel((void*)darray[in], (void*)darray[out], incount,
+                             grid_size_x, completion_signal, symbol_info,
+                             args[iter]);
     iter += 1;
     incount = outcount;
     max_num_wkgrps = incount / WKGRP_SIZE;

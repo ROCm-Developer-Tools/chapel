@@ -554,7 +554,7 @@ module LocaleModel {
   //
   pragma "insert line file info"
   export
-  proc chpl_taskListAddCoStmt(subloc_id: int,        // target sublocale
+  proc chpl_taskListAddCoStmt(subloc_id: int(32),        // target sublocale
                               fn: int,               // task body function idx
                               args: c_void_ptr,           // function args
                               ref tlist: _task_list, // task list

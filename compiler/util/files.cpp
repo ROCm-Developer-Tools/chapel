@@ -542,7 +542,12 @@ void genIncludeCommandLineHeaders(FILE* outfile) {
 }
 
 
+#ifdef TARGET_HSA
+void codegen_makefile(fileinfo* mainfile, fileinfo *gpusrcfile,
+                      const char** tmpbinname, bool skip_compile_link) {
+#else
 void codegen_makefile(fileinfo* mainfile, const char** tmpbinname, bool skip_compile_link) {
+#endif
   fileinfo makefile;
   openCFile(&makefile, "Makefile");
   const char* tmpDirName = intDirName;
@@ -634,6 +639,11 @@ void codegen_makefile(fileinfo* mainfile, const char** tmpbinname, bool skip_com
 
   fprintf(makefile.fptr, "CHPLSRC = \\\n");
   fprintf(makefile.fptr, "\t%s \\\n\n", mainfile->pathname);
+
+#ifdef TARGET_HSA
+    fprintf(makefile.fptr, "CHPL_GPU_SRC = \\\n");
+    fprintf(makefile.fptr, "\t%s \\\n\n", gpusrcfile->pathname);
+#endif
   genCFiles(makefile.fptr);
   genObjFiles(makefile.fptr);
   fprintf(makefile.fptr, "\nLIBS =");

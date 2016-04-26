@@ -132,6 +132,13 @@ void check_createTaskFunctions()
   check_afterNormalization();
 }
 
+#ifdef TARGET_HSA
+void check_createGPUOffloadFunctions()
+{
+
+}
+#endif
+
 void check_resolve()
 {
   checkResolveRemovedPrims();
@@ -504,6 +511,7 @@ checkTaskRemovedPrims()
       {
        case PRIM_BLOCK_BEGIN:
        case PRIM_BLOCK_COBEGIN:
+       case PRIM_BLOCK_GPU_COFORALL:
        case PRIM_BLOCK_COFORALL:
        case PRIM_BLOCK_ON:
        case PRIM_BLOCK_BEGIN_ON:

@@ -41,6 +41,10 @@ PASSES_SRCS = \
         returnStarTuplesByRefArgs.cpp \
         scopeResolve.cpp
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+PASSES_SRCS += createGPUOffloadFunctions.cpp
+endif
+
 SVN_SRCS = $(PASSES_SRCS)
 SRCS = $(SVN_SRCS)
 

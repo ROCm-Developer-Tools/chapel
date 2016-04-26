@@ -555,6 +555,8 @@ initPrimitive() {
   prim_def(PRIM_BLOCK_COFORALL_ON, "coforall on block", returnInfoVoid);
   prim_def(PRIM_BLOCK_LOCAL, "local block", returnInfoVoid);
   prim_def(PRIM_BLOCK_UNLOCAL, "unlocal block", returnInfoVoid);
+  prim_def(PRIM_BLOCK_GPU_COFORALL, "gpu coforall block", returnInfoVoid);
+  prim_def(PRIM_BLOCK_GPU_KERNEL, "gpu kernel block", returnInfoVoid);
 
   prim_def(PRIM_FORALL_LOOP, "forall loop", returnInfoVoid);
   prim_def(PRIM_TO_LEADER, "to leader", returnInfoVoid);
@@ -652,6 +654,7 @@ initPrimitive() {
 
   prim_def(PRIM_GPU_REDUCE, "chpl_gpu_reduce", returnInfoFirst, true, true);
   prim_def(PRIM_IS_GPU_SUBLOCALE, "chpl_is_gpu_sublocale", returnInfoBool, true, true);
+  prim_def(PRIM_GET_GLOBAL_ID, "chpl_get_global_id", returnInfoUInt64, true, true);
 }
 
 Map<const char*, VarSymbol*> memDescsMap;
