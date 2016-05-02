@@ -1353,8 +1353,8 @@ static void DetermineGPUExecInfo(Expr* iterator,
                                  BlockStmt **gpuParamLoop,
                                  BlockStmt **gpuKernelBlock) {
   /*FIXME: we should handle only a single inner for loop for gpu? */
-  Expr *innerIterator = NULL;
-  bool isInnerZippered = false;
+  //Expr *innerIterator = NULL;
+  //bool isInnerZippered = false;
   std::vector<Expr*> stmts, exprs;
   collect_stmts(body, stmts);
 
@@ -1362,30 +1362,39 @@ static void DetermineGPUExecInfo(Expr* iterator,
     BlockStmt* block = toBlockStmt(stmt);
     if (ForLoop* loop = toForLoop(block)) {
       *gpuKernelBlock = loop->copyBody();
-      SymExpr *se = loop->iteratorGet();
-      innerIterator = new SymExpr(toVarSymbol(se->var));
-      isInnerZippered = loop->zipperedGet();
+      //SymExpr *se = loop->iteratorGet();
+      //innerIterator = new SymExpr(toVarSymbol(se->var));
+      //isInnerZippered = loop->zipperedGet();
     }
   }
-  if (!innerIterator) return;
+  //if (!innerIterator) return;
 
-  BlockStmt* outerLoopBlk = new BlockStmt();
-  CallExpr *outerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
-                                    new SymExpr(wkgrpCount),
-                                    buildIntLiteral("1"));
-  outerLoopBlk->insertAtTail(outerIncCount);
+  //BlockStmt* outerLoopBlk = new BlockStmt();
+  //CallExpr *outerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
+                                    //new SymExpr(wkgrpCount),
+                                    //buildIntLiteral("1"));
+  //outerLoopBlk->insertAtTail(outerIncCount);
 
-  BlockStmt* innerLoopBlk = new BlockStmt();
-  CallExpr *innerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
-                                    new SymExpr(wkgrpSize),
-                                    buildIntLiteral("1"));
-  innerLoopBlk->insertAtTail(innerIncCount);
-  BlockStmt* innerLoop = ForLoop::buildForLoop(NULL, innerIterator,
-                                               innerLoopBlk, false,
-                                               isInnerZippered);
-  outerLoopBlk->insertAtTail(innerLoop);
-  *gpuParamLoop = ForLoop::buildForLoop(NULL, iterator->copy(), outerLoopBlk,
-                                        false, zippered);
+  //BlockStmt* innerLoopBlk = new BlockStmt();
+  //CallExpr *innerIncCount = new CallExpr(PRIM_ADD_ASSIGN,
+                                    //new SymExpr(wkgrpSize),
+                                    //buildIntLiteral("1"));
+  //innerLoopBlk->insertAtTail(innerIncCount);
+  //BlockStmt* innerLoop = ForLoop::buildForLoop(NULL, innerIterator,
+                                               //innerLoopBlk, false,
+                                               //isInnerZippered);
+  //outerLoopBlk->insertAtTail(innerLoop);
+  //*gpuParamLoop = ForLoop::buildForLoop(NULL, iterator->copy(), outerLoopBlk,
+                                        //false, zippered);
+  CallExpr *assignWkgrpCount = new CallExpr(PRIM_MOVE,
+                                            new SymExpr(wkgrpCount),
+                                            buildIntLiteral("4"));
+  CallExpr *assignWkgrpSize = new CallExpr(PRIM_MOVE,
+                                           new SymExpr(wkgrpSize),
+                                           buildIntLiteral("4"));
+  *gpuParamLoop = buildChapelStmt();
+  (*gpuParamLoop)->insertAtTail(assignWkgrpCount);
+  (*gpuParamLoop)->insertAtTail(assignWkgrpSize);
   BlockStmt *gpuBlock = *gpuKernelBlock;
   collect_stmts(gpuBlock, exprs);
   for_vector (Expr, expr, exprs) {
@@ -1428,11 +1437,10 @@ static BlockStmt* buildGPUCoforallLoopStmt(Expr* indices,
 
   checkIndices(indices);
 
-  BlockStmt* block = buildChapelStmt();
   // on-statements directly inside coforall-loops not supported for GPUs
   // TODO: is the above restriction required?
   BlockStmt* onBlock = findStmtWithTag(PRIM_BLOCK_ON, body);
-  
+
   //try to generate a nested loop that gives us the workgroup count and size
   //for GPU execution. If not possible, the no point proceeding further
   VarSymbol *wkgrpCount = newTemp("_wkgrpCount", dtInt[INT_SIZE_64]);
@@ -1442,21 +1450,21 @@ static BlockStmt* buildGPUCoforallLoopStmt(Expr* indices,
   BlockStmt *gpuParamLoop = NULL, *gpuKernelBlock = NULL;
   DetermineGPUExecInfo(iterator, body, zippered, wkgrpCount, wkgrpSize,
                        &gpuParamLoop, &gpuKernelBlock);
-    
+
   if (onBlock || !gpuParamLoop || !gpuKernelBlock) {
-    block->insertAtTail(new CallExpr(PRIM_ERROR));
-    return block;
+    return new BlockStmt(new CallExpr(PRIM_ERROR));
   }
 
   VarSymbol* coforallCount = newTemp("_coforallCount");
-  BlockStmt* beginBlk = buildChapelStmt();
+  BlockStmt* beginBlk = new BlockStmt();
+  //BlockStmt* beginBlk = buildChapelStmt();
   beginBlk->blockInfoSet(new CallExpr(PRIM_BLOCK_GPU_COFORALL));
   addByrefVars(beginBlk, byref_vars);
   gpuKernelBlock->blockInfoSet(new CallExpr(PRIM_BLOCK_GPU_KERNEL));
   beginBlk->insertAtHead(gpuKernelBlock);
   beginBlk->insertAtHead(gpuParamLoop);
   beginBlk->insertAtTail(new CallExpr("_downEndCount", coforallCount));
-  block->insertAtTail(beginBlk);
+  BlockStmt* block = new BlockStmt(beginBlk);
   block->insertAtHead(new CallExpr(PRIM_MOVE, coforallCount,
                       new CallExpr("_endCountAlloc",
                       /* forceLocalTypes= */gTrue)));

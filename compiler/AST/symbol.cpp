@@ -1800,6 +1800,9 @@ GenRet FnSymbol::codegenFunctionType(bool forHeader) {
           continue; // do not print locale argument, end count, dummy class
         if (count > 0)
           str += ", ";
+        if (hasFlag(FLAG_GPU_ON)) {
+          str += "global ";
+        }
         str += formal->codegenType().c;
         if( forHeader ) {
           str += " ";
@@ -1851,11 +1854,19 @@ void FnSymbol::codegenHeaderC(void) {
   // A function prototype can be labeled static if it is neither
   // exported nor external
   //
+#ifdef TARGET_HSA
+  if (!hasFlag(FLAG_EXPORT) &&
+      !hasFlag(FLAG_EXTERN) &&
+      !hasFlag(FLAG_GPU_ON)) {
+    fprintf(outfile, "static ");
+  }
+  if (hasFlag(FLAG_GPU_ON)) {
+    fprintf(outfile, "__kernel ");
+  }
+#else
   if (!hasFlag(FLAG_EXPORT) && !hasFlag(FLAG_EXTERN)) {
     fprintf(outfile, "static ");
   }
-#ifdef TARGET_HSA
-  if (hasFlag(FLAG_GPU_ON)) fprintf(outfile, "__kernel ");
 #endif
   fprintf(outfile, "%s", codegenFunctionType(true).c.c_str());
 }

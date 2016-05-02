@@ -222,8 +222,9 @@ static void insertNilChecks() {
           Expr* stmt = call->getStmtExpr();
 
           SET_LINENO(stmt);
-
-          stmt->insertBefore(new CallExpr(PRIM_CHECK_NIL, arg0->copy()));
+          if (!call->getFunction()->hasFlag(FLAG_GPU_ON)) { // disable in GPU
+            stmt->insertBefore(new CallExpr(PRIM_CHECK_NIL, arg0->copy()));
+          }
         }
       }
     }

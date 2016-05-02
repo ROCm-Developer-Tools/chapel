@@ -59,7 +59,6 @@ include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.gmp-$(CHPL_MAKE_GMP)
 -include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.hwloc-$(CHPL_MAKE_HWLOC)
 include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.regexp-$(CHPL_MAKE_REGEXP)
 include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.auxFilesys
-include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.gpu-hsa
 
 # Get runtime headers and required -D flags.
 # sets RUNTIME_INCLUDE_ROOT RUNTIME_CFLAGS RUNTIME_INCLS

@@ -48,9 +48,6 @@ struct PassInfo {
 #define LOG_checkNormalized                    NUL
 #define LOG_buildDefaultFunctions              'D'
 #define LOG_createTaskFunctions                't'
-#ifdef TARGET_HSA
-#define LOG_createGPUOffloadFunctions          NUL
-#endif
 #define LOG_expandExternArrayCalls             NUL
 #define LOG_resolve                            'R'
 #define LOG_resolveIntents                     'i'
@@ -60,6 +57,9 @@ struct PassInfo {
 #define LOG_cullOverReferences                 'O'
 #define LOG_callDestructors                    'd'
 #define LOG_lowerIterators                     'L'
+#ifdef TARGET_HSA
+#define LOG_createGPUOffloadFunctions          NUL
+#endif
 #define LOG_parallel                           'P'
 #define LOG_prune                              'X'
 #define LOG_bulkCopyRecords                    'B'
@@ -112,9 +112,6 @@ static PassInfo sPassList[] = {
   RUN(buildDefaultFunctions),   // build default functions
   RUN(createTaskFunctions),     // convert 'begin' et al. to functions
 
-#ifdef TARGET_HSA
-  RUN(createGPUOffloadFunctions), // create fns to offload coforalls to gpu
-#endif
 
   // Function resolution and shallow type inference
   RUN(resolve),                 // resolves function calls and types
@@ -123,6 +120,9 @@ static PassInfo sPassList[] = {
 
   // Post-resolution cleanup
   RUN(processIteratorYields),   // adjustments to iterators
+#ifdef TARGET_HSA
+  RUN(createGPUOffloadFunctions), // create fns to offload coforalls to gpu
+#endif
   RUN(flattenFunctions),        // denest nested functions
   RUN(cullOverReferences),      // remove excess references
   RUN(callDestructors),

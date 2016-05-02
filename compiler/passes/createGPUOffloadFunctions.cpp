@@ -19,6 +19,7 @@
 
 #include "astutil.h"
 #include "passes.h"
+#include "scopeResolve.h"
 #include "stmt.h"
 #include "stlUtil.h"
 #include "stringutil.h"
@@ -108,10 +109,16 @@ createArgBundleClass(SymbolMap& vars, ModuleSymbol *mod, FnSymbol *fn) {
   form_Map(SymbolMapElem, e, vars) {
     Symbol* sym = e->key;
     if (e->value != markPruned) {
+      if (sym->type->symbol->hasFlag(FLAG_REF) || isClass(sym->type)) {
+      // Only a variable that is passed by reference out of its current scope
+      // is concurrently accessed -- which means that it has to be passed by
+      // reference.
+        sym->addFlag(FLAG_CONCURRENTLY_ACCESSED);
+      }
       //call->insertAtTail(sym);
       VarSymbol* field = new VarSymbol(astr("_", istr(i), "_", sym->name),
           sym->type);
-      ctype->fields.insertAtTail(new DefExpr(field));
+      ctype->addDeclarations(new DefExpr(field), true);
       ++i;
     }
   }
@@ -255,9 +262,21 @@ void createGPUOffloadFunctions(void) {
       // create the class variable instance and allocate space for it
       VarSymbol *tempc = newTemp(astr("_args_for", fn->name), ctype);
       call->insertBefore(new DefExpr(tempc));
-      call->insertBefore(callChplHereAlloc(tempc, NULL));
-      //insertChplHereAlloc(call, false, tempc,
-                      //ctype, newMemDesc("bundled args"));
+      /*Symbol *allocTmp = newTemp("chpl_here_alloc_tmp", dtOpaque);
+      Symbol* sizeTmp = newTemp("chpl_here_alloc_size", SIZE_TYPE);
+      CallExpr *sizeExpr = new CallExpr(PRIM_MOVE, sizeTmp,
+                                        new CallExpr(PRIM_SIZEOF,
+                                                     new SymExpr(tempc)));
+      VarSymbol *mdExpr = newMemDesc(tempc->name);
+      CallExpr* allocCall = new CallExpr("chpl_here_alloc", sizeTmp, mdExpr);
+      //CallExpr* allocCall = callChplHereAlloc(tempc);
+      CallExpr* allocExpr = new CallExpr(PRIM_MOVE, allocTmp, allocCall);
+      call->insertBefore(new DefExpr(allocTmp));
+      call->insertBefore(new DefExpr(sizeTmp));
+      call->insertBefore(sizeExpr);
+      call->insertBefore(allocExpr);*/
+      insertChplHereAlloc(call, false, tempc,
+                          ctype, newMemDesc("bundled args"));
 
       addVarsToBundle(call, uses, ctype, tempc);
       // Put the bundle into a void* argument
@@ -267,7 +286,7 @@ void createGPUOffloadFunctions(void) {
                                new CallExpr(PRIM_CAST_TO_VOID_STAR, tempc)));
   	  ArgSymbol *bundle_args = new ArgSymbol( INTENT_IN, "bundle", dtCVoidPtr);
       fn->insertFormalAtTail(bundle_args);
-      allocated_args->addFlag(FLAG_NO_CODEGEN);
+      bundle_args->addFlag(FLAG_NO_CODEGEN);
       ArgSymbol *wrap_c = new ArgSymbol( INTENT_IN, "dummy_c", ctype);
       //wrap_c->addFlag(FLAG_NO_CODEGEN);
       fn->insertFormalAtTail(wrap_c);
