@@ -1391,7 +1391,7 @@ static void DetermineGPUExecInfo(Expr* iterator,
                                             buildIntLiteral("4"));
   CallExpr *assignWkgrpSize = new CallExpr(PRIM_MOVE,
                                            new SymExpr(wkgrpSize),
-                                           buildIntLiteral("4"));
+                                           buildIntLiteral("64"));
   *gpuParamLoop = buildChapelStmt();
   (*gpuParamLoop)->insertAtTail(assignWkgrpCount);
   (*gpuParamLoop)->insertAtTail(assignWkgrpSize);
@@ -1465,6 +1465,7 @@ static BlockStmt* buildGPUCoforallLoopStmt(Expr* indices,
   beginBlk->insertAtHead(gpuParamLoop);
   beginBlk->insertAtTail(new CallExpr("_downEndCount", coforallCount));
   BlockStmt* block = new BlockStmt(beginBlk);
+  block->insertAtHead(new CallExpr("_upEndCount", coforallCount));
   block->insertAtHead(new CallExpr(PRIM_MOVE, coforallCount,
                       new CallExpr("_endCountAlloc",
                       /* forceLocalTypes= */gTrue)));
@@ -1472,7 +1473,6 @@ static BlockStmt* buildGPUCoforallLoopStmt(Expr* indices,
   block->insertAtTail(new CallExpr(PRIM_PROCESS_TASK_LIST, coforallCount));
   block->insertAtTail(new CallExpr("_waitEndCount", coforallCount));
   block->insertAtTail(new CallExpr("_endCountFree", coforallCount));
-  beginBlk->insertAtHead(new CallExpr("_upEndCount", coforallCount));
   beginBlk->insertAtHead(new DefExpr(wkgrpSize));
   beginBlk->insertAtHead(new DefExpr(wkgrpCount));
   return block;

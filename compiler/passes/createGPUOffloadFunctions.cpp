@@ -195,9 +195,9 @@ void createGPUOffloadFunctions(void) {
       SET_LINENO(block);
 
       ModuleSymbol* mod = block->getModule();
-      FnSymbol* fn = new FnSymbol(astr("chpl__gpukernel", istr(++uid)));
+      FnSymbol* fn = new FnSymbol(astr("chpl__gpukernel", istr(uid)));
       fn->addFlag(FLAG_GPU_ON);
-      gpuKernelMap[fn] = uid;
+      gpuKernelMap[fn] = uid++;
       gpuKernelVec.add(fn);
 
       block->insertBefore(new DefExpr(fn));
