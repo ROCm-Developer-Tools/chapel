@@ -174,6 +174,24 @@ addVarsToActuals(CallExpr* call, SymbolMap& vars) {
   }
 }*/
 
+/* Doesnot work: Recursively inline the functions called by the top-level kernel */
+static void
+InlineCalledFunctions(FnSymbol *fn) {
+  std::vector<CallExpr*> calls;
+  collectCallExprs(fn, calls);
+  collectFnCalls(fn, calls);
+  for_vector(CallExpr, call, calls) {
+    if (call->parentSymbol) {
+      if (FnSymbol *fninner = call->isResolved()) {
+        fninner->addFlag(FLAG_INLINE);
+        InlineCalledFunctions(fninner);
+      }
+    }
+  }
+
+
+}
+
 // Create a new pass createGPUOffloadFunctions. This pass converts blocks that
 // need to be offloaded to GPUs to separate functions so they can be
 // converted to opencl kernels during codegen. (The kernels are then enqueued
@@ -293,6 +311,8 @@ void createGPUOffloadFunctions(void) {
       addNewSymbolsFromFormal(fn, uses, wrap_c, ctype);
       //addVarsToActuals(call, uses);
       replaceVarUses(fn->body, uses);
+      //Vec<FnSymbol*> inlinedSet;
+      //inlineCalledFunctions(fn, inlinedSet);
       call->insertAtTail(allocated_args);
       call->insertAtTail(tempc);
     } // if blockInfo

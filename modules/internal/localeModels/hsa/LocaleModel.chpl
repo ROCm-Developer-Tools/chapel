@@ -95,8 +95,8 @@ module LocaleModel {
     proc CPULocale(_sid, _parent) {
       warning("CREATING CPU LOCALE!");
       sid = _sid;
-      name = "CPU"+sid;
       parent = _parent;
+      name = parent.chpl_name() + "-CPU" + sid;
     }
 
     proc readWriteThis(f) {
@@ -133,8 +133,8 @@ module LocaleModel {
     proc GPULocale(_sid, _parent) {
       warning("CREATING GPU LOCALE!");
       sid = _sid;
-      name = "GPU"+sid;
       parent = _parent;
+      name = parent.chpl_name() + "-GPU" + sid;
     }
 
     proc readWriteThis(f) {
