@@ -42,7 +42,7 @@ PASSES_SRCS = \
         scopeResolve.cpp
 
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
-PASSES_SRCS += createGPUOffloadFunctions.cpp
+PASSES_SRCS += createGPUForLoops.cpp
 endif
 
 SVN_SRCS = $(PASSES_SRCS)

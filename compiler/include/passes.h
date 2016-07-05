@@ -43,7 +43,7 @@ void codegen();
 void copyPropagation();
 void createTaskFunctions();
 #ifdef TARGET_HSA
-void createGPUOffloadFunctions();
+void createGPUForLoops();
 #endif
 void cullOverReferences();
 void deadCodeElimination();

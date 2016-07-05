@@ -133,7 +133,7 @@ void check_createTaskFunctions()
 }
 
 #ifdef TARGET_HSA
-void check_createGPUOffloadFunctions()
+void check_createGPUForLoops()
 {
 
 }

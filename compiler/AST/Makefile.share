@@ -55,6 +55,10 @@ AST_SRCS =                                          \
            CollapseBlocks.cpp                       \
            TransformLogicalShortCircuit.cpp
 
+ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+AST_SRCS += GPUForLoop.cpp
+endif
+
 
 SVN_SRCS = $(AST_SRCS)
 SRCS = $(SVN_SRCS)

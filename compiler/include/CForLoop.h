@@ -67,7 +67,7 @@ public:
   virtual CallExpr*      blockInfoGet()                               const;
   virtual CallExpr*      blockInfoSet(CallExpr* expr);
 
-private:
+protected:
                          CForLoop();
 
                          CForLoop(BlockStmt* body);

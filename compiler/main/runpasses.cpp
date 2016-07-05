@@ -58,7 +58,7 @@ struct PassInfo {
 #define LOG_callDestructors                    'd'
 #define LOG_lowerIterators                     'L'
 #ifdef TARGET_HSA
-#define LOG_createGPUOffloadFunctions          NUL
+#define LOG_createGPUForLoops                  NUL
 #endif
 #define LOG_parallel                           'P'
 #define LOG_prune                              'X'
@@ -120,13 +120,13 @@ static PassInfo sPassList[] = {
 
   // Post-resolution cleanup
   RUN(processIteratorYields),   // adjustments to iterators
-#ifdef TARGET_HSA
-  RUN(createGPUOffloadFunctions), // create fns to offload coforalls to gpu
-#endif
   RUN(flattenFunctions),        // denest nested functions
   RUN(cullOverReferences),      // remove excess references
   RUN(callDestructors),
   RUN(lowerIterators),          // lowers iterators into functions/classes
+#ifdef TARGET_HSA
+  RUN(createGPUForLoops),       // create fns to offload o.i. for-loops to gpu
+#endif
   RUN(parallel),                // parallel transforms
   RUN(prune),                   // prune AST of dead functions and types
 
