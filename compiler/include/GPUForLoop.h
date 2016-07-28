@@ -30,7 +30,7 @@ class GPUForLoop : public CForLoop
   // Class interface
   //
 public:
-  static GPUForLoop *buildFrom(CForLoop* cforLoop);
+  static GPUForLoop *buildFromIfPossible(CForLoop* cforLoop);
 
 
   //

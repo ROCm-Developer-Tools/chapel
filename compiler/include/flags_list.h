@@ -255,10 +255,8 @@ symbolFlag( FLAG_WRAPPER , npr, "wrapper" , "wrapper function" )
 symbolFlag( FLAG_WRAP_WRITTEN_FORMAL , npr, "wrap written formal" , "formal argument for wrapper for out/inout intent" )
 
 #ifdef TARGET_HSA
-symbolFlag( FLAG_COFORALL_GPU , npr, "coforall on gpu" , ncm )
-symbolFlag( FLAG_GPU_ON , npr, "gpu on" , "Flag to mark GPU kernel" )
-symbolFlag( FLAG_WKGRP_COUNT_VAR , npr, "workgroup count" , ncm )
-symbolFlag( FLAG_WKGRP_SIZE_VAR , npr, "workgroup size" , ncm )
+symbolFlag( FLAG_OFFLOAD_TO_GPU , npr, "gpu on" , "Flag to mark GPU kernel" )
+symbolFlag( FLAG_FIT_FOR_GPU, ypr, "fit for gpu" , "any order indpendent for loop inside this function will be cnverted to gpu" )
 #endif
 
 #undef ypr

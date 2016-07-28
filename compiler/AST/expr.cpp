@@ -3630,7 +3630,6 @@ void CallExpr::verify() {
     case PRIM_BLOCK_FOR_LOOP:
     case PRIM_BLOCK_BEGIN:
     case PRIM_BLOCK_COBEGIN:
-    case PRIM_BLOCK_GPU_COFORALL:
     case PRIM_BLOCK_COFORALL:
     case PRIM_BLOCK_ON:
     case PRIM_BLOCK_BEGIN_ON:
@@ -5691,8 +5690,7 @@ GenRet CallExpr::codegen() {
   }
 #ifdef TARGET_HSA
   //Enqueue the kernel to the gpu instead of directly executing it
-  if (fn->hasFlag(FLAG_GPU_ON)) {
-    //Abhi
+  if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
     const char* enqueue_fn = "hsa_enqueue_kernel";
     std::vector<GenRet> args(4);
     args[0] = new_IntSymbol(gpuKernelMap[fn], INT_SIZE_64);

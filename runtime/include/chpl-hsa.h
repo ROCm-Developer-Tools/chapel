@@ -68,6 +68,6 @@ int hsa_create_kernels(const char * file_name);
 int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count);
 int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count);
 
-void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_count_x,
-                        uint32_t wkgrp_size_x, void *bundled_args);
+void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
+                        uint32_t wkitem_count_x, void *bundled_args);
 #endif //_chpl_hsa_h_

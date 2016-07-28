@@ -102,7 +102,7 @@ Vec<FnSymbol*> ftableVec;
 
 #ifdef TARGET_HSA
 std::map<FnSymbol*,int> gpuKernelMap;
-Vec<FnSymbol*> gpuKernelVec;
+std::vector<FnSymbol*> gpuKernelVec;
 #endif
 
 Map<Type*,Vec<FnSymbol*>*> virtualMethodTable;
@@ -1800,7 +1800,7 @@ GenRet FnSymbol::codegenFunctionType(bool forHeader) {
           continue; // do not print locale argument, end count, dummy class
         if (count > 0)
           str += ", ";
-        if (hasFlag(FLAG_GPU_ON)) {
+        if (hasFlag(FLAG_OFFLOAD_TO_GPU)) {
           str += "global ";
         }
         str += formal->codegenType().c;
@@ -1857,10 +1857,10 @@ void FnSymbol::codegenHeaderC(void) {
 #ifdef TARGET_HSA
   if (!hasFlag(FLAG_EXPORT) &&
       !hasFlag(FLAG_EXTERN) &&
-      !hasFlag(FLAG_GPU_ON)) {
+      !hasFlag(FLAG_OFFLOAD_TO_GPU)) {
     fprintf(outfile, "static ");
   }
-  if (hasFlag(FLAG_GPU_ON)) {
+  if (hasFlag(FLAG_OFFLOAD_TO_GPU)) {
     fprintf(outfile, "__kernel ");
   }
 #else
@@ -1903,7 +1903,7 @@ void FnSymbol::codegenPrototype() {
   if (hasFlag(FLAG_NO_CODEGEN))   return;
 
 #ifdef TARGET_HSA
-  if (hasFlag(FLAG_GPU_ON)) return;
+  if (hasFlag(FLAG_OFFLOAD_TO_GPU)) return;
 #endif
 
   if( id == breakOnCodegenID ||
@@ -2588,7 +2588,7 @@ void ModuleSymbol::codegenDef() {
             fn->hasFlag(FLAG_FUNCTION_PROTOTYPE))
           continue;
 #ifdef TARGET_HSA
-        if (fn->hasFlag(FLAG_GPU_ON)) gpu_fns.push_back(fn);
+        if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) gpu_fns.push_back(fn);
         else  fns.push_back(fn);
 #else
         fns.push_back(fn);

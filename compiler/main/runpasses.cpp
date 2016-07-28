@@ -124,9 +124,6 @@ static PassInfo sPassList[] = {
   RUN(cullOverReferences),      // remove excess references
   RUN(callDestructors),
   RUN(lowerIterators),          // lowers iterators into functions/classes
-#ifdef TARGET_HSA
-  RUN(createGPUForLoops),       // create fns to offload o.i. for-loops to gpu
-#endif
   RUN(parallel),                // parallel transforms
   RUN(prune),                   // prune AST of dead functions and types
 
@@ -150,6 +147,9 @@ static PassInfo sPassList[] = {
   RUN(insertWideReferences),    // inserts wide references for on clauses
   RUN(optimizeOnClauses),       // Optimize on clauses
   RUN(addInitCalls),            // Add module init calls and guards.
+#ifdef TARGET_HSA
+  RUN(createGPUForLoops),       // create fns to offload o.i. for-loops to gpu
+#endif
 
   // AST to C or LLVM
   RUN(insertLineNumbers),       // insert line numbers for error messages

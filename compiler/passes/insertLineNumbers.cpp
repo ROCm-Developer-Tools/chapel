@@ -222,7 +222,8 @@ static void insertNilChecks() {
           Expr* stmt = call->getStmtExpr();
 
           SET_LINENO(stmt);
-          if (!call->getFunction()->hasFlag(FLAG_GPU_ON)) { // disable in GPU
+          // Disable nil check in GPU.
+          if (!call->getFunction()->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
             stmt->insertBefore(new CallExpr(PRIM_CHECK_NIL, arg0->copy()));
           }
         }

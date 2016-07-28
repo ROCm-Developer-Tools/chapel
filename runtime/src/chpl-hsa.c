@@ -488,8 +488,8 @@ err_free_module_buffer:
 /*
  * Enqueue a kernel
  */
-void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_count_x,
-                        uint32_t wkgrp_size_x, void *bundled_args)
+void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
+                        uint32_t wkitem_count_x, void *bundled_args)
 {
   hsa_kernel_dispatch_packet_t * dispatch_packet;
   hsa_queue_t *command_queue = hsa_device.command_queue;
@@ -516,7 +516,7 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_count_x,
   dispatch_packet->header |= HSA_FENCE_SCOPE_SYSTEM <<
     HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
   dispatch_packet->header |= 1 << HSA_PACKET_HEADER_BARRIER;
-  dispatch_packet->grid_size_x = wkgrp_size_x * wkgrp_count_x;
+  dispatch_packet->grid_size_x = wkitem_count_x;
   //dispatch_packet->grid_size_x = 256;
   dispatch_packet->grid_size_y = 1;
   dispatch_packet->grid_size_z = 1;

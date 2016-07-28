@@ -630,7 +630,7 @@ extern Vec<FnSymbol*> ftableVec;
 
 #ifdef TARGET_HSA
 extern std::map<FnSymbol*,int> gpuKernelMap;
-extern Vec<FnSymbol*> gpuKernelVec;
+extern std::vector<FnSymbol*> gpuKernelVec;
 #endif
 //
 // The virtualMethodTable maps types to their arrays of methods.  The

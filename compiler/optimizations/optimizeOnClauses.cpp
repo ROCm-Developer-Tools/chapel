@@ -255,7 +255,6 @@ isFastPrimitive(CallExpr *call, bool isLocal) {
   case PRIM_BLOCK_PARAM_LOOP:
   case PRIM_BLOCK_BEGIN:
   case PRIM_BLOCK_COBEGIN:
-  case PRIM_BLOCK_GPU_COFORALL:
   case PRIM_BLOCK_COFORALL:
   case PRIM_BLOCK_ON:
   case PRIM_BLOCK_BEGIN_ON:

@@ -350,12 +350,6 @@ void createTaskFunctions(void) {
       } else if (info->isPrimitive(PRIM_BLOCK_COBEGIN)) {
         fn = new FnSymbol("cobegin_fn");
         fn->addFlag(FLAG_COBEGIN_OR_COFORALL);
-#ifdef TARGET_HSA
-      } else if (info->isPrimitive(PRIM_BLOCK_GPU_COFORALL)) {
-        fn = new FnSymbol("coforall_gpu_fn");
-        fn->addFlag(FLAG_COBEGIN_OR_COFORALL);
-        fn->addFlag(FLAG_COFORALL_GPU);
-#endif
       } else if (info->isPrimitive(PRIM_BLOCK_COFORALL)) {
         fn = new FnSymbol("coforall_fn");
         fn->addFlag(FLAG_COBEGIN_OR_COFORALL);
@@ -379,8 +373,6 @@ void createTaskFunctions(void) {
         fn->insertFormalAtTail(arg);
       }
       else if (info->isPrimitive(PRIM_BLOCK_LOCAL) ||
-               info->isPrimitive(PRIM_BLOCK_GPU_COFORALL) ||
-               info->isPrimitive(PRIM_BLOCK_GPU_KERNEL) ||
                info->isPrimitive(PRIM_BLOCK_UNLOCAL))
         ; // Not a parallel block construct, so do nothing special.
       else

@@ -220,7 +220,7 @@ genClassIDs(Vec<TypeSymbol*> & typeSymbols) {
 
 #ifdef TARGET_HSA
 static void
-genGPUKernelTable(Vec<FnSymbol*> & kernelFns) {
+genGPUKernelTable(std::vector<FnSymbol*> & kernelFns) {
   GenInfo* info = gGenInfo;
   const char* ktable_name = "chpl_gpu_kernels";
   const char* ktable_count = "chpl_num_gpu_kernels";
@@ -228,7 +228,7 @@ genGPUKernelTable(Vec<FnSymbol*> & kernelFns) {
     FILE* hdrfile = info->cfile;
     fprintf(hdrfile, "const char * %s[] = {\n", ktable_name);
     bool first = true;
-    forv_Vec(FnSymbol, fn, kernelFns) {
+    for_vector(FnSymbol, fn, kernelFns) {
       if (!first)
         fprintf(hdrfile, ",\n");
       fprintf(hdrfile, "\"%s\"", fn->cname);
@@ -238,7 +238,7 @@ genGPUKernelTable(Vec<FnSymbol*> & kernelFns) {
     //if (kernelNames.n == 0)
      // fprintf(hdrfile, "\"\"");
     fprintf(hdrfile, "\n};\n");
-    genGlobalInt64(ktable_count, kernelFns.n);
+    genGlobalInt64(ktable_count, kernelFns.size());
   }
 }
 #endif
@@ -1395,7 +1395,7 @@ void codegen(void) {
 #ifdef TARGET_HSA
     openCFile(&gGPUsrcfile, "chplGPU", "cl");
     forv_Vec(FnSymbol, fn, gFnSymbols) {
-      if (fn->hasFlag(FLAG_GPU_ON)) {
+      if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
         fprintf(gGPUsrcfile.fptr, "#include \"chpl__header.h\"\n");
         break;
       }
