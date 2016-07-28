@@ -53,6 +53,10 @@
   for (std::vector<TYPE*>::iterator _i_##VAL = (VEC).begin(); \
        (VAL = (_i_##VAL != (VEC).end()) ? *_i_##VAL : (TYPE*)0) ; _i_##VAL++ )
 
+#define for_const_vector(TYPE, VAL, VEC) TYPE* VAL;                 \
+  for (std::vector<TYPE*>:: const_iterator _i_##VAL = (VEC).begin(); \
+       (VAL = (_i_##VAL != (VEC).end()) ? *_i_##VAL : (TYPE*)0) ; _i_##VAL++ )
+
 #define for_set(TYPE, VAL, VEC) TYPE* VAL;                 \
   for (std::set<TYPE*>::iterator _i_##VAL = (VEC).begin(); \
        (VAL = (_i_##VAL != (VEC).end()) ? *_i_##VAL : (TYPE*)0) ; _i_##VAL++ )
