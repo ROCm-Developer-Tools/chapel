@@ -297,6 +297,21 @@ void createGPUForLoops(void)
         SET_LINENO(block);
 
         GPUForLoop *gpuForLoop = GPUForLoop::buildFromIfPossible(cForLoop);
+        
+        if (fReportGPUForLoops) {
+          ModuleSymbol *mod = toModuleSymbol(cForLoop->getModule());
+          INT_ASSERT(mod);
+          if (developer || mod->modTag == MOD_USER) {
+            if (gpuForLoop) {
+              printf("Replacing CForLoop with C and GPU for loops at %s:%d\n",
+                  mod->name, cForLoop->linenum());
+            } else {
+              printf("Failed to generate GPUForLoop from CForLoop at %s:%d\n",
+                  mod->name, cForLoop->linenum());
+            }
+          }
+        }
+
         if (gpuForLoop) {
           CForLoop *cpuforLoop = cForLoop->copy();
           BlockStmt *condBlock = new BlockStmt();
