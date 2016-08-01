@@ -178,6 +178,8 @@ static void setWkgrpSize(CallExpr *call)
 
 // Try to build an expression to estimate trip count. If possible,
 // initialize the wkitem_count function argument with the trip count expr.
+// Currently we only consider cases where the test expressions are
+// primitives of the form <, <=, >,  >=, and !=.
 static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
                                      const CallExprVector& initCalls)
 {
@@ -225,6 +227,20 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
                 {
                   diffExpr = new CallExpr(PRIM_SUBTRACT, initRhs, testRhs);
                   success = true;
+                  break;
+                }
+              case PRIM_NOTEQUAL:
+                {
+                  PrimitiveOp* primitiveIncrOp = incrCall->primitive;
+                  if (primitiveIncrOp->tag == PRIM_ADD_ASSIGN) {
+                    diffExpr = new CallExpr(PRIM_SUBTRACT, testRhs, initRhs);
+                    success = true;
+                  } else if (primitiveIncrOp->tag == PRIM_SUBTRACT_ASSIGN) {
+                    diffExpr = new CallExpr(PRIM_SUBTRACT, initRhs, testRhs);
+                    success = true;
+                  } else {
+                    ;
+                  }
                   break;
                 }
               default:
@@ -275,8 +291,8 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
 // At the call-site:
 // Determine wrkgrp size -- currently hard-coded to 64.
 // TODO: How to set this: 1. User input (global / per kernel) 2. Heuristic.
-// Generate code to compute and store the trip-count of the loop. Trip-count
-// is equal to the number of work items (wkitemCount).
+// Determine workitem count - Generate code to compute and store the
+// trip-count (equal to the number of work items ie. wkitemCount).
 // Pass wkgrpSize and wkitemCount to the function.
 //
 // For example:
@@ -300,7 +316,6 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
 //
 GPUForLoop *GPUForLoop::buildFromIfPossible(CForLoop *cForLoop)
 {
-  if (uid > 3) return NULL;
   SymbolMap smap;
   GPUForLoop *retval = new GPUForLoop();
 
