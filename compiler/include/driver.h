@@ -166,6 +166,9 @@ extern bool fWarnConstLoops;
 
 extern bool fReportOptimizedLoopIterators;
 extern bool fReportOrderIndependentLoops;
+#ifdef TARGET_HSA
+extern bool fReportGPUForLoops;
+#endif
 extern bool fReportOptimizedOn;
 extern bool fReportPromotion;
 extern bool fReportScalarReplace;

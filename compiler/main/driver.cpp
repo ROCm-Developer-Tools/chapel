@@ -165,6 +165,9 @@ char fPrintStatistics[256] = "";
 bool fPrintDispatch = false;
 bool fReportOptimizedLoopIterators = false;
 bool fReportOrderIndependentLoops = false;
+#ifdef TARGET_HSA
+bool fReportGPUForLoops = false;
+#endif
 bool fReportOptimizedOn = false;
 bool fReportPromotion = false;
 bool fReportScalarReplace = false;
@@ -760,6 +763,9 @@ static ArgumentDescription arg_desc[] = {
  {"report-dead-modules", ' ', NULL, "Print dead module removal stats", "F", &fReportDeadModules, NULL, NULL},
  {"report-optimized-loop-iterators", ' ', NULL, "Print stats on optimized single loop iterators", "F", &fReportOptimizedLoopIterators, NULL, NULL},
  {"report-order-independent-loops", ' ', NULL, "Print stats on order independent loops", "F", &fReportOrderIndependentLoops, NULL, NULL},
+#ifdef TARGET_HSA
+ {"report-gpu-for-loops", ' ', NULL, "Print stats on creation of GPU for loops", "F", &fReportGPUForLoops, NULL, NULL},
+#endif
  {"report-optimized-on", ' ', NULL, "Print information about on clauses that have been optimized for potential fast remote fork operation", "F", &fReportOptimizedOn, NULL, NULL},
  {"report-promotion", ' ', NULL, "Print information about scalar promotion", "F", &fReportPromotion, NULL, NULL},
  {"report-scalar-replace", ' ', NULL, "Print scalar replacement stats", "F", &fReportScalarReplace, NULL, NULL},
