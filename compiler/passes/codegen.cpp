@@ -811,16 +811,15 @@ static void codegen_gpu_header() {
   }
 
   forv_Vec(TypeSymbol, typeSymbol, types) {
-      typeSymbol->removeFlag(FLAG_CODEGENNED);
+    typeSymbol->removeFlag(FLAG_CODEGENNED);
   }
 
 
   genComment("Class Prototypes");
   forv_Vec(TypeSymbol, typeSymbol, types) {
-    if (typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
-        AggregateType* ct = toAggregateType(typeSymbol->type);
+    if (typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU) && 
+        !typeSymbol->hasFlag(FLAG_DATA_CLASS)) 
         typeSymbol->codegenPrototype();
-    }
   }
 
 
