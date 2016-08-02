@@ -738,6 +738,117 @@ static void protectNameFromC(Symbol* sym) {
   //  free(oldName);
 }
 
+#ifdef TARGET_HSA
+static void codegen_gpu_header() {
+  GenInfo* info = gGenInfo;
+  Vec<const char*> cnames;
+  Vec<TypeSymbol*> types;
+
+  //
+  // collect types and apply canonical sort
+  //
+  forv_Vec(TypeSymbol, ts, gTypeSymbols) {
+    if (ts->defPoint->parentExpr != rootModule->block) {
+      legalizeName(ts);
+      types.add(ts);
+    }
+  }
+  qsort(types.v, types.n, sizeof(types.v[0]), compareSymbol);
+
+
+  //
+  // mangle type names if they clash with other types
+  //
+  forv_Vec(TypeSymbol, ts, types) {
+    if (ts->isRenameable())
+      ts->cname = uniquifyName(ts->cname, &cnames);
+  }
+  uniquifyNameCounts.clear();
+
+  //
+  // change enum constant names into <type name>_<constant name> and
+  // mangle if they clash with other types or enum constants
+  //
+  forv_Vec(TypeSymbol, ts, types) {
+    if (EnumType* enumType = toEnumType(ts->type)) {
+      for_enums(constant, enumType) {
+        Symbol* sym = constant->sym;
+        legalizeName(sym);
+        sym->cname = astr(enumType->symbol->cname, "_", sym->cname);
+        sym->cname = uniquifyName(sym->cname, &cnames);
+      }
+    }
+  }
+  uniquifyNameCounts.clear();
+
+  //
+  // mangle field names if they clash with other fields in the same
+  // class
+  //
+  forv_Vec(TypeSymbol, ts, types) {
+    if (ts->defPoint->parentExpr != rootModule->block) {
+      if (AggregateType* ct = toAggregateType(ts->type)) {
+        Vec<const char*> fieldNameSet;
+        for_fields(field, ct) {
+          legalizeName(field);
+          field->cname = uniquifyName(field->cname, &fieldNameSet);
+        }
+        uniquifyNameCounts.clear();
+      }
+    }
+  }
+
+
+  FILE* hdrfile = info->cfile;
+
+  if( hdrfile ) {
+    fprintf(hdrfile, "\n// GPU header file\n\n");
+
+    // This is done in runClang for LLVM version.
+    fprintf(hdrfile, "\n#define CHPL_GEN_CODE\n\n");
+
+    fprintf(hdrfile, "#include \"gpu_base_header.h\"\n\n");
+  }
+
+  forv_Vec(TypeSymbol, typeSymbol, types) {
+      typeSymbol->removeFlag(FLAG_CODEGENNED);
+  }
+
+
+  genComment("Class Prototypes");
+  forv_Vec(TypeSymbol, typeSymbol, types) {
+    if (typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+        AggregateType* ct = toAggregateType(typeSymbol->type);
+        typeSymbol->codegenPrototype();
+    }
+  }
+
+
+  {
+    // codegen records/unions/references/data class in topological order
+    genComment("Records, Unions, Data Class, References (Hierarchically)");
+    forv_Vec(TypeSymbol, ts, types) {
+      if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+        AggregateType* ct = toAggregateType(ts->type);
+        codegen_aggregate_def(ct);
+      }
+    }
+  }
+
+  genComment("Classes");
+  forv_Vec(TypeSymbol, typeSymbol, types) {
+    if (isClass(typeSymbol->type) &&
+        !typeSymbol->hasFlag(FLAG_REF) &&
+        !typeSymbol->hasFlag(FLAG_DATA_CLASS) &&
+        typeSymbol->hasFlag(FLAG_NO_OBJECT) &&
+        !typeSymbol->hasFlag(FLAG_OBJECT_CLASS) &&
+        typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+     typeSymbol->codegenDef();
+    }
+  }
+
+}
+#endif 
 
 // TODO: Split this into a number of smaller routines.<hilde>
 static void codegen_header() {
@@ -1374,6 +1485,9 @@ void codegen(void) {
 
   fileinfo hdrfile  = { NULL, NULL, NULL };
   fileinfo mainfile = { NULL, NULL, NULL };
+#ifdef TARGET_HSA
+  fileinfo gpuhdrfile = { NULL, NULL, NULL };
+#endif
 
   GenInfo* info     = gGenInfo;
 
@@ -1393,10 +1507,11 @@ void codegen(void) {
     fprintf(mainfile.fptr, "#include \"chpl__header.h\"\n");
 
 #ifdef TARGET_HSA
+    openCFile(&gpuhdrfile,  "chpl__gpu_header", "h");
     openCFile(&gGPUsrcfile, "chplGPU", "cl");
     forv_Vec(FnSymbol, fn, gFnSymbols) {
       if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
-        fprintf(gGPUsrcfile.fptr, "#include \"chpl__header.h\"\n");
+        fprintf(gGPUsrcfile.fptr, "#include \"chpl__gpu_header.h\"\n");
         break;
       }
     }
@@ -1491,6 +1606,10 @@ void codegen(void) {
     closeCFile(&hdrfile);
     closeCFile(&mainfile);
 #ifdef TARGET_HSA
+    info->cfile = gpuhdrfile.fptr;
+    codegen_gpu_header();
+
+    closeCFile(&gpuhdrfile);
     closeCFile(&gGPUsrcfile);
 #endif
   }

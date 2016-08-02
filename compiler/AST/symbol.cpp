@@ -1802,8 +1802,14 @@ GenRet FnSymbol::codegenFunctionType(bool forHeader) {
           str += ", ";
         if (hasFlag(FLAG_OFFLOAD_TO_GPU)) {
           str += "global ";
+          // TODO: ideally, we'd just like to ouput codegenType().c but
+          // there seems to be an OpenCL bug not liking the typedef
+          str += "chpl_";
+          str += formal->codegenType().c;
+          str += "_object*";
         }
-        str += formal->codegenType().c;
+        else
+          str += formal->codegenType().c;
         if( forHeader ) {
           str += " ";
           str += formal->cname;
