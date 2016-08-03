@@ -741,63 +741,31 @@ static void protectNameFromC(Symbol* sym) {
 #ifdef TARGET_HSA
 static void codegen_gpu_header() {
   GenInfo* info = gGenInfo;
-  Vec<const char*> cnames;
   Vec<TypeSymbol*> types;
 
-  //
-  // collect types and apply canonical sort
-  //
+  // Loop through the symbols within GPU kernels
+  // to mark those for output to GPU header
+  for_vector(FnSymbol, fn, gpuKernelVec) {
+    Expr* stmt = fn->body->body.head;
+    while (stmt) {
+      if (DefExpr* e = toDefExpr(stmt)) {
+        TypeSymbol* sym = e->sym->type->symbol;
+        if (!sym->hasFlag(FLAG_DATA_CLASS) &&
+            sym->defPoint->parentExpr != rootModule->block)
+          // Add a OFFLOAD_TO_GPU flag so that we know
+          // this is a type used within the kernel that we
+          // need to recursively output to header later
+          sym->addFlag(FLAG_OFFLOAD_TO_GPU);
+      }
+      stmt = stmt->next;
+    }
+  }
+ 
   forv_Vec(TypeSymbol, ts, gTypeSymbols) {
     if (ts->defPoint->parentExpr != rootModule->block) {
-      legalizeName(ts);
       types.add(ts);
     }
   }
-  qsort(types.v, types.n, sizeof(types.v[0]), compareSymbol);
-
-
-  //
-  // mangle type names if they clash with other types
-  //
-  forv_Vec(TypeSymbol, ts, types) {
-    if (ts->isRenameable())
-      ts->cname = uniquifyName(ts->cname, &cnames);
-  }
-  uniquifyNameCounts.clear();
-
-  //
-  // change enum constant names into <type name>_<constant name> and
-  // mangle if they clash with other types or enum constants
-  //
-  forv_Vec(TypeSymbol, ts, types) {
-    if (EnumType* enumType = toEnumType(ts->type)) {
-      for_enums(constant, enumType) {
-        Symbol* sym = constant->sym;
-        legalizeName(sym);
-        sym->cname = astr(enumType->symbol->cname, "_", sym->cname);
-        sym->cname = uniquifyName(sym->cname, &cnames);
-      }
-    }
-  }
-  uniquifyNameCounts.clear();
-
-  //
-  // mangle field names if they clash with other fields in the same
-  // class
-  //
-  forv_Vec(TypeSymbol, ts, types) {
-    if (ts->defPoint->parentExpr != rootModule->block) {
-      if (AggregateType* ct = toAggregateType(ts->type)) {
-        Vec<const char*> fieldNameSet;
-        for_fields(field, ct) {
-          legalizeName(field);
-          field->cname = uniquifyName(field->cname, &fieldNameSet);
-        }
-        uniquifyNameCounts.clear();
-      }
-    }
-  }
-
 
   FILE* hdrfile = info->cfile;
 
@@ -810,7 +778,9 @@ static void codegen_gpu_header() {
     fprintf(hdrfile, "#include \"gpu_base_header.h\"\n\n");
   }
 
-  forv_Vec(TypeSymbol, typeSymbol, types) {
+  // Remove the Codegenned flag on all symbols so
+  // the recursive walk will work again
+  forv_Vec(TypeSymbol, typeSymbol, gTypeSymbols) {
     typeSymbol->removeFlag(FLAG_CODEGENNED);
   }
 
