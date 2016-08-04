@@ -94,7 +94,7 @@ createArgBundleClass(SymbolMap& vars, ModuleSymbol *mod, FnSymbol *fn)
   TypeSymbol* new_c = new TypeSymbol(astr("_class_locals", fn->name), ctype);
   new_c->addFlag(FLAG_NO_OBJECT);
   new_c->addFlag(FLAG_NO_WIDE_CLASS);
-  new_c->addFlag(FLAG_OFFLOAD_TO_GPU);
+//  new_c->addFlag(FLAG_OFFLOAD_TO_GPU);
   int i = 0;
   form_Map(SymbolMapElem, e, vars) {
     Symbol* sym = e->key;
@@ -108,7 +108,7 @@ createArgBundleClass(SymbolMap& vars, ModuleSymbol *mod, FnSymbol *fn)
       //call->insertAtTail(sym);
       VarSymbol* field = new VarSymbol(astr("_", istr(i), "_", sym->name),
           sym->type);
-      sym->type->symbol->addFlag(FLAG_OFFLOAD_TO_GPU);
+//      sym->type->symbol->addFlag(FLAG_OFFLOAD_TO_GPU);
       ctype->addDeclarations(new DefExpr(field), true);
       ++i;
     }

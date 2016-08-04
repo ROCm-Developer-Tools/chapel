@@ -759,6 +759,13 @@ static void codegen_gpu_header() {
       }
       stmt = stmt->next;
     }
+    
+    for_formals(formal, fn) {
+      TypeSymbol* sym = formal->type->symbol;
+        if (!sym->hasFlag(FLAG_DATA_CLASS) &&
+            sym->defPoint->parentExpr != rootModule->block)
+          sym->addFlag(FLAG_OFFLOAD_TO_GPU);
+    }
   }
  
   forv_Vec(TypeSymbol, ts, gTypeSymbols) {
