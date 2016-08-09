@@ -96,6 +96,11 @@ insertLineNumber(CallExpr* call) {
   ArgSymbol* line = linenoMap.get(fn);
   SET_LINENO(call);
 
+#ifdef TARGET_HSA
+  if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU) || fn->hasFlag(FLAG_INTERNAL_GPU_FN))
+    return;
+#endif
+
   if (call->isPrimitive(PRIM_GET_USER_FILE) || 
       call->isPrimitive(PRIM_GET_USER_LINE)) {
     
@@ -222,10 +227,15 @@ static void insertNilChecks() {
           Expr* stmt = call->getStmtExpr();
 
           SET_LINENO(stmt);
+#ifdef TARGET_HSA
           // Disable nil check in GPU.
-          if (!call->getFunction()->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+          if (!(call->getFunction()->hasFlag(FLAG_OFFLOAD_TO_GPU) ||
+                call->getFunction()->hasFlag(FLAG_INTERNAL_GPU_FN))) {
             stmt->insertBefore(new CallExpr(PRIM_CHECK_NIL, arg0->copy()));
           }
+#else
+          stmt->insertBefore(new CallExpr(PRIM_CHECK_NIL, arg0->copy()));
+#endif
         }
       }
     }

@@ -652,7 +652,7 @@ initPrimitive() {
 
   prim_def(PRIM_GPU_REDUCE, "chpl_gpu_reduce", returnInfoFirst, true, true);
   prim_def(PRIM_IS_GPU_SUBLOCALE, "chpl_is_gpu_sublocale", returnInfoBool, true, true);
-  prim_def(PRIM_GET_GLOBAL_ID, "chpl_get_global_id", returnInfoInt64, true, true);
+  prim_def(PRIM_GET_GLOBAL_ID, "chpl_get_global_id", returnInfoInt64, true,false);
 }
 
 Map<const char*, VarSymbol*> memDescsMap;
