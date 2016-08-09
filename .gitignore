@@ -13,6 +13,7 @@ TAGS
 tags
 *.DS_Store
 cscope.*
+*.brig
 
 # Top level ignores.
 /BUILD_VERSION

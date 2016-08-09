@@ -255,7 +255,8 @@ symbolFlag( FLAG_WRAPPER , npr, "wrapper" , "wrapper function" )
 symbolFlag( FLAG_WRAP_WRITTEN_FORMAL , npr, "wrap written formal" , "formal argument for wrapper for out/inout intent" )
 
 #ifdef TARGET_HSA
-symbolFlag( FLAG_OFFLOAD_TO_GPU , npr, "gpu on" , "Flag to mark GPU kernel" )
+symbolFlag( FLAG_OFFLOAD_TO_GPU , npr, "gpu kernel" , "Flag to mark GPU kernel" )
+symbolFlag( FLAG_INTERNAL_GPU_FN , npr, "gpu-internal function" , "Flag to mark functions inside a gpu kernel" )
 symbolFlag( FLAG_FIT_FOR_GPU, ypr, "fit for gpu" , "any order indpendent for loop inside this function will be cnverted to gpu" )
 #endif
 

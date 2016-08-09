@@ -36,6 +36,7 @@ void check_buildDefaultFunctions();
 void check_createTaskFunctions();
 #ifdef TARGET_HSA
 void check_createGPUForLoops();
+void check_createGPUInternalFunctions();
 #endif
 void check_resolve();
 void check_resolveIntents();

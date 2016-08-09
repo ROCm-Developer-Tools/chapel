@@ -1863,6 +1863,7 @@ void FnSymbol::codegenHeaderC(void) {
 #ifdef TARGET_HSA
   if (!hasFlag(FLAG_EXPORT) &&
       !hasFlag(FLAG_EXTERN) &&
+      !hasFlag(FLAG_INTERNAL_GPU_FN) &&
       !hasFlag(FLAG_OFFLOAD_TO_GPU)) {
     fprintf(outfile, "static ");
   }
@@ -1910,6 +1911,7 @@ void FnSymbol::codegenPrototype() {
 
 #ifdef TARGET_HSA
   if (hasFlag(FLAG_OFFLOAD_TO_GPU)) return;
+  if (hasFlag(FLAG_INTERNAL_GPU_FN)) return;
 #endif
 
   if( id == breakOnCodegenID ||
@@ -2594,7 +2596,8 @@ void ModuleSymbol::codegenDef() {
             fn->hasFlag(FLAG_FUNCTION_PROTOTYPE))
           continue;
 #ifdef TARGET_HSA
-        if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) gpu_fns.push_back(fn);
+        if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU) ||
+            fn->hasFlag(FLAG_INTERNAL_GPU_FN)) gpu_fns.push_back(fn);
         else  fns.push_back(fn);
 #else
         fns.push_back(fn);

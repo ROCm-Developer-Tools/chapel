@@ -59,6 +59,7 @@ struct PassInfo {
 #define LOG_lowerIterators                     'L'
 #ifdef TARGET_HSA
 #define LOG_createGPUForLoops                  NUL
+#define LOG_createGPUInternalFunctions         NUL
 #endif
 #define LOG_parallel                           'P'
 #define LOG_prune                              'X'
@@ -149,6 +150,8 @@ static PassInfo sPassList[] = {
   RUN(addInitCalls),            // Add module init calls and guards.
 #ifdef TARGET_HSA
   RUN(createGPUForLoops),       // create fns to offload o.i. for-loops to gpu
+  RUN(createGPUInternalFunctions), // create defs for fns called by top-level
+                                   // GPU functions
 #endif
 
   // AST to C or LLVM

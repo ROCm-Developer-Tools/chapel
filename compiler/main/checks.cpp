@@ -137,6 +137,11 @@ void check_createGPUForLoops()
 {
 
 }
+
+void check_createGPUInternalFunctions()
+{
+
+}
 #endif
 
 void check_resolve()

@@ -497,6 +497,9 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
   hsa_signal_t completion_signal;
   hsail_kernarg_t *args;
   uint64_t index;
+  chpl_msg(2, 
+           "enqueuing a kernel with index %d, wkgrp size %u, wkitem count %u\n",
+           kernel_idx, wkgrp_size_x, wkitem_count_x);
   hsa_signal_create(1, 0, NULL, &completion_signal);
   hsa_memory_allocate(hsa_device.kernarg_region,
                       symbol_info->kernarg_segment_size,
@@ -517,11 +520,9 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
     HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
   dispatch_packet->header |= 1 << HSA_PACKET_HEADER_BARRIER;
   dispatch_packet->grid_size_x = wkitem_count_x;
-  //dispatch_packet->grid_size_x = 256;
   dispatch_packet->grid_size_y = 1;
   dispatch_packet->grid_size_z = 1;
   dispatch_packet->workgroup_size_x = wkgrp_size_x;
-  //dispatch_packet->workgroup_size_x = 64;
   dispatch_packet->workgroup_size_y = 1;
   dispatch_packet->workgroup_size_z = 1;
   dispatch_packet->private_segment_size = symbol_info->private_segment_size;

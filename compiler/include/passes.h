@@ -44,6 +44,7 @@ void copyPropagation();
 void createTaskFunctions();
 #ifdef TARGET_HSA
 void createGPUForLoops();
+void createGPUInternalFunctions();
 #endif
 void cullOverReferences();
 void deadCodeElimination();
