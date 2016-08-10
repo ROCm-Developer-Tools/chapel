@@ -1800,16 +1800,41 @@ GenRet FnSymbol::codegenFunctionType(bool forHeader) {
           continue; // do not print locale argument, end count, dummy class
         if (count > 0)
           str += ", ";
+#ifdef TARGET_HSA
         if (hasFlag(FLAG_OFFLOAD_TO_GPU)) {
           str += "global ";
-          // TODO: ideally, we'd just like to output codegenType().c but
-          // there seems to be an OpenCL bug not liking the typedef
-          str += "chpl_";
+          // OpenCL does not seem to like typedefs of pointers as kernel args
+          // However for a Chapel class named C, the following C code is
+          // generated:
+          //
+          //   typedef struct <classStructName_a> {
+          //     ...class members here...
+          //   } <classStructName_b>;
+          //  typedef struct <classStructName_a>* C;
+          //
+          // which in the current implementation amounts to:
+          //
+          //   typedef struct chpl_C_s {
+          //     ...class members here...
+          //   } chpl_C_object;
+          //  typedef struct chpl_C_s* C;
+          //
+          //  codegenType() returns C which is not acceptable to OpenCl. So
+          //  we instead use pointers of types 
+          //  ie. <classStructName_b>* (ie. chpl_C_object*)
+          AggregateType* ct = toAggregateType(formal->type);
+          if (ct) {
+            std::string typestr = std::string(ct->classStructName(true));
+            str += typestr + "*";
+          } else {
+            str += formal->codegenType().c;
+          }
+        } else {
           str += formal->codegenType().c;
-          str += "_object*";
         }
-        else
-          str += formal->codegenType().c;
+#else
+        str += formal->codegenType().c;
+#endif
         if( forHeader ) {
           str += " ";
           str += formal->cname;
