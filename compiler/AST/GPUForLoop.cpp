@@ -372,13 +372,6 @@ GPUForLoop *GPUForLoop::buildFromIfPossible(CForLoop *cForLoop)
   fn->insertFormalAtTail(wkitemCountArg);
   wkitemCountArg->addFlag(FLAG_NO_CODEGEN);
 
-  // Marking type symbols in this loop to dump out in GPU headers
-  std::vector<Symbol*> symbols;
-  collectSymbols(retval, symbols);
-  for_vector(Symbol, sym, symbols) {
-      sym->type->symbol->addFlag(FLAG_OFFLOAD_TO_GPU);
-  } 
-
   // Successfully created gpu kernel. Hence update the kernel table.
   gpuKernelMap[fn] = uid++;
   gpuKernelVec.push_back(fn);
