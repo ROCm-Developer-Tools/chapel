@@ -150,6 +150,7 @@ extern int      gStmtCount;
 
 #ifdef TARGET_HSA
 extern fileinfo gGPUsrcfile;
+extern bool     gGPUcodegen;
 #endif
 
 #ifdef HAVE_LLVM

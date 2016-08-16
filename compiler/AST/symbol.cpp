@@ -2635,11 +2635,13 @@ void ModuleSymbol::codegenDef() {
   std::sort(gpu_fns.begin(), gpu_fns.end(), compareLineno);
   FILE* save_cfile = gGenInfo->cfile;
   gGenInfo->cfile = gGPUsrcfile.fptr;
+  gGPUcodegen = true;
   for_vector(FnSymbol, g_fn, gpu_fns) {
     g_fn->codegenDef();
   }
   flushStatements();
   gGenInfo->cfile = save_cfile;
+  gGPUcodegen = false;
 #endif
 
   std::sort(fns.begin(), fns.end(), compareLineno);

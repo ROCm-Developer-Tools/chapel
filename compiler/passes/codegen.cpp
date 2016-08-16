@@ -52,6 +52,7 @@ int      gStmtCount =  0;
 
 #ifdef TARGET_HSA
   fileinfo gGPUsrcfile = { NULL, NULL, NULL };
+  bool gGPUcodegen = false;
 #endif
 
 
@@ -794,9 +795,10 @@ static void codegen_gpu_header() {
 
   genComment("Class Prototypes");
   forv_Vec(TypeSymbol, typeSymbol, types) {
-    if (typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU) && 
-        !typeSymbol->hasFlag(FLAG_DATA_CLASS)) 
-        typeSymbol->codegenPrototype();
+    if (typeSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU) &&
+        !typeSymbol->hasFlag(FLAG_REF) &&
+        !typeSymbol->hasFlag(FLAG_DATA_CLASS))
+      typeSymbol->codegenPrototype();
   }
 
 

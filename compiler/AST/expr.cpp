@@ -1728,6 +1728,14 @@ static GenRet createTempVar(Type* t)
   GenRet ret;
   if( info->cfile ) {
     // Just use the C-name.
+#ifdef TARGET_HSA
+  // Any temporary types that might be generated during GPU code generation
+  // needs to be marked as such here since they cannot be identified by
+  // scanning the GPU-specific function definitions later.
+  if (gGPUcodegen) {
+    t->symbol->addFlag(FLAG_OFFLOAD_TO_GPU);
+  }
+#endif
     ret = createTempVar(t->symbol->cname);
   } else {
 #ifdef HAVE_LLVM
