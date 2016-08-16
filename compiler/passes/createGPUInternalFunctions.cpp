@@ -26,27 +26,27 @@
 #include "stringutil.h"
 
 static void createInternalFunctions(FnSymbol * fn,
-                                    std::map<FnSymbol*, FnSymbol*>& newFnMap)
+                                    std::set<FnSymbol*>& newFnSet)
 {
-  std::vector<BaseAST*> asts;
-  collect_top_asts(fn, asts);
-  for_vector(BaseAST, ast, asts) {
-    if (CallExpr* call = toCallExpr(ast)) {
-      if (call->isResolved()) {
-        if (FnSymbol* f = call->findFnSymbol()) {
-          if (newFnMap.find(f) == newFnMap.end()) {
-            createInternalFunctions(f, newFnMap);
-            ModuleSymbol* mod = f->getModule();
-            SET_LINENO(mod->block);
-            FnSymbol *newFn = f->copy();
-            newFn->addFlag(FLAG_INTERNAL_GPU_FN);
-            mod->block->insertAtTail(new DefExpr(newFn));
-            newFnMap[f] = newFn;
-          }
-          SET_LINENO(call);
-          call->baseExpr->replace(new SymExpr(newFnMap[f]));
-        }
+  std::vector<CallExpr*> calls;
+  collectFnCalls(fn, calls);
+  for_vector(CallExpr, call, calls) {
+    FnSymbol* f = call->findFnSymbol();
+    if (newFnSet.find(f) != newFnSet.end()) {
+      SET_LINENO(call);
+      call->baseExpr->replace(new SymExpr(*newFnSet.find(f)));
+    } else {
+      FnSymbol *newFn;
+      {
+        SET_LINENO(f);
+        newFn = f->copy();
+        newFn->addFlag(FLAG_INTERNAL_GPU_FN);
+        newFnSet.insert(newFn);
+        f->defPoint->insertBefore(new DefExpr(newFn));
       }
+      SET_LINENO(call);
+      call->baseExpr->replace(new SymExpr(newFn));
+      createInternalFunctions(newFn, newFnSet);
     }
   }
 }
@@ -62,8 +62,8 @@ void createGPUInternalFunctions(void)
     if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU))
       gpuFunctions.push_back(fn);
   }
-  std::map<FnSymbol*, FnSymbol*> newFunctionMap;
+  std::set<FnSymbol*> newFunctionSet;
   for_vector(FnSymbol, fn, gpuFunctions) {
-    createInternalFunctions(fn, newFunctionMap);
+    createInternalFunctions(fn, newFunctionSet);
   }
 }

@@ -51,6 +51,24 @@ static FnSymbol *buildGPUOffloadFunction(CForLoop *cForLoop, SymbolMap *smap,
   return fn;
 }
 
+// Check if this function contains recursive calls
+static bool hasRecursion(FnSymbol * fn, std::set<FnSymbol*>& fnSet)
+{
+  fnSet.insert(fn);
+  std::vector<CallExpr*> calls;
+  collectFnCalls(fn, calls);
+  for_vector(CallExpr, call, calls) {
+    FnSymbol* f = call->findFnSymbol();
+    if (fnSet.find(f) != fnSet.end()) {
+      return true;
+    } else {
+      if (hasRecursion(f, fnSet))
+        return true;
+    }
+  }
+  return false;
+}
+
 // Check if this CForLoop can be converted to a GPU kernel
 // Currently we only convert cases where there is a single index variable and
 // one each of init, incr, and test exprs working on the same variable.
@@ -343,6 +361,11 @@ GPUForLoop *GPUForLoop::buildFromIfPossible(CForLoop *cForLoop)
   retval->insertAtTail(call);
 
   // Enhancements:
+  //OpenCL does not support recursive functions
+  std::set<FnSymbol*> fnSet;
+  if (hasRecursion(fn, fnSet))
+    return NULL;
+
   CallExprVector initCalls;
   if (!checkAndCollectLoopIdxExprs(retval, initCalls))
     return NULL;
