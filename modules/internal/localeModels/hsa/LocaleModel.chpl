@@ -83,7 +83,6 @@ module LocaleModel {
 
     proc chpl_id() return (parent:LocaleModel)._node_id; // top-level node id
     proc chpl_localeid() {
-      warning("in CPU locale ID");
       return chpl_buildLocaleID((parent:LocaleModel)._node_id:chpl_nodeID_t,
                                 sid);
     }
@@ -93,7 +92,6 @@ module LocaleModel {
     }
 
     proc CPULocale(_sid, _parent) {
-      warning("CREATING CPU LOCALE!");
       sid = _sid;
       parent = _parent;
       name = parent.chpl_name() + "-CPU" + sid;
@@ -121,7 +119,6 @@ module LocaleModel {
 
     proc chpl_id() return (parent:LocaleModel)._node_id; // top-level node id
     proc chpl_localeid() {
-      warning("in GPU locale ID");
       return chpl_buildLocaleID((parent:LocaleModel)._node_id:chpl_nodeID_t,
                                 sid);
     }
@@ -131,7 +128,6 @@ module LocaleModel {
     }
 
     proc GPULocale(_sid, _parent) {
-      warning("CREATING GPU LOCALE!");
       sid = _sid;
       parent = _parent;
       name = parent.chpl_name() + "-GPU" + sid;
@@ -188,7 +184,6 @@ module LocaleModel {
 
     proc chpl_id() return _node_id; // top-level node number
     proc chpl_localeid() {
-      warning("in LocaleModel locale ID");
       return chpl_buildLocaleID(_node_id:chpl_nodeID_t, c_sublocid_any);
     }
     proc chpl_name() return local_name;
@@ -238,7 +233,6 @@ module LocaleModel {
     proc init() {
       _node_id = chpl_nodeID: int;
 
-      warning("HSA LocaleModel init");
 
       extern proc chpl_hsa_initialize(): c_int;
       var initHsa =  chpl_hsa_initialize();
@@ -268,11 +262,9 @@ module LocaleModel {
 
       chpl_task_setSubloc(0:chpl_sublocID_t);
       CPU = new CPULocale(0:chpl_sublocID_t, this);
-      warning( "created " + CPU.name + " with sublocale id "+ CPU.sid);
       chpl_task_setSubloc(1:chpl_sublocID_t);
 
       GPU = new GPULocale(1:chpl_sublocID_t, this);
-      warning( "created " + GPU.name + " with sublocale id "+ GPU.sid);
       chpl_task_setSubloc(origSubloc);
       //      GPUSpace = {0..0};
       //      for i in GPUSpace {
