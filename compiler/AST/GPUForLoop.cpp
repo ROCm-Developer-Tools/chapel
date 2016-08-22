@@ -70,38 +70,74 @@ static bool hasRecursion(FnSymbol * fn, std::set<FnSymbol*>& fnSet)
 }
 
 // Check if this CForLoop can be converted to a GPU kernel
-// Currently we only convert cases where there is a single index variable and
-// one each of init, incr, and test exprs working on the same variable.
+// Currently we only convert cases where the following constraints hold true:
+// 1. The test expression involves testing a single index variable only
+// 2. The number of init and incr expressions are equal and there is one each
+// of init and incr and exprs working on each index variable.
+// 3. The index variable tested in the test call is present in one of
+// the init expressions.
 // Also collect the expressions in a vector for future processing
 // TODO: Handle more than 1 idx variable
 
 static bool checkAndCollectLoopIdxExprs(const GPUForLoop *gpuForLoop,
-                                        CallExprVector& initCalls)
+                                        CallExprVector& initCalls,
+                                        CallExprVector& incrCalls,
+                                        CallExprVector& testCalls)
 {
   int numIndices = 0, numIncrements = 0, numTests = 0;
-  Symbol *indexSym = NULL;
   for_alist(expr, gpuForLoop->initBlockGet()->body) {
-    CallExpr *call = toCallExpr(expr);
-    if (call && call->isPrimitive(PRIM_ASSIGN)) {
-      indexSym = (toSymExpr(call->get(1)))->var;
-      initCalls.push_back(call);
+    CallExpr *initCall = toCallExpr(expr);
+    if (initCall &&
+        (initCall->isPrimitive(PRIM_ASSIGN) ||
+        initCall->isPrimitive(PRIM_MOVE))) {
+      initCalls.push_back(initCall);
       ++numIndices;
     }
   }
-  if (numIndices != 1) return false;
 
   for_alist(expr, gpuForLoop->incrBlockGet()->body) {
-    CallExpr *call = toCallExpr(expr);
-    if (call && (toSymExpr(call->get(1))->var == indexSym)) {
-      ++numIncrements;
+    CallExpr *incrCall = toCallExpr(expr);
+    if (incrCall) {
+      Symbol *incrSym = toSymExpr(incrCall->get(1))->var;
+      for_vector(CallExpr, initCall, initCalls) {
+        Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+        if (incrSym == initSym) {
+          incrCalls.push_back(incrCall);
+          ++numIncrements;
+        }
+      }
     }
   }
-  if (numIncrements != 1) return false;
+  if ((numIndices == 0) || (numIncrements != numIndices)) return false;
 
-  for_alist(expr, gpuForLoop->testBlockGet()->body) {
-    CallExpr *call = toCallExpr(expr);
-    if (call && (toSymExpr(call->get(1))->var == indexSym)) {
-      ++numTests;
+  std::vector<BaseAST*> asts;
+  std::set<CallExpr*> callExprSet;
+  collect_top_asts(gpuForLoop->testBlockGet(), asts);
+  for_vector(BaseAST, ast, asts) {
+    CallExpr *testCall = toCallExpr(ast);
+    if (testCall && (callExprSet.count(testCall) == 0)) {
+      callExprSet.insert(testCall);
+      if (testCall->isPrimitive(PRIM_MOVE) ||
+          testCall->isPrimitive(PRIM_ASSIGN)) {
+        testCall = toCallExpr(testCall->get(2));
+        if (!(testCall && (callExprSet.count(testCall) == 0)))
+          continue;
+        callExprSet.insert(testCall);
+      }
+      callExprSet.insert(testCall);
+      Symbol *testSym = toSymExpr(testCall->get(1))->var;
+      bool foundInit = false;
+      for_vector(CallExpr, initCall, initCalls) {
+        Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+        if (testSym == initSym) {
+          foundInit = true;
+          testCalls.push_back(testCall);
+          ++numTests;
+        }
+      }
+      // There is a test call with no corresponding init call. Not handling
+      // this now.
+      if(!foundInit) return false;
     }
   }
   if (numTests != 1) return false;
@@ -125,11 +161,11 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
   bool success;
   SymbolMap smap;
   BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
+  VarSymbol *wkitemId = newTemp("_wkitem_id", dtUInt[INT_SIZE_64]);
   for_const_vector(CallExpr, initCall, initCalls) {
     success = false;
     Symbol *oldSym = (toSymExpr(initCall->get(1)))->var;
     SET_LINENO(oldSym);
-    VarSymbol *wkitemId = newTemp("_wkitem_id", oldSym->type);
     VarSymbol *newIndex = newTemp("_new_index", oldSym->type);
     for_alist(expr, incrBlock->body) {
       CallExpr *incrCall = toCallExpr(expr);
@@ -148,7 +184,7 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
             }
           case PRIM_SUBTRACT_ASSIGN:
             {
-              incrCall->replace(new CallExpr( PRIM_MOVE, newIndex, new CallExpr(
+              incrCall->replace(new CallExpr(PRIM_MOVE, newIndex, new CallExpr(
                       PRIM_SUBTRACT, initRhs, scaleExpr)));
               success = true;
               break;
@@ -160,13 +196,13 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
     }
     if (!success) break;
     incrBlock->insertAtHead(new DefExpr(newIndex));
-    incrBlock->insertAtHead(new CallExpr(PRIM_MOVE, wkitemId,
-          new CallExpr(PRIM_GET_GLOBAL_ID)));
-    incrBlock->insertAtHead(new DefExpr(wkitemId));
     smap.put(oldSym, newIndex);
   }
 
   if (success) {
+    incrBlock->insertAtHead(new CallExpr(PRIM_MOVE, wkitemId,
+          new CallExpr(PRIM_GET_GLOBAL_ID)));
+    incrBlock->insertAtHead(new DefExpr(wkitemId));
     std::vector<SymExpr*> symExprs;
     collectSymExprs(fn->body, symExprs);
     form_Map(SymbolMapElem, e, smap) {
@@ -199,25 +235,27 @@ static void setWkgrpSize(CallExpr *call)
 // Currently we only consider cases where the test expressions are
 // primitives of the form <, <=, >,  >=, and !=.
 static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
-                                     const CallExprVector& initCalls)
+                                     const CallExprVector& initCalls,
+                                     const CallExprVector& incrCalls,
+                                     const CallExprVector& testCalls)
 {
   bool success;
-  BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
-  BlockStmt *testBlock = gpuForLoop->testBlockGet();
-  for_const_vector(CallExpr, initCall, initCalls) {
-    Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
-    SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->var);
+  //BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
+  for_const_vector(CallExpr, testCall, testCalls) {
     success = false;
-    for_alist(expr, incrBlock->body) {
-      CallExpr *incrCall = toCallExpr(expr);
-      if (incrCall && (toSymExpr(incrCall->get(1))->var == initSym)) {
+    Symbol *testSym = toSymExpr(testCall->get(1))->var;
+    SymExpr *testRhs = new SymExpr(toSymExpr(testCall->get(2))->var);
+    PrimitiveOp* primitiveTestOp = testCall->primitive;
+    if (!primitiveTestOp) continue;
+    for_const_vector(CallExpr, incrCall, incrCalls) {
+      Symbol *incrSym = toSymExpr(incrCall->get(1))->var;
+      if (testSym == incrSym) {
         SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->var);
-        for_alist(expr, testBlock->body) {
-          CallExpr *testCall = toCallExpr(expr);
-          if (testCall && (toSymExpr(testCall->get(1))->var == initSym)) {
-            SymExpr *testRhs = new SymExpr(toSymExpr(testCall->get(2))->var);
+        for_const_vector(CallExpr, initCall, initCalls) {
+          Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+          if (testSym == initSym) {
+            SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->var);
             CallExpr *diffExpr;
-            PrimitiveOp* primitiveTestOp = testCall->primitive;
             switch (primitiveTestOp->tag) {
               case PRIM_LESSOREQUAL:
                 {
@@ -266,13 +304,14 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
             }
             if (!success) break;
             VarSymbol *wkitemCount = newTemp("_wkitem_count",
-                                             dtInt[INT_SIZE_64]);
+                dtInt[INT_SIZE_64]);
             CallExpr *qtExpr = new CallExpr(PRIM_DIV, diffExpr, incrRhs);
             CallExpr *remExpr = new CallExpr(
                 PRIM_NOTEQUAL, buildIntLiteral("0"), new CallExpr(
                   PRIM_MOD, diffExpr->copy(), incrRhs->copy()));
             CallExpr *sumExpr = new CallExpr(PRIM_ADD, qtExpr, remExpr);
-            CallExpr *setWkitemCount = new CallExpr(PRIM_MOVE, wkitemCount, sumExpr);
+            CallExpr *setWkitemCount = new CallExpr(
+                PRIM_MOVE, wkitemCount, sumExpr);
             call->insertBefore(new DefExpr(wkitemCount));
             call->insertBefore(setWkitemCount);
             call->insertAtTail(wkitemCount);
@@ -367,14 +406,16 @@ GPUForLoop *GPUForLoop::buildFromIfPossible(CForLoop *cForLoop)
     return NULL;
 
   CallExprVector initCalls;
-  if (!checkAndCollectLoopIdxExprs(retval, initCalls))
+  CallExprVector incrCalls;
+  CallExprVector testCalls;
+  if (!checkAndCollectLoopIdxExprs(retval, initCalls, incrCalls, testCalls))
     return NULL;
 
   // Add gpu execution params as actual arguments
   // 1. wkgrp size
   setWkgrpSize(call);
   // 2. tripcount / wkitemCount
-  if (!setWkitemCountIfPossible(call, retval, initCalls))
+  if (!setWkitemCountIfPossible(call, retval, initCalls, incrCalls, testCalls))
     return NULL;
 
   // Try to replace index variable with a new variable obtained from the GPU

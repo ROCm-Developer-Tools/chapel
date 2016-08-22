@@ -28,23 +28,9 @@
 #include "GPUForLoop.h"
 #include <iostream>
 
-// Return true if the symbol is defined in an outer function to fn
-// third argument not used at call site
-static bool isOuterVar(Symbol* sym, FnSymbol* fn, Symbol* parent = NULL)
-{
-  if (!parent)
-    parent = fn->defPoint->parentSymbol;
-  if (!isFnSymbol(parent))
-    return false;
-  else if (sym->defPoint->parentSymbol == parent)
-    return true;
-  else
-    return isOuterVar(sym, fn, parent->defPoint->parentSymbol);
-}
-
 // Return true if the for loop can be considered for gpu offload ie. if the
 // enclosing function or any function in the call-chain for the enclosing fn
-// has the flag FLAG_FIT_GOR_GPU set. A way to allow the programmer to 
+// has the flag FLAG_FIT_GOR_GPU set. A way to allow the programmer to
 // restrict what loops can be considered for GPU offload. TODO: this shuold
 // go away once the code is sufficiently stable.
 static bool isFitForGPUOffload(CForLoop *cForLoop)
@@ -66,6 +52,133 @@ static bool isFitForGPUOffload(CForLoop *cForLoop)
     fn = caller;
   }
   return false;
+}
+
+// We can eliminate a variable temp if it is used as follows:
+// temp = x;
+// temp += y;
+// x = temp;
+//
+// and convert this to:
+// x += y;
+//
+// So we check for:
+// 0. The variable is not a ref to some other variable.
+// 1. The variable has 2 def expressions - one is assign/move
+// and the other is OpEqual. The assign/move source is a symExpr.
+// 2. The variable has 2 use expressions - one is assign/move
+// and the other is OpEqual. The assign/move target is a symExpr.
+// 3. The source and target of the def and use assign/move expressions resp.
+// are symExprs with the same symbol.
+static bool canEliminate(Symbol* var,
+                         Map<Symbol*,Vec<SymExpr*>*>& defMap,
+                         Map<Symbol*,Vec<SymExpr*>*>& useMap)
+{
+  if (var->type->symbol->hasFlag(FLAG_REF)) {
+    return false;
+  }
+  Vec<SymExpr*> *uses = useMap.get(var);
+  Vec<SymExpr*> *defs = defMap.get(var);
+  if (!defs || defs->n != 2) return false;
+  if (!uses || uses->n != 2) return false;
+  int numAssign = 0, numOpEqual = 0;
+  SymExpr *defRhs = NULL, *useLhs = NULL;
+  for_defs(se, defMap, var) {
+    CallExpr *call = toCallExpr(se->parentExpr);
+    if (call && (call->isPrimitive(PRIM_MOVE) ||
+                 call->isPrimitive(PRIM_ASSIGN))) {
+      defRhs = toSymExpr(call->get(2));
+      if (defRhs)
+        numAssign += 1;
+    } else if (call && isOpEqualPrim(call)) {
+      numOpEqual += 1;
+    } else {
+      return false;
+    }
+  }
+  if ((numAssign != 1) || (numOpEqual != 1)) return false;
+  numAssign = 0, numOpEqual = 0;
+  for_uses(se, useMap, var) {
+    CallExpr *call = toCallExpr(se->parentExpr);
+    if (call && (call->isPrimitive(PRIM_MOVE) ||
+                 call->isPrimitive(PRIM_ASSIGN))) {
+      useLhs = toSymExpr(call->get(1));
+      if (useLhs)
+        numAssign += 1;
+    } else if (call && isOpEqualPrim(call)) {
+      numOpEqual += 1;
+    } else {
+      return false;
+    }
+  }
+  if ((numAssign != 1) || (numOpEqual != 1)) return false;
+
+  return (defRhs->var == useLhs->var);
+}
+
+// In some cases, the increment block contains code of the following form:
+// temp = x;
+// temp += y;
+// x = temp;
+// where x is the actual index variable.
+//
+// While estimating trip-count and building index variable scaling
+// expressions, we look for code in the form of x += y;
+// So we convert the above code to:
+// x += y;
+//
+static void removeTemporaryVariables(BlockStmt *block)
+{
+  Vec<Symbol*> symSet;
+  Vec<SymExpr*> symExprs;
+  collectSymbolSetSymExprVec(block, symSet, symExprs);
+
+  Map<Symbol*,Vec<SymExpr*>*> defMap;
+  Map<Symbol*,Vec<SymExpr*>*> useMap;
+  buildDefUseMaps(symSet, symExprs, defMap, useMap);
+
+  forv_Vec(Symbol, sym, symSet) {
+    if (canEliminate(sym, defMap, useMap)) {
+      SymExpr *useLhs = NULL;
+      for_uses(se, useMap, sym) {
+        CallExpr *call = toCallExpr(se->parentExpr);
+        if (call &&
+            (call->isPrimitive(PRIM_MOVE) ||
+             call->isPrimitive(PRIM_ASSIGN))) {
+          useLhs = toSymExpr(call->get(1)->remove());
+          call->remove();
+        }
+      }
+      for_defs(se, defMap, sym) {
+        CallExpr *call = toCallExpr(se->parentExpr);
+        if (call &&
+            (call->isPrimitive(PRIM_MOVE) ||
+             call->isPrimitive(PRIM_ASSIGN))) {
+          call->remove();
+        }
+        if (call && isOpEqualPrim(call)) {
+          SymExpr* lhs = toSymExpr(call->get(1));
+          lhs->var = useLhs->var;
+        }
+      }
+      sym->defPoint->remove();
+    }
+  }
+  freeDefUseMaps(defMap, useMap);
+}
+
+// Return true if the symbol is defined in an outer function to fn
+// third argument not used at call site
+static bool isOuterVar(Symbol* sym, FnSymbol* fn, Symbol* parent = NULL)
+{
+  if (!parent)
+    parent = fn->defPoint->parentSymbol;
+  if (!isFnSymbol(parent))
+    return false;
+  else if (sym->defPoint->parentSymbol == parent)
+    return true;
+  else
+    return isOuterVar(sym, fn, parent->defPoint->parentSymbol);
 }
 
 // Find variables that are used inside but defined outside the function
@@ -296,8 +409,11 @@ void createGPUForLoops(void)
 
         SET_LINENO(block);
 
+        //Remove temporary variables that might be used in the increment block
+        removeTemporaryVariables(cForLoop->incrBlockGet());
+
         GPUForLoop *gpuForLoop = GPUForLoop::buildFromIfPossible(cForLoop);
-        
+
         if (fReportGPUForLoops) {
           ModuleSymbol *mod = toModuleSymbol(cForLoop->getModule());
           INT_ASSERT(mod);
