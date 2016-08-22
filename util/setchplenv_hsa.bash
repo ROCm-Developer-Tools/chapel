@@ -56,13 +56,17 @@ echo "                     and $CHPL_HOME/util"
 #export LD_LIBRARY_PATH="$CHPL_HOME"/third-party/hsa/HSA-Runtime-AMD/lib:$LD_LIBRARY_PATH
 #echo " to $LD_LIBRARY_PATH"
 
-echo -n "Setting CHPL_COMM "
+echo -n "Setting CHPL_COMM"
 export CHPL_COMM=none
 echo " to none"
 
-echo -n "Setting CHPL_TASKS "
+echo -n "Setting CHPL_TASKS"
 export CHPL_TASKS=qthreads
 echo " to qthreads"
+
+echo -n "Setting CHPL_ATOMICS"
+export CHPL_ATOMICS=intrinsics
+echo " to intrinsics"
 
 #echo -n "Setting CONDUIT "
 #export CONDUIT=portals4
