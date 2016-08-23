@@ -30,14 +30,14 @@
 
 // Return true if the for loop can be considered for gpu offload ie. if the
 // enclosing function or any function in the call-chain for the enclosing fn
-// has the flag FLAG_FIT_GOR_GPU set. A way to allow the programmer to
+// has the flag FLAG_REQUEST_GPU_OFFLOAD set. A way to allow the programmer to
 // restrict what loops can be considered for GPU offload. TODO: this shuold
 // go away once the code is sufficiently stable.
 static bool isFitForGPUOffload(CForLoop *cForLoop)
 {
   FnSymbol *fn = toFnSymbol(cForLoop->parentSymbol);
   while (fn) {
-    if (fn->hasFlag(FLAG_FIT_FOR_GPU)) return true;
+    if (fn->hasFlag(FLAG_REQUEST_GPU_OFFLOAD)) return true;
     FnSymbol* caller = NULL;
     forv_Vec(CallExpr, call, gCallExprs) {
       if (call->inTree()) {
