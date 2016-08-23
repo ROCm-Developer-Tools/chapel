@@ -128,6 +128,10 @@ int chpl_hsa_initialize(void)
     uint32_t gpu_max_queue_size;
     char reduce_kernel_filename[1024];
     char gen_kernel_filename[1024];
+    int arglen = strlen(chpl_executionCommand)+1;
+    char* argCopy = chpl_mem_allocMany(arglen, sizeof(char),
+                                     CHPL_RT_MD_CFG_ARG_COPY_DATA, 0, 0);
+    char *binName;
     int cx;
     hsa_status_t st = hsa_init();
     OUTPUT_HSA_STATUS(st, HSA initialization);
@@ -197,7 +201,11 @@ int chpl_hsa_initialize(void)
         hsa_shut_down();
         return ERROR;
     }
-    cx = snprintf(gen_kernel_filename, 1024, "./chplGPU.o");
+    strcpy(argCopy, chpl_executionCommand);
+    binName = strtok(argCopy, " ");
+    cx = snprintf(gen_kernel_filename, 1024, "%s_gpu.o", binName);
+    chpl_mem_free(argCopy, 0, 0);
+
     if (cx < 0 || cx  >= 256) {
       OUTPUT_HSA_STATUS(ERROR, Creating generated kernel filename);
         hsa_queue_destroy(hsa_device.command_queue);

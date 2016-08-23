@@ -1499,7 +1499,8 @@ void codegen(void) {
 
 #ifdef TARGET_HSA
     openCFile(&gpuhdrfile,  "chpl__gpu_header", "h");
-    openCFile(&gGPUsrcfile, "chplGPU", "cl");
+    std::string gpuSrcFilename = std::string(executableFilename) + "_gpu";
+    openCFile(&gGPUsrcfile, gpuSrcFilename.c_str(), "cl");
     forv_Vec(FnSymbol, fn, gFnSymbols) {
       if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
         fprintf(gGPUsrcfile.fptr, "#include \"chpl__gpu_header.h\"\n");
