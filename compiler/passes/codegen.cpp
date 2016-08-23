@@ -825,6 +825,13 @@ static void codegen_gpu_header() {
     }
   }
 
+  genComment("Function Prototypes");
+  //Only the internal GPU function prototypes are required.
+  forv_Vec(FnSymbol, fn, gFnSymbols) {
+    if (fn->hasFlag(FLAG_INTERNAL_GPU_FN))
+      fn->codegenPrototype();
+  }
+
 }
 #endif 
 
@@ -1109,7 +1116,13 @@ static void codegen_header() {
 
   genComment("Function Prototypes");
   for_vector(FnSymbol, fnSymbol, functions) {
+#ifdef TARGET_HSA
+    if (!(fnSymbol->hasFlag(FLAG_OFFLOAD_TO_GPU) ||
+          fnSymbol->hasFlag(FLAG_INTERNAL_GPU_FN)))
+      fnSymbol->codegenPrototype();
+#else
     fnSymbol->codegenPrototype();
+#endif
   }
     
   genComment("Function Pointer Table");

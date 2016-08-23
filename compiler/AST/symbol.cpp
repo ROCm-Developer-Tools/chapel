@@ -1934,11 +1934,6 @@ void FnSymbol::codegenPrototype() {
   if (hasFlag(FLAG_NO_PROTOTYPE)) return;
   if (hasFlag(FLAG_NO_CODEGEN))   return;
 
-#ifdef TARGET_HSA
-  if (hasFlag(FLAG_OFFLOAD_TO_GPU)) return;
-  if (hasFlag(FLAG_INTERNAL_GPU_FN)) return;
-#endif
-
   if( id == breakOnCodegenID ||
       (breakOnCodegenCname[0] &&
        0 == strcmp(cname, breakOnCodegenCname)) ) {
