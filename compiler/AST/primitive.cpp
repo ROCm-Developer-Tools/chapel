@@ -650,9 +650,11 @@ initPrimitive() {
 
   prim_def(PRIM_GET_COMPILER_VAR, "get compiler variable", returnInfoStringC);
 
+#ifdef TARGET_HSA
   prim_def(PRIM_GPU_REDUCE, "chpl_gpu_reduce", returnInfoFirst, true, true);
   prim_def(PRIM_IS_GPU_SUBLOCALE, "chpl_is_gpu_sublocale", returnInfoBool, true, true);
   prim_def(PRIM_GET_GLOBAL_ID, "chpl_get_global_id", returnInfoInt64, true,false);
+#endif
 }
 
 Map<const char*, VarSymbol*> memDescsMap;

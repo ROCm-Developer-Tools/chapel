@@ -4057,6 +4057,7 @@ GenRet CallExpr::codegen() {
         bool handled = true;
         switch (call->primitive->tag)
         {
+#ifdef TARGET_HSA
          case PRIM_IS_GPU_SUBLOCALE:
          {
            codegenAssign(get(1), codegenIsGPUSublocale());
@@ -4095,6 +4096,7 @@ GenRet CallExpr::codegen() {
            }
            break;
          }
+#endif
          case PRIM_GET_REAL:
          case PRIM_GET_IMAG:
          {
@@ -4428,9 +4430,11 @@ GenRet CallExpr::codegen() {
     case PRIM_ARRAY_GET:
     case PRIM_ARRAY_GET_VALUE:
     case PRIM_ON_LOCALE_NUM:
+#ifdef TARGET_HSA
     case PRIM_GPU_REDUCE:
     case PRIM_IS_GPU_SUBLOCALE:
     case PRIM_GET_GLOBAL_ID:
+#endif
       // generated during generation of PRIM_MOVE
       break;
     case PRIM_WIDE_GET_LOCALE:
