@@ -51,24 +51,6 @@ static FnSymbol *buildGPUOffloadFunction(CForLoop *cForLoop, SymbolMap *smap,
   return fn;
 }
 
-// Check if this function contains recursive calls
-static bool hasRecursion(FnSymbol * fn, std::set<FnSymbol*>& fnSet)
-{
-  fnSet.insert(fn);
-  std::vector<CallExpr*> calls;
-  collectFnCalls(fn, calls);
-  for_vector(CallExpr, call, calls) {
-    FnSymbol* f = call->findFnSymbol();
-    if (fnSet.find(f) != fnSet.end()) {
-      return true;
-    } else {
-      if (hasRecursion(f, fnSet))
-        return true;
-    }
-  }
-  return false;
-}
-
 // Check if this CForLoop can be converted to a GPU kernel
 // Currently we only convert cases where the following constraints hold true:
 // 1. The test expression involves testing a single index variable only
@@ -78,7 +60,6 @@ static bool hasRecursion(FnSymbol * fn, std::set<FnSymbol*>& fnSet)
 // the init expressions.
 // Also collect the expressions in a vector for future processing
 // TODO: Handle more than 1 idx variable
-
 static bool checkAndCollectLoopIdxExprs(const GPUForLoop *gpuForLoop,
                                         CallExprVector& initCalls,
                                         CallExprVector& incrCalls,
@@ -400,14 +381,10 @@ GPUForLoop *GPUForLoop::buildFromIfPossible(CForLoop *cForLoop)
   retval->insertAtTail(call);
 
   // Enhancements:
-  //OpenCL does not support recursive functions
-  std::set<FnSymbol*> fnSet;
-  if (hasRecursion(fn, fnSet))
-    return NULL;
-
   CallExprVector initCalls;
   CallExprVector incrCalls;
   CallExprVector testCalls;
+  // Check if the CForLoop can be converted to a GPU kernel
   if (!checkAndCollectLoopIdxExprs(retval, initCalls, incrCalls, testCalls))
     return NULL;
 

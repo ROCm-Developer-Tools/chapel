@@ -258,6 +258,7 @@ symbolFlag( FLAG_WRAP_WRITTEN_FORMAL , npr, "wrap written formal" , "formal argu
 symbolFlag( FLAG_OFFLOAD_TO_GPU , npr, "gpu kernel" , "Flag to mark GPU kernel" )
 symbolFlag( FLAG_INTERNAL_GPU_FN , npr, "gpu-internal function" , "Flag to mark functions inside a gpu kernel" )
 symbolFlag( FLAG_REQUEST_GPU_OFFLOAD, ypr, "request gpu offload" , "any order indpendent for loop inside this function will be converted to gpu code if possible" )
+symbolFlag( FLAG_FIT_FOR_GPU, npr, "function fit for gpu offload" , "Flag to mark functions that are fit to be offloaded to the GPU" )
 #endif
 
 #undef ypr
