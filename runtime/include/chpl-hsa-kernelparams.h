@@ -1,3 +1,3 @@
 
-#define WKGRP_SIZE 2048
+#define WKGRP_SIZE 64
 #define SEQ_CHUNK_SIZE 16

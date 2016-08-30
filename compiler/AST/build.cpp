@@ -1350,6 +1350,7 @@ BlockStmt* buildCoforallLoopStmt(Expr* indices,
                                  BlockStmt* body,
                                  bool zippered)
 {
+  checkControlFlow(body, "coforall statement");
 
   //
   // insert temporary index when elided by user
@@ -1364,6 +1365,7 @@ BlockStmt* buildCoforallLoopStmt(Expr* indices,
   //
   BlockStmt* onBlock = findStmtWithTag(PRIM_BLOCK_ON, body);
 
+  SET_LINENO(body);
 
   if (onBlock) {
     //
@@ -1509,7 +1511,7 @@ BlockStmt* buildSelectStmt(Expr* selectCond, BlockStmt* whenstmts) {
  * can be reduced on GPUs. Insert this check.
  */
 static
-CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, Symbol *eltType) {
+CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
   static int uid = 1;
 
   FnSymbol* fnred = new FnSymbol(astr("chpl__gpureduce", istr(uid++)));
@@ -1565,8 +1567,8 @@ CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, Symbol *eltType) {
 static
 CallExpr* buildCPUReduceExpr(VarSymbol *data,
                              VarSymbol* globalOp,
+                             VarSymbol* eltType,
                              Expr* opExpr,
-                             Symbol* eltType,
                              bool zippered) {
   static int uid = 1;
   FnSymbol* fn = new FnSymbol(astr("chpl__cpureduce", istr(uid++)));
@@ -1700,34 +1702,43 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
-  VarSymbol* data = newTemp("_datadef");
+
+  VarSymbol* data = newTemp();
   VarSymbol* eltType = newTemp();
   VarSymbol* globalOp = newTemp();
 
-  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr,
-                         zippered);
-  CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, opExpr, eltType,
+  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr, zippered);
+
+  CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, eltType, opExpr,
                                               zippered);
-  CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
+#ifdef TARGET_HSA
+  if (fLocal) {
+    CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
 
-  VarSymbol* isGpu = newTemp("_is_gpu");
-  fn->insertAtTail(new DefExpr(isGpu));
-  fn->insertAtTail(new CallExpr(PRIM_MOVE, isGpu,
-                                new CallExpr(PRIM_IS_GPU_SUBLOCALE)));
+    VarSymbol* isGpu = newTemp("_is_gpu");
+    fn->insertAtTail(new DefExpr(isGpu));
+    fn->insertAtTail(new CallExpr(PRIM_MOVE, isGpu,
+          new CallExpr(PRIM_IS_GPU_SUBLOCALE)));
 
-  VarSymbol* resultcpu = new VarSymbol("_resultcpu");
-  VarSymbol* resultgpu = new VarSymbol("_resultgpu");
-  BlockStmt* thenBlock = buildChapelStmt();
-  thenBlock->insertAtTail(new DefExpr(resultgpu, gpu_reduce));
-  thenBlock->insertAtTail("'delete'(%S)", globalOp);
-  thenBlock->insertAtTail("'return'(%S)", resultgpu);
-  BlockStmt* elseBlock = buildChapelStmt();
-  elseBlock->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
-  elseBlock->insertAtTail("'delete'(%S)", globalOp);
-  elseBlock->insertAtTail("'return'(%S)", resultcpu);
-  fn->insertAtTail(new CondStmt(new SymExpr(isGpu),
-                                thenBlock, elseBlock));
-  return new CallExpr(new DefExpr(fn));
+    VarSymbol* resultcpu = new VarSymbol("_resultcpu");
+    VarSymbol* resultgpu = new VarSymbol("_resultgpu");
+    BlockStmt* thenBlock = buildChapelStmt();
+    thenBlock->insertAtTail(new DefExpr(resultgpu, gpu_reduce));
+    thenBlock->insertAtTail("'delete'(%S)", globalOp);
+    thenBlock->insertAtTail("'return'(%S)", resultgpu);
+    BlockStmt* elseBlock = buildChapelStmt();
+    elseBlock->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
+    elseBlock->insertAtTail("'delete'(%S)", globalOp);
+    elseBlock->insertAtTail("'return'(%S)", resultcpu);
+    fn->insertAtTail(new CondStmt(new SymExpr(isGpu),
+          thenBlock, elseBlock));
+    return new CallExpr(new DefExpr(fn));
+  } else {
+    return cpu_reduce;
+  }
+#else
+  return cpu_reduce;
+#endif
 }
 
 

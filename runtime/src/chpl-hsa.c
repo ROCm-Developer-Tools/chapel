@@ -212,8 +212,8 @@ int chpl_hsa_initialize(void)
         hsa_shut_down();
         return ERROR;
     }
-    /* FIXME: Create all reduction kernels, not just the int32-sum kernel */
-    if (ERROR == hsa_create_reduce_kernels("reduce_int32_sum",
+    /* FIXME: Create all reduction kernels, not just the int64-sum kernel */
+    if (ERROR == hsa_create_reduce_kernels("reduce_int64_sum",
                                        reduce_kernel_filename)) {
       hsa_queue_destroy(hsa_device.command_queue);
       hsa_shut_down();
@@ -505,9 +505,9 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
   hsa_signal_t completion_signal;
   hsail_kernarg_t *args;
   uint64_t index;
-  chpl_msg(2, 
-           "enqueuing a kernel with index %d, wkgrp size %u, wkitem count %u\n",
-           kernel_idx, wkgrp_size_x, wkitem_count_x);
+  chpl_msg(2,
+           "HSA: Enqueuing a kernel with index %d, wkgrp size %u, "
+           "wkitem count %u\n", kernel_idx, wkgrp_size_x, wkitem_count_x);
   hsa_signal_create(1, 0, NULL, &completion_signal);
   hsa_memory_allocate(hsa_device.kernarg_region,
                       symbol_info->kernarg_segment_size,

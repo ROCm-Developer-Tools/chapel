@@ -1,29 +1,26 @@
 
-use Time;
+use Random;
 
-var t1, t2:Timer;
+config var COUNT = 5000000;
+config var NUM_ITER = 10;
 
-config var COUNT = 16;
-var A: [1..COUNT] int(32);
-for a in A {
-  a = 10;
+// The randomly generted count is used both as array size and array element
+// value
+proc run_reduce(count: int) {
+  writeln("Running reduction on ", count, " items");
+  var A: [1..count] int;
+  for a in A {
+    a = count;
+  }
+
+  var sum: int = 0;
+  on (Locales[0]:LocaleModel).GPU do {
+    sum =  + reduce A;
+  }
+  assert(sum == count * count);
 }
 
-var sum: int(32) = 0;
-on (Locales[0]:LocaleModel).GPU do {
-  t1.start();
-  sum =  + reduce A;
-  t1.stop();
+var rnd = new RandomStream();
+for i in 1..NUM_ITER {
+  run_reduce(1 + (COUNT * rnd.getNext()):int);
 }
-writeln("Result is ", sum);
-writeln("Time in msec for GPU execution ", t1.elapsed() * 1000.00);
-
-/*sum = 0;
-on (Locales[0]:LocaleModel).CPU do {
-  t2.start();
-  sum =  + reduce A;
-  t2.stop();
-}
-writeln("Result is ", sum);
-writeln("Time in msec for CPU execution ", t2.elapsed() * 1000.00);
-*/
