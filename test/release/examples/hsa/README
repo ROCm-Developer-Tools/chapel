@@ -19,6 +19,7 @@ Example programs:
      loopy-recursive.chpl  : a forall loop that calls other fns recursively.
                              This cannot be offloaded to a GPU
      loopy-strided.chpl    : gpu-offload of a forall loop with strided access
+     loopy-filtered.chpl   : gpu-offload of a forall loop with filtering
      zip-forall.chpl       : gpu-offload of a zippered forall loop
      promotion.chpl        : gpu-offload for promotion of a scalar function
                              to operate on arrays
@@ -33,11 +34,12 @@ The examples can be compiled without explicitly listing any
 additional source files.  For example, the canonical "Hello, world!"
 program can be compiled as follows:
 
-     chpl -o hello hello-sublocale.chpl --no-bounds-checks --report-gpu-for-loops
+     chpl -o hello hello-sublocale.chpl --no-bounds-checks --no-local-checks --report-gpu-for-loops
 
-The --no-bounds-checks option is required for successful gpu codegen in many
-cases. The --report-gpu-for-loops option is recommended, since it makes the
-compiler report the sucess / failure status for each parallel construct that it
-tried to offload to gpu.
-
+The --no-bounds-checks and --no-local-checks options are required for
+successful gpu codegen in many cases. These options insert runtime checks that
+might result in error messages during execution. We haven't handled error
+messages inside GPU yet. The --report-gpu-for-loops option is recommended,
+since it makes the compiler report the sucess / failure status for each
+parallel construct that it tried to offload to gpu.
 
