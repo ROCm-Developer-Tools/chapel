@@ -740,6 +740,90 @@ static void protectNameFromC(Symbol* sym) {
 }
 
 #ifdef TARGET_HSA
+//This fn is called on aggregate type symbols that are marked for GPU offload.
+//This is part of a recursive depth-first traversal to mark all members of such
+//symbols for GPU offload.
+//
+//Traverse the chilren and return true if any new members were marked for
+//GPU offload. For each child, if a child is marked for OFFLOAD, it might
+//have been marked from before or during this particular traversal. So for
+//each child:
+//1. if it has been already marked and visited ie. marked during this
+//traversal, then skip it.
+//2. if it was not marked before, mark it and traverse it's children - it does
+//not matter if it was already visited during this traversal. This also means
+//that a new member was marked.
+//3. if it was marked and not visited, it was not marked in this traversal,
+// so traverse it's children
+static bool markGPUSpecificMembers(TypeSymbol* ts,
+                                   std::set<TypeSymbol *>& visited) {
+  bool ret = false;
+
+  // For reference or data class types, generate the referenced type
+  Type* vt = NULL;
+  if( ts->hasFlag(FLAG_REF))
+    vt = ts->getValType();
+  else if (ts->hasFlag(FLAG_DATA_CLASS))
+    vt = getDataClassType(ts)->typeInfo();
+  if (vt) {
+    TypeSymbol *ts = vt->symbol;
+    if (visited.count(ts) && ts->hasFlag(FLAG_OFFLOAD_TO_GPU))
+      return ret;
+    visited.insert(ts);
+    if (!ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+      ts->addFlag(FLAG_OFFLOAD_TO_GPU);
+      ret = true;
+    }
+    if (AggregateType* fct = toAggregateType(vt)) {
+      markGPUSpecificMembers(fct->symbol, visited);
+    }
+  }
+
+  // For other types, generate the field types
+  AggregateType* ct = toAggregateType(ts->type);
+  for_fields(field, ct) {
+    TypeSymbol *ts = field->type->symbol;
+    if (visited.count(ts) && ts->hasFlag(FLAG_OFFLOAD_TO_GPU))
+      continue;
+
+    visited.insert(ts);
+    if (!ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+      ts->addFlag(FLAG_OFFLOAD_TO_GPU);
+      ret = true;
+    }
+    if (AggregateType* fct = toAggregateType(field->type)) {
+      markGPUSpecificMembers(fct->symbol, visited);
+    }
+  }
+  return ret;
+}
+
+// Mark GPU-specific super-classes by doing a post-order depth-first traversal
+// of the inheritence tree. A type is marked if any of it's descendent types
+// are marked for GPU offload. If an aggregate type is marked, also mark all
+// its members. The newMemberFound parameter denotes if any new types were
+// marked through the markGPUSpecificMember calls. If true, this means that
+// we need to run the inheritance-tree traversal again since the new members
+// can have new parent classes.
+static bool markGPUSpecificChildren(TypeSymbol *ts, bool& newMemberFound) {
+  bool ret = false;
+  forv_Vec(Type, child, ts->type->dispatchChildren) {
+    if (child)
+      ret = ret || markGPUSpecificChildren(child->symbol, newMemberFound);
+  }
+  if (ret) ts->addFlag(FLAG_OFFLOAD_TO_GPU);
+  bool newMember = false;
+  if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+    if (toAggregateType(ts->type)) {
+        std::set<TypeSymbol *> visited;
+        visited.insert(ts);
+        newMember = markGPUSpecificMembers(ts, visited);
+    }
+  }
+  newMemberFound = newMemberFound || newMember;
+  return (ret || ts->hasFlag(FLAG_OFFLOAD_TO_GPU));
+}
+
 static void codegen_gpu_header() {
   GenInfo* info = gGenInfo;
   Vec<TypeSymbol*> types;
@@ -760,7 +844,7 @@ static void codegen_gpu_header() {
       }
       stmt = stmt->next;
     }
-    
+
     for_formals(formal, fn) {
       TypeSymbol* sym = formal->type->symbol;
         if (!sym->hasFlag(FLAG_DATA_CLASS) &&
@@ -768,12 +852,41 @@ static void codegen_gpu_header() {
           sym->addFlag(FLAG_OFFLOAD_TO_GPU);
     }
   }
- 
+
   forv_Vec(TypeSymbol, ts, gTypeSymbols) {
     if (ts->defPoint->parentExpr != rootModule->block) {
       types.add(ts);
     }
   }
+
+  // Till now we have marked all the types that are directly used by the GPU
+  // code with the flag FLAG_OFFLOAD_TO_GPU. Now for aggregate types, we need
+  // to mark all member types and possible parent classes, recursively, until
+  // we achieve transitive closure on all type symbols.
+  // So, first we mark all GPU specific members. Then we traverse the
+  // inheritance tree and mark all GPU specific parent classes. During this
+  // traversal we also mark the members of any new parent class found, and we
+  // continue doing the inheritance-tree traversal as long as we find new GPU
+  // specific members while marking the super classes.
+  // (markGPUSpecificChildren calls markGPUSpecificMembers).
+
+  std::set<TypeSymbol *> visited;
+  forv_Vec(TypeSymbol, ts, types) {
+    if (!visited.count(ts)) {
+      visited.insert(ts);
+      if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+        if (toAggregateType(ts->type)) {
+          markGPUSpecificMembers(ts, visited);
+        }
+      }
+    }
+  }
+
+  bool newMemberFound;
+  do {
+    newMemberFound = false;
+    markGPUSpecificChildren(dtObject->symbol, newMemberFound);
+  } while (newMemberFound);
 
   FILE* hdrfile = info->cfile;
 
@@ -801,15 +914,21 @@ static void codegen_gpu_header() {
       typeSymbol->codegenPrototype();
   }
 
+  genComment("Enumerated Types");
 
-  {
-    // codegen records/unions/references/data class in topological order
-    genComment("Records, Unions, Data Class, References (Hierarchically)");
-    forv_Vec(TypeSymbol, ts, types) {
-      if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
-        AggregateType* ct = toAggregateType(ts->type);
+  forv_Vec(TypeSymbol, ts, types) {
+    if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU) &&
+        toEnumType(ts->type)) {
+      ts->codegenDef();
+    }
+  }
+
+  // codegen records/unions/references/data class in topological order
+  genComment("Records, Unions, Data Class, References (Hierarchically)");
+  forv_Vec(TypeSymbol, ts, types) {
+    if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+      if (AggregateType* ct = toAggregateType(ts->type))
         codegen_aggregate_def(ct);
-      }
     }
   }
 
@@ -825,6 +944,27 @@ static void codegen_gpu_header() {
     }
   }
 
+  // codegen GPU-specific class definitions in breadth first order starting
+  // with "object" and following its dispatch children
+  Vec<TypeSymbol*> next, current;
+  current.add(dtObject->symbol);
+  while (current.n) {
+    forv_Vec(TypeSymbol, ts, current) {
+      if (ts->hasFlag(FLAG_OFFLOAD_TO_GPU)) {
+        ts->codegenDef();
+        forv_Vec(Type, child, ts->type->dispatchChildren) {
+          if (child)
+            next.set_add(child->symbol);
+        }
+      }
+    }
+    current.clear();
+    current.move(next);
+    current.set_to_vec();
+    qsort(current.v, current.n, sizeof(current.v[0]), compareSymbol);
+    next.clear();
+  }
+
   genComment("Function Prototypes");
   //Only the internal GPU function prototypes are required.
   forv_Vec(FnSymbol, fn, gFnSymbols) {
@@ -833,7 +973,7 @@ static void codegen_gpu_header() {
   }
 
 }
-#endif 
+#endif
 
 // TODO: Split this into a number of smaller routines.<hilde>
 static void codegen_header() {

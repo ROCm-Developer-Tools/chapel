@@ -508,9 +508,9 @@ static bool isCForLoopFitForGPUOffload(CForLoop *cForLoop)
 {
   std::vector<CallExpr*> calls;
   collectCallExprs(cForLoop, calls);
+  FnSymbol* fn = toFnSymbol(cForLoop->parentSymbol);
   for_vector(CallExpr, call, calls) {
     bool inLocal  = inLocalBlock(call);
-    FnSymbol* fn = toFnSymbol(cForLoop->parentSymbol);
     if (fn)
       inLocal = inLocal || fn->hasFlag(FLAG_LOCAL_FN);
 

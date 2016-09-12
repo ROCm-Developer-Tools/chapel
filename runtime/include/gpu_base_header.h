@@ -34,8 +34,6 @@ typedef _Bool chpl_bool;
 typedef bool chpl_bool;
 #endif
 
-typedef chpl_bool atomic_flag_n;
-
 typedef  int8_t    int_least8_t;
 typedef  int16_t   int_least16_t;
 typedef  int32_t   int_least32_t;
@@ -55,6 +53,17 @@ typedef uint8_t   uint_fast8_t;
 typedef unsigned  uint_fast16_t;
 typedef uint32_t  uint_fast32_t;
 typedef uint64_t  uint_fast64_t;
+
+typedef int_least8_t atomic_int_least8_t;
+typedef int_least16_t atomic_int_least16_t;
+typedef int_least32_t atomic_int_least32_t;
+typedef int_least64_t atomic_int_least64_t;
+typedef uint_least8_t atomic_uint_least8_t;
+typedef uint_least16_t atomic_uint_least16_t;
+typedef uint_least32_t atomic_uint_least32_t;
+typedef uint_least64_t atomic_uint_least64_t;
+typedef chpl_bool atomic_flag_n;
+
 
 # define INT8_C(c)      c
 # define INT16_C(c)     c
