@@ -193,7 +193,11 @@ int chpl_hsa_initialize(void)
     }
 
     cx = snprintf(reduce_kernel_filename, 1024,
+#ifdef ROCM
+                  "%s/runtime/src/%s/chpl-hsa-reducekernels.hsaco", CHPL_HOME,
+#else
                   "%s/runtime/src/%s/chpl-hsa-reducekernels.o", CHPL_HOME,
+#endif
                    CHPL_RUNTIME_OBJDIR);
     if (cx < 0 || cx  >= 256) {
       OUTPUT_HSA_STATUS(ERROR, Creating reduce kernel filename);
@@ -203,7 +207,11 @@ int chpl_hsa_initialize(void)
     }
     strcpy(argCopy, chpl_executionCommand);
     binName = strtok(argCopy, " ");
+#ifdef ROCM
+    cx = snprintf(gen_kernel_filename, 1024, "%s_gpu.hsaco", binName);
+#else
     cx = snprintf(gen_kernel_filename, 1024, "%s_gpu.o", binName);
+#endif
     chpl_mem_free(argCopy, 0, 0);
 
     if (cx < 0 || cx  >= 256) {
@@ -306,7 +314,11 @@ int hsa_create_kernels(const char * file_name)
     for (int64_t i = 0; i < chpl_num_gpu_kernels; ++i) {
       //FIXME: get the actual kernel name
       const char * fn_name = chpl_gpu_kernels[i];
+#if ROCM
+      size = asprintf(&kernel_name, "%s", fn_name);
+#else
       size = asprintf(&kernel_name, "&__OpenCL_%s_kernel", fn_name);
+#endif
       if (-1 == size) {
         goto err_destroy_gen_kernels;
       }
@@ -422,7 +434,11 @@ int hsa_create_reduce_kernels(const char * fn_name, const char * file_name)
         goto err_destroy_custom_kernel;
     }
 
+#ifdef ROCM
+    size = asprintf(&kernel_name, "%s", fn_name);
+#else
     size = asprintf(&kernel_name, "&__OpenCL_%s_kernel", fn_name);
+#endif
     if (-1 == size) {
         goto err_destroy_custom_kernel;
     }
@@ -537,12 +553,14 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
   dispatch_packet->group_segment_size = symbol_info->group_segment_size;
   dispatch_packet->kernel_object = symbol_info->kernel_object;
 
+#ifndef ROCM
   args->gb0 = 0;
   args->gb1 = 0;
   args->gb2 = 0;
   args->prnt_buff = 0;
   args->vqueue_pntr = 0;
   args->aqlwrap_pntr = 0;
+#endif
 
   args->bundle = (uint64_t)bundled_args;
 

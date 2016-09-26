@@ -36,24 +36,28 @@ hsa_kernel_t kernel;
 hsa_kernel_t gen_kernels;
 
 typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
+#ifndef ROCM
     uint64_t gb0;
     uint64_t gb1;
     uint64_t gb2;
     uint64_t prnt_buff;
     uint64_t vqueue_pntr;
     uint64_t aqlwrap_pntr;
+#endif
     uint64_t in;
     uint64_t out;
     uint32_t count;
 } hsail_reduce_kernarg_t;
 
 typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
+#ifndef ROCM
     uint64_t gb0;
     uint64_t gb1;
     uint64_t gb2;
     uint64_t prnt_buff;
     uint64_t vqueue_pntr;
     uint64_t aqlwrap_pntr;
+#endif
     uint64_t bundle;
 } hsail_kernarg_t;
 

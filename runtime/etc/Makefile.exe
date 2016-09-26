@@ -22,8 +22,12 @@
 include $(CHPL_MAKE_HOME)/runtime/etc/Makefile.include
 
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+ifdef CHPL_ROCM
+CHPL_GPU_HSACO = $(patsubst %.cl,%.hsaco,$(CHPL_GPU_SRC))
+else
 CHPL_GPU_DEST = $(patsubst %.cl,%.o,$(CHPL_GPU_SRC))
 CHPL_GPU_BRIG = $(patsubst %.cl,%.brig,$(CHPL_GPU_SRC))
+endif
 endif
 
 all: $(TMPBINNAME)
@@ -39,8 +43,12 @@ ifneq ($(CHPL_MAKE_LAUNCHER),none)
 	$(MAKE) -f $(CHPL_MAKE_HOME)/runtime/etc/Makefile.launcher all CHPL_MAKE_HOME=$(CHPL_MAKE_HOME) TMPBINNAME=$(TMPBINNAME) BINNAME=$(BINNAME) TMPDIRNAME=$(TMPDIRNAME)
 endif
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
+ifdef CHPL_ROCM
+	$(CLOC) $(CLOC_FLAGS) -I $(CHPL_MAKE_HOME)/runtime/include $(CHPL_GPU_SRC) -o $(notdir $(CHPL_GPU_HSACO))
+else
 	$(CLOC) $(CLOC_FLAGS) -I $(CHPL_MAKE_HOME)/runtime/include $(CHPL_GPU_SRC) -o $(CHPL_GPU_BRIG)
 	$(HOF) $(HOF_FLAGS) -output=$(notdir $(CHPL_GPU_DEST)) -brig $(CHPL_GPU_BRIG)
+endif
 endif
 ifneq ($(TMPBINNAME),$(BINNAME))
 	rm -f $(BINNAME)

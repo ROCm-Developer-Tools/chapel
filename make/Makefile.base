@@ -115,6 +115,10 @@ ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 CFLAGS += -DTARGET_HSA
 endif
 
+ifdef CHPL_ROCM
+CFLAGS += -DROCM
+endif
+
 #
 # default CFLAGS, based on other settings
 #

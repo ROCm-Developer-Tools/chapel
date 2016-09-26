@@ -73,9 +73,14 @@ $(LAUNCHER_OBJ_DIR)/%.o: %.c $(LAUNCHER_OBJ_DIR_STAMP)
 # FIXME: use the RUNTIME_INCL varaible instead of directly specifying the
 # include folder. Right now, cloc errors out if more that one include dir
 # are specified.
+ifdef CHPL_ROCM
+$(RUNTIME_OBJ_DIR)/%.hsaco: %.cl FORCE
+	$(CLOC) -I ../include $(CLOC_FLAGS) -o $@ $<
+else
 $(RUNTIME_OBJ_DIR)/%.o: %.cl FORCE
 	$(CLOC) -I ../include $(CLOC_FLAGS) $<
 	$(HOF) $(HOF_FLAGS) -output=$@ -brig $(subst .cl,.brig,$<)
+endif
 
 FORCE:
 

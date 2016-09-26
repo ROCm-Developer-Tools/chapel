@@ -58,12 +58,14 @@ void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, size_t count,
   dispatch_packet->group_segment_size = symbol_info->group_segment_size;
   dispatch_packet->kernel_object = symbol_info->kernel_object;
 
+#ifndef ROCM
   args->gb0 = 0;
   args->gb1 = 0;
   args->gb2 = 0;
   args->prnt_buff = 0;
   args->vqueue_pntr = 0;
   args->aqlwrap_pntr = 0;
+#endif
 
   args->in = (uint64_t)inbuf;
   args->out = (uint64_t)outbuf;
