@@ -1510,6 +1510,7 @@ BlockStmt* buildSelectStmt(Expr* selectCond, BlockStmt* whenstmts) {
  * reducable on the GPU - currently only 1D default rectangular domain arrays
  * can be reduced on GPUs. Insert this check.
  */
+#ifdef TARGET_HSA
 static
 CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
   static int uid = 1;
@@ -1528,17 +1529,6 @@ CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
 
   VarSymbol* array_base = newTemp("_array_base");
   fnred->body->insertAtTail(new DefExpr(array_base));
-
-  /* FIXME: We assume that if dataExpr is unresolved it is a variable name,
-   * which will be later resolved to an array of appropriate type. Otherwise
-   * we assume it is a more complicated iteratable expression and would not be
-   * fit for GPU offload. This is flaky.
-   */
-  if (!toUnresolvedSymExpr(dataExpr)) {
-    fnred->body->insertAtTail(new CallExpr(PRIM_ERROR));
-    fnred->body->insertAtTail("'return'(%S)", gpu_result);
-    return new CallExpr(new DefExpr(fnred));
-  }
 
   const char* data_name = (toUnresolvedSymExpr(dataExpr))->unresolved;
   const char* op_name = (toUnresolvedSymExpr(opExpr))->unresolved;
@@ -1559,6 +1549,7 @@ CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
   fnred->insertAtTail("'return'(%S)", gpu_result);
   return new CallExpr(new DefExpr(fnred));
 }
+#endif
 
 /*
  * Build a call expression to call a function that executes the reduction on
@@ -1711,8 +1702,15 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
 
   CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, eltType, opExpr,
                                               zippered);
+  VarSymbol* resultcpu = new VarSymbol("_resultcpu");
 #ifdef TARGET_HSA
-  if (fLocal) {
+  /* FIXME: We assume that if dataExpr is unresolved it is a variable name,
+   * which will be later resolved to an array of appropriate type. Otherwise
+   * we assume it is a more complicated iteratable expression and would not be
+   * fit for GPU offload. This is flaky.
+   * For now, we consider gpu offload only for single-locale execution.
+   */
+  if (fLocal && toUnresolvedSymExpr(dataExpr)) {
     CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
 
     VarSymbol* isGpu = newTemp("_is_gpu");
@@ -1733,12 +1731,12 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
     fn->insertAtTail(new CondStmt(new SymExpr(isGpu),
           thenBlock, elseBlock));
     return new CallExpr(new DefExpr(fn));
-  } else {
-    return cpu_reduce;
   }
-#else
-  return cpu_reduce;
 #endif
+  fn->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
+  fn->insertAtTail("'delete'(%S)", globalOp);
+  fn->insertAtTail("'return'(%S)", resultcpu);
+  return new CallExpr(new DefExpr(fn));
 }
 
 

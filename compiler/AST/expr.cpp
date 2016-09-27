@@ -1094,6 +1094,7 @@ GenRet codegenGetLocaleID(void)
 }
 
 // A construct which checks if the current sublocale is a gpu.
+#ifdef TARGET_HSA
 static
 GenRet codegenIsGPUSublocale(void)
 {
@@ -1111,6 +1112,7 @@ GenRet codegenIsGPUSublocale(void)
 #endif
   return ret;
 }
+#endif
 
 static
 GenRet codegenUseGlobal(std::string str)
