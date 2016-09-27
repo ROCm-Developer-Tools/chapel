@@ -83,8 +83,13 @@ COMMON_OBJS += \
 	$(HSA_SRCS_C:%.c=$(COMMON_OBJDIR)/%.o)
 
 HSA_SRCS_CL = $(filter %.cl, $(HSA_SRCS))
+ifdef CHPL_ROCM
+COMMON_OBJS += \
+	$(HSA_SRCS_CL:%.cl=$(COMMON_OBJDIR)/%.hsaco)
+else
 COMMON_OBJS += \
 	$(HSA_SRCS_CL:%.cl=$(COMMON_OBJDIR)/%.o)
+endif
 endif
 #$(info COMMON_OBJS is $(COMMON_OBJS))
 MAIN_OBJS = \

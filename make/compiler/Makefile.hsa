@@ -1,5 +1,15 @@
 include $(CHPL_MAKE_HOME)/make/compiler/Makefile.gnu
 
+ifdef CHPL_ROCM
+# ROCm locations
+CLOC=/opt/rocm/cloc/bin/cloc.sh
+LIBS+=-lhsa-runtime64 -lhsakmt -lm
+
+# TODO: move these in third-party directory?
+GEN_LFLAGS+=-L/opt/rocm/lib -L/opt/rocm/hsa/lib
+HSA_INCLUDES=-I/opt/rocm/hsa/include
+else
+# HSA locations
 CLOC=$(THIRD_PARTY_DIR)/hsa/cloc/bin/cloc.sh
 HOF=$(THIRD_PARTY_DIR)/hsa/HSA-HOF-AMD/bin/hof
 CLOC_FLAGS=
@@ -8,3 +18,4 @@ HOF_FLAGS=
 LIBS+=-lhsa-runtime64 -lhsa-ext-finalize64 -lhsa-ext-image64 -lhsakmt -lm
 GEN_LFLAGS+=-L$(THIRD_PARTY_DIR)/hsa/HSA-Runtime-AMD/lib
 HSA_INCLUDES=-I$(THIRD_PARTY_DIR)/hsa/HSA-Runtime-AMD/include
+endif
