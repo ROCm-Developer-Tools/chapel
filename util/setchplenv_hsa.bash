@@ -105,6 +105,10 @@ if [ "$1" == "debug" ]; then
     export CHPL_DEBUG=1
 fi
 
+echo -n "Setting CHPL_ROCM"
+export CHPL_ROCM=1
+echo " to 1"
+
 echo -n "Setting CHPL_LOCALE_MODEL"
 export CHPL_LOCALE_MODEL=hsa
 echo " to hsa"

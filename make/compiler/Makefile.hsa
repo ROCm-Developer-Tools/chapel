@@ -17,11 +17,11 @@ include $(CHPL_MAKE_HOME)/make/compiler/Makefile.gnu
 ifdef CHPL_ROCM
 # ROCm locations
 CLOC=/opt/rocm/cloc/bin/cloc.sh
-LIBS+=-lhsa-runtime64 -lhsakmt -lm
+LIBS+=-latmi_runtime -lm
 
 # TODO: move these in third-party directory?
-GEN_LFLAGS+=-L/opt/rocm/lib -L/opt/rocm/hsa/lib
-HSA_INCLUDES=-I/opt/rocm/hsa/include
+GEN_LFLAGS+=-L/opt/rocm/lib -L/opt/rocm/hsa/lib -L/opt/rocm/libatmi/lib
+HSA_INCLUDES=-I/opt/rocm/libatmi/include
 else
 # HSA locations
 CLOC=$(THIRD_PARTY_DIR)/hsa/cloc/bin/cloc.sh

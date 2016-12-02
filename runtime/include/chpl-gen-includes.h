@@ -31,7 +31,7 @@
 #include "chpl-tasks.h"
 #include "chpltypes.h"
 #ifdef TARGET_HSA
-#include "chpl-hsa.h"
+#include "chpl-atmi.h"
 #endif
 
 //

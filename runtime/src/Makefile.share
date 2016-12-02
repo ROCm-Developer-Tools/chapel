@@ -18,9 +18,9 @@
 
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 HSA_SRCS = \
-	chpl-hsa.c \
+	chpl-atmi.c \
 	chpl-hsa-reducekernels.cl \
-	chpl-hsa-reducehost.c
+	chpl-atmi-reducehost.c
 endif
 
 COMMON_LAUNCHER_SRCS = \
