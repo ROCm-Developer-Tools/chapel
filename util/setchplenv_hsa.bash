@@ -61,8 +61,8 @@ export CHPL_COMM=none
 echo " to none"
 
 echo -n "Setting CHPL_TASKS"
-export CHPL_TASKS=qthreads
-echo " to qthreads"
+export CHPL_TASKS=atmi
+echo " to atmi"
 
 echo -n "Setting CHPL_ATOMICS"
 export CHPL_ATOMICS=intrinsics
@@ -91,6 +91,10 @@ echo " to intrinsics"
 echo -n "Disabling NUMA"
 export CHPL_HWLOC_CFG_OPTIONS=" --disable-libnuma"
 echo " done"
+
+echo -n "Setting CHPL_HWLOC"
+export CHPL_HWLOC=hwloc
+echo " to hwloc"
 
 echo -n "Disabling LLVM support"
 export CHPL_LLVM=none
