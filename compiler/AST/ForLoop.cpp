@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -39,21 +39,22 @@
  * time, provide a more optimized iterator that uses "<, <=, >, or >=" as the
  * relational operator.
  *
- * This is only meant to replace anonymous range iteration for "simple" bounded
- * ranges. Simple means it's a range of the form "low..high" or "low..high by
- * stride". Anything more complex is ignored with the thinking that this should
- * optimize the most common range iterators, but it could be expanded to handle
- * more cases.
+ * This is only meant to replace anonymous range iteration for "simple" ranges.
+ * Simple means it's a range of the form "low..high", "low..high by stride", or
+ * "low..#count". Anything more complex is ignored with the thinking that this
+ * should optimize the most common range iterators, but it could be expanded to
+ * handle more cases.
  *
  * An alternative is to update scalar replacement of aggregates to work on
  * ranges, which should be able to achieve similar results as this optimization
  * while handling all ranges, including non-anonymous ranges.
  *
- * Will optimize things like:
+ * This function will optimize things like:
  * - "for i in 1..10"
  * - "for i in 1..10+1"
  * - "var lo=1, hi=10;for i in lo..hi"
  * - "for i in 1..10 by 2"
+ * - "for i in 1..#10"
  * - "for (i, j) in zip(1..10 by 2, 1..10 by -2)"
  * - "for (i, j) in zip(A, 1..10 by 2)" // will optimize range iter still
  * - "coforall i in 1..10 by 2"         // works for coforalls as well
@@ -62,9 +63,10 @@
  * - "for in in (1..)"             // doesn't handle unbounded ranges
  * - "for i in 1..10 by 2 by 2"    // doesn't handle more than one by operator
  * - "for i in 1..10 align 2"      // doesn't handle align operator
- * - "for i in 1..#10"             // doesn't handle # operator
+ * - "for i in (1..10)#2"          // doesn't handle bounded counted ranges
+ * - "for i in 1..#10 by 2"        // doesn't handle strided and counted ranges
  * - "var r = 1..10"; for i in r"  // not an anonymous range
- * - "forall i in 1..10"           // does not get applied to foralls
+ * - "forall i in 1..10"           // doesn't get applied to foralls
  *
  * Note that this function is pretty fragile because it relies on names of
  * functions/iterators as well as the arguments and order of those
@@ -73,24 +75,44 @@
  */
 static void tryToReplaceWithDirectRangeIterator(Expr* iteratorExpr)
 {
-  CallExpr* range = NULL;
-  Expr* stride = NULL;
   if (CallExpr* call = toCallExpr(iteratorExpr))
   {
+    CallExpr* range = NULL;
+    Expr* stride = NULL;
+    Expr* count = NULL;
     // grab the stride if we have a strided range
     if (call->isNamed("chpl_by"))
     {
       range = toCallExpr(call->get(1)->copy());
       stride = toExpr(call->get(2)->copy());
     }
-    // assume the call is the range (checked below) and set default stride
+    // or grab the count if we have a counted range and set unit stride
+    else if (call->isNamed("#"))
+    {
+      range = toCallExpr(call->get(1)->copy());
+      count = toExpr(call->get(2)->copy());
+      stride = new SymExpr(new_IntSymbol(1));
+    }
+    // or assume the call is the range (checked below) and set unit stride
     else
     {
       range = call;
       stride = new SymExpr(new_IntSymbol(1));
     }
-    // see if we're looking at a builder for a bounded range. the builder is
-    // iteratable since range has these() iterators
+
+    //
+    // see if we're looking at a range builder. The builder is iteratable since
+    // range has these() iterators
+    //
+
+    // replace fully bounded (and possibly strided range) with a direct range
+    // iter. e.g. replace:
+    //
+    //   `low..high by stride`
+    //
+    // with:
+    //
+    // `chpl_direct_range_iter(low, high, stride)`
     if (range && range->isNamed("chpl_build_bounded_range"))
     {
       // replace the range construction with a direct range iterator
@@ -98,19 +120,22 @@ static void tryToReplaceWithDirectRangeIterator(Expr* iteratorExpr)
       Expr* high = range->get(2)->copy();
       iteratorExpr->replace(new CallExpr("chpl_direct_range_iter", low, high, stride));
     }
-  }
-}
 
-static void optimizeAnonymousRangeIteration(Expr* iteratorExpr, bool zippered)
-{
-  if (!zippered)
-    tryToReplaceWithDirectRangeIterator(iteratorExpr);
-  // for zippered iterators, try to replace each iterator of the tuple
-  else
-    if (CallExpr* call = toCallExpr(iteratorExpr))
-      if (call->isNamed("_build_tuple"))
-        for_actuals(actual, call)
-          tryToReplaceWithDirectRangeIterator(actual);
+    // replace a counted, low bounded range with unit stride with an equivalent
+    // direct range iter. e.g. replace:
+    //
+    //   `low..#count` (which is equivalent to `low..low+count-1`)
+    //
+    // with:
+    //
+    //   `chpl_direct_range_iter(low, low+count-1, 1)`
+    else if (count && range && range->isNamed("chpl_build_low_bounded_range"))
+    {
+      Expr* low = range->get(1)->copy();
+      Expr* high = new CallExpr("-", new CallExpr("+", low->copy(), count), new_IntSymbol(1));
+      iteratorExpr->replace(new CallExpr("chpl_direct_range_iter", low, high, stride));
+    }
+  }
 }
 
 /************************************ | *************************************
@@ -137,15 +162,83 @@ BlockStmt* ForLoop::buildForLoop(Expr*      indices,
   iterator->addFlag(FLAG_EXPR_TEMP);
 
   // Unzippered loop, treat all objects (including tuples) the same
-  if (zippered == false)
+  if (zippered == false) {
     iterInit = new CallExpr(PRIM_MOVE, iterator, new CallExpr("_getIterator",    iteratorExpr));
+    // try to optimize anonymous range iteration
+    tryToReplaceWithDirectRangeIterator(iteratorExpr);
+  }
+  // Zippered loop: Expand args to a tuple with an iterator for each element.
+  else {
+    CallExpr* zipExpr = toCallExpr(iteratorExpr);
+    if (zipExpr && zipExpr->isPrimitive(PRIM_ZIP)) {
+      // The PRIM_ZIP indicates this is a new-style zip() AST.
+      // Expand arguments to a tuple with appropriate iterators for each value.
+      //
+      // Specifically, change:
+      //    zip(a, b, c,  ...)
+      // into the tuple:
+      //    (_getIterator(a), _getIterator(b), _getIterator(c), ...)
+      //
+      // (ultimately, we will probably want to make this style of
+      // rewrite into a utility function for the other get*Zip
+      // functions as we convert parallel loops over to use PRIM_ZIP).
+      //
+      zipExpr->primitive = NULL;   // remove the primitive
 
-  // Expand tuple to a tuple containing appropriate iterators for each value.
-  else
-    iterInit = new CallExpr(PRIM_MOVE, iterator, new CallExpr("_getIteratorZip", iteratorExpr));
+      // If there's just one argument...
+      if (zipExpr->argList.length == 1) {
+        Expr* zipArg = zipExpr->argList.only();
+        CallExpr* zipArgCall = toCallExpr(zipArg);
 
-  // try to optimize anonymous range iteration, replaces iterExpr in place
-  optimizeAnonymousRangeIteration(iteratorExpr, zippered);
+        // ...and it is a tuple expansion '(...t)' then remove the
+        // tuple expansion primitive and simply pass the tuple itself
+        // to _getIteratorZip().  This will not require any more
+        // tuples than the user introduced themselves.
+        //
+        if (zipArgCall && zipArgCall->isPrimitive(PRIM_TUPLE_EXPAND)) {
+          zipExpr->baseExpr = new UnresolvedSymExpr("_getIteratorZip");
+          Expr* tupleArg = zipArgCall->argList.only();
+          tupleArg->remove();
+          zipArgCall->replace(tupleArg);
+        } else {
+          // ...otherwise, make the expression into a _getIterator()
+          // call
+          zipExpr->baseExpr = new UnresolvedSymExpr("_getIterator");
+          // try to optimize anonymous range iteration
+          tryToReplaceWithDirectRangeIterator(zipArg);
+        }
+      } else {
+        //
+        // Otherwise, if there's more than one argument, build up the
+        // tuple by applying _getIterator() to each element.
+        //
+        zipExpr->baseExpr = new UnresolvedSymExpr("_build_tuple");
+        Expr* arg = zipExpr->argList.first();
+        while (arg) {
+          Expr* next = arg->next;
+          Expr* argCopy = arg->copy();
+          arg->replace(new CallExpr("_getIterator", argCopy));
+          // try to optimize anonymous range iteration
+          tryToReplaceWithDirectRangeIterator(argCopy);
+          arg = next;
+        }
+      }
+      iterInit = new CallExpr(PRIM_MOVE, iterator, zipExpr);
+      assert(zipExpr == iteratorExpr);
+    } else {
+      //
+      // This is an old-style zippered loop so handle it in the old style
+      //
+      iterInit = new CallExpr(PRIM_MOVE, iterator,
+                              new CallExpr("_getIteratorZip", iteratorExpr));
+
+      // try to optimize anonymous range iteration
+      if (CallExpr* call = toCallExpr(iteratorExpr))
+        if (call->isNamed("_build_tuple"))
+          for_actuals(actual, call)
+            tryToReplaceWithDirectRangeIterator(actual);
+    }
+  }
 
   index->addFlag(FLAG_INDEX_OF_INTEREST);
 
@@ -268,7 +361,7 @@ bool ForLoop::isForLoop() const
 // own class that shares a common parent with ForLoop.
 bool ForLoop::isCoforallLoop() const
 {
-  return mIndex->var->hasFlag(FLAG_COFORALL_INDEX_VAR);
+  return mIndex->symbol()->hasFlag(FLAG_COFORALL_INDEX_VAR);
 }
 
 SymExpr* ForLoop::indexGet() const
@@ -327,6 +420,9 @@ void ForLoop::verify()
 
   if (byrefVars != 0)
     INT_FATAL(this, "ForLoop::verify. byrefVars is not NULL");
+
+  if (forallIntents != 0)
+    INT_FATAL(this, "ForLoop::verify. forallIntents is not NULL");
 }
 
 GenRet ForLoop::codegen()

@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -21,6 +21,8 @@
 #define _RESOLUTION_H_
 
 #include "baseAST.h"
+#include "symbol.h"
+#include <vector>
 #include <map>
 
 class CallInfo;
@@ -58,6 +60,11 @@ void implementForallIntents2(CallExpr* call, CallExpr* origToLeaderCall);
 void implementForallIntents2wrapper(CallExpr* call, CallExpr* origToLeaderCall);
 void stashPristineCopyOfLeaderIter(FnSymbol* origLeader, bool ignore_isResolved);
 
+// reduce intents
+void cleanupRedRefs(Expr*& redRef1, Expr*& redRef2);
+void setupRedRefs(FnSymbol* fn, bool nested, Expr*& redRef1, Expr*& redRef2);
+bool isReduceOp(Type* type);
+
 FnSymbol* instantiate(FnSymbol* fn, SymbolMap& subs, CallExpr* call);
 FnSymbol* instantiateSignature(FnSymbol* fn, SymbolMap& subs, CallExpr* call);
 void      instantiateBody(FnSymbol* fn);
@@ -65,16 +72,27 @@ void      instantiateBody(FnSymbol* fn);
 void resolveFormals(FnSymbol* fn);
 void resolveBlockStmt(BlockStmt* blockStmt);
 void resolveCall(CallExpr* call);
+void resolveCallAndCallee(CallExpr* call, bool allowUnresolved = false);
+void makeRefType(Type* type);
+FnSymbol* tryResolveCall(CallExpr* call);
 void resolveFns(FnSymbol* fn);
 
 FnSymbol* defaultWrap(FnSymbol* fn, Vec<ArgSymbol*>* actualFormals,  CallInfo* info);
 void reorderActuals(FnSymbol* fn, Vec<ArgSymbol*>* actualFormals,  CallInfo* info);
 void coerceActuals(FnSymbol* fn, CallInfo* info);
-FnSymbol* promotionWrap(FnSymbol* fn, CallInfo* info);
+FnSymbol* promotionWrap(FnSymbol* fn, CallInfo* info, bool buildFastFollowerChecks);
 
 FnSymbol* getAutoCopy(Type* t);
 FnSymbol* getAutoDestroy(Type* t);
+FnSymbol* getUnalias(Type* t);
+
 
 bool isPOD(Type* t);
+
+// tuples
+FnSymbol* createTupleSignature(FnSymbol* fn, SymbolMap& subs, CallExpr* call);
+void fixupTupleFunctions(FnSymbol* fn, FnSymbol* newFn, CallExpr* call);
+AggregateType* computeNonRefTuple(Type* t);
+AggregateType* computeTupleWithIntent(IntentTag intent, Type* t);
 
 #endif

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import optparse
 import os
-import os.path
 import platform
 import re
 import sys
@@ -9,24 +8,27 @@ import sys
 chplenv_dir = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(chplenv_dir))
 
-import utils
-from utils import memoize
+import overrides, utils
+from utils import error, memoize
 
 @memoize
 def get(flag='host'):
     if flag == 'host':
-        platform_val = os.environ.get('CHPL_HOST_PLATFORM')
+        platform_val = overrides.get('CHPL_HOST_PLATFORM')
     elif flag == 'target':
-        platform_val = os.environ.get('CHPL_TARGET_PLATFORM')
+        platform_val = overrides.get('CHPL_TARGET_PLATFORM')
         if not platform_val:
             platform_val = get('host')
     else:
-        raise ValueError("Invalid flag: '{0}'".format(flag))
+        raise error("Invalid flag: '{0}'".format(flag), ValueError)
 
     if not platform_val:
         # Check for cray platform. It is a cray platform if there is an CLEinfo
         # config file and it has a known network value in it.
         cle_info_file = os.path.abspath('/etc/opt/cray/release/CLEinfo')
+        if not os.path.exists(cle_info_file):
+            cle_info_file = os.path.abspath('/etc/opt/cray/release/cle-release')
+
         if os.path.exists(cle_info_file):
             with open(cle_info_file, 'r') as fp:
                 cle_info = fp.read()
@@ -66,6 +68,9 @@ def get(flag='host'):
 
     return platform_val
 
+@memoize
+def is_cross_compiling():
+    return get('host') != get('target')
 
 def _main():
     parser = optparse.OptionParser(usage='usage: %prog [--host|target])')

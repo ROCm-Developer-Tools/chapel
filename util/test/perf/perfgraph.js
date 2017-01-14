@@ -70,6 +70,14 @@ var branchInfo = [
                   { "release" : "1.12",
                     "releaseDate": "2015-10-01",
                     "branchDate" : "2015-09-24",
+                    "revision" : -1},
+                  { "release" : "1.13",
+                    "releaseDate": "2016-04-07",
+                    "branchDate" : "2016-03-29",
+                    "revision" : -1},
+                  { "release" : "1.14",
+                    "releaseDate": "2016-10-06",
+                    "branchDate" : "2016-09-27",
                     "revision" : -1}
                   ];
 
@@ -85,6 +93,8 @@ var rebootDates = [
     "2015-02-21",
     "2015-03-21",
 ];
+
+var indexMap = {};
 
 // NOTE: I wonder if it makes sense to calculate these rebootDates using
 //       something like Datejs. (thomasvandoren, 2015-04-08)
@@ -126,6 +136,67 @@ var defaultConfiguration = configurations[0];
 // multi-configs. Default to using it for 16 node xc in a hacky way
 var diffColorForEachConfig = pageTitle.indexOf("16 node XC") >= 0;
 
+var lastFilterVal = "";
+
+var filterBox = $("[name='filterBox']")[0];
+
+// If 'val' is true, disable typing into the filterBox and set the background
+// color to grey. If false, allow typing and set background to white.
+function disableFilterBox(val) {
+  $(filterBox).prop('disabled', val);
+  var color = "#FFFFFF";
+  if (val) {
+    color = "#e6e6e6";
+  }
+  filterBox.style.backgroundColor = color;
+}
+
+// Search the lower-case titles of graphs for any substring that matches the
+// current value of the filter box. Hide the HTML and checkbox of any graph
+// whose title does not match.
+function doFilter() {
+  lastFilterVal = filterBox.value;
+  searchVal = lastFilterVal.toLowerCase();
+  for (var i = 0; i < allGraphs.length; i++) {
+    var checkbox = document.getElementById('graph' + i);
+
+    // Not all graphs have corresponding checkboxes
+    var checkLabel = undefined;
+    if (checkbox) {
+      checkLabel = checkbox.parentElement;
+    }
+
+    var idx = indexMap[allGraphs[i].title];
+    if (allGraphs[i].title.toLowerCase().indexOf(searchVal) != -1) {
+      // Found
+      if (checkLabel) {
+        $(checkLabel).show();
+      }
+      if (idx >= 0 && idx < gs.length) {
+        showGraph(gs[idx]);
+      }
+    } else {
+      // Not found
+      if (checkLabel) {
+        $(checkLabel).hide();
+      }
+      if (idx >= 0 && idx < gs.length) {
+        hideGraph(gs[idx]);
+      }
+    }
+  }
+}
+
+function filterFn() {
+  if (filterBox.value != lastFilterVal) {
+    doFilter();
+  }
+}
+
+$(document).ready(function() {
+  $("[name='filterBox']").on("change keyup paste", filterFn);
+});
+
 // This is used to get the next div for the graph and legend. This is important
 // for graph expansion because we need to be able to add the expanded graphs
 // after the graph that is being expanded and there may be other graphs
@@ -159,36 +230,30 @@ function getNextDivs(afterDiv, afterLDiv) {
   lspacer.className = 'lspacer';
   legend.insertBefore(lspacer, beforeLDiv);
 
-  // create a log button and put it in the gspacer
-  var logToggle = document.createElement('input');
-  logToggle.type = 'button';
-  logToggle.className = 'toggle';
-  logToggle.value = 'log';
-  logToggle.style.visibility = 'hidden';
-  gspacer.appendChild(logToggle);
+  function addButtonHelper(buttonText) {
+    var button = document.createElement('input');
+    button.type = 'button';
+    button.className = 'toggle';
+    button.value = buttonText;
+    button.style.visibility = 'hidden';
+    gspacer.appendChild(button);
+    return button;
+  }
 
-  // create an annotation button and put it next to the log button in gspacer
-  var annToggle = document.createElement('input');
-  annToggle.type = 'button';
-  annToggle.className = 'toggle';
-  annToggle.value = 'annotations';
-  annToggle.style.visibility = 'hidden';
-  gspacer.appendChild(annToggle);
-
-  // create a screenshot button and put it next to the annotation button
-  var screenshotToggle = document.createElement('input');
-  screenshotToggle.type = 'button';
-  screenshotToggle.className = 'toggle';
-  screenshotToggle.value = 'screenshot';
-  screenshotToggle.style.visibility = 'hidden';
-  gspacer.appendChild(screenshotToggle);
+  var logToggle = addButtonHelper('log');
+  var annToggle = addButtonHelper('annotations');
+  var screenshotToggle = addButtonHelper('screenshot');
+  var closeGraphToggle = addButtonHelper('close');
 
   return {
     div: div,
-      ldiv: ldiv,
-      logToggle: logToggle,
-      annToggle: annToggle,
-      screenshotToggle: screenshotToggle
+    ldiv: ldiv,
+    logToggle: logToggle,
+    annToggle: annToggle,
+    screenshotToggle: screenshotToggle,
+    closeGraphToggle: closeGraphToggle,
+    gspacer: gspacer,
+    lspacer: lspacer
   }
 }
 
@@ -196,12 +261,6 @@ function getNextDivs(afterDiv, afterLDiv) {
 // Gen a new dygraph, if an existing graph is being expanded then expandInfo
 // will contain the expansion information, else it is null
 function genDygraph(graphInfo, graphDivs, graphData, graphLabels, expandInfo) {
-
-  var div = graphDivs.div;
-  var ldiv = graphDivs.ldiv;
-  var logToggle = graphDivs.logToggle;
-  var annToggle = graphDivs.annToggle;
-  var screenshotToggle = graphDivs.screenshotToggle;
 
   var startdate = getDateFromURL(OptionsEnum.STARTDATE, graphInfo.startdate);
   var enddate = getDateFromURL(OptionsEnum.ENDDATE, graphInfo.enddate);
@@ -239,7 +298,7 @@ function genDygraph(graphInfo, graphDivs, graphData, graphLabels, expandInfo) {
     // So it's easier to zoom in on the right side
     rightGap: 15,
     labels: graphLabels,
-    labelsDiv: ldiv,
+    labelsDiv: graphDivs.ldiv,
     labelsSeparateLines: true,
     dateWindow: [startdate, enddate],
     // sync graphs anytime we pan, zoom, or at initial draw
@@ -269,7 +328,7 @@ function genDygraph(graphInfo, graphDivs, graphData, graphLabels, expandInfo) {
   }
 
   // actually create the dygraph
-  var g = new Dygraph(div, graphData, graphOptions);
+  var g = new Dygraph(graphDivs.div, graphData, graphOptions);
   g.isReady = false;
   setupSeriesLocking(g);
 
@@ -282,10 +341,12 @@ function genDygraph(graphInfo, graphDivs, graphData, graphLabels, expandInfo) {
   g.ready(function() {
     g.divs = graphDivs;
     g.graphInfo = graphInfo;
+    g.removed = false;
 
-    setupLogToggle(g, graphInfo, logToggle);
-    setupAnnToggle(g, graphInfo, annToggle);
-    setupScreenshotToggle(g, graphInfo, screenshotToggle);
+    setupLogToggle(g, graphInfo, graphDivs.logToggle);
+    setupAnnToggle(g, graphInfo, graphDivs.annToggle);
+    setupScreenshotToggle(g, graphInfo, graphDivs.screenshotToggle);
+    setupCloseGraphToggle(g, graphInfo, graphDivs.closeGraphToggle);
 
     g.isReady = true;
 
@@ -294,6 +355,7 @@ function genDygraph(graphInfo, graphDivs, graphData, graphLabels, expandInfo) {
   });
 
   gs.push(g);
+  indexMap[g.graphInfo.title] = gs.length-1;
 }
 
 // Function to expand an existing graph. This leaves the original graph
@@ -309,6 +371,8 @@ function expandGraphs(graph, graphInfo, graphDivs, graphData, graphLabels) {
 
   // get a transposed version of the data, so we can easily grab series from it
   var transposedData = transpose(graphData);
+
+  disableFilterBox(true);
 
   // expand graphs in reverse order. Allows us to  keep expanding after the
   // original graph's div instead of updating the div to place this graph after
@@ -348,6 +412,8 @@ function expandGraphs(graph, graphInfo, graphDivs, graphData, graphLabels) {
     expandInfo = { colors: newColors }
     genDygraph(newInfo, newDivs, newData, newLabels, expandInfo);
   }
+
+  disableFilterBox(false);
 }
 
 
@@ -385,6 +451,45 @@ function setupScreenshotToggle(g, graphInfo, screenshotToggle) {
 
   screenshotToggle.onclick = function() {
     captureScreenshot(g, graphInfo);
+  }
+}
+
+// g: A DyGraph object
+function hideGraph(g) {
+  $(g.maindiv_).hide();
+  $(g.divs.ldiv).hide();
+  $(g.divs.gspacer).hide();
+  $(g.divs.lspacer).hide();
+}
+
+function showGraph(g) {
+  if (g.removed) {
+    return;
+  }
+  $(g.maindiv_).show();
+  $(g.divs.ldiv).show();
+  $(g.divs.gspacer).show();
+  $(g.divs.lspacer).show();
+}
+
+// Setup the close graph button
+function setupCloseGraphToggle(g, graphInfo, closeGraphToggle) {
+  closeGraphToggle.style.visibility = 'visible';
+
+  closeGraphToggle.onclick = function() {
+    var checkBox = getCheckboxForGraph(g);
+    if (typeof checkBox !== "undefined") {
+      checkBox.checked = false;
+    }
+    hideGraph(g);
+    setURLFromGraphs(normalizeForURL(findSelectedSuite()));
+    // set the dropdown box selection
+    document.getElementsByName('jumpmenu')[0].value = findSelectedSuite();
+
+    // TODO: re-draw time doesn't seem to improve much even though we don't
+    // apply fns to remove graphs. Do we need to do something else?
+    // Should we set the drawCallback to an empty function?
+    g.removed = true;
   }
 }
 
@@ -811,6 +916,7 @@ function perfGraphInit() {
   // generate the graph list
   var graphlist = document.getElementById('graphlist');
   for (var i = 0; i < allGraphs.length; i++) {
+    indexMap[allGraphs[i].title] = -1;
     var elem = document.createElement('div');
     elem.className = 'graph';
     elem.innerHTML = '<input id="graph' + i + '" type="checkbox">' + allGraphs[i].title;
@@ -821,6 +927,8 @@ function perfGraphInit() {
 
   setGraphsFromURL();
   displaySelectedGraphs();
+
+  disableFilterBox(false);
 }
 
 
@@ -999,7 +1107,6 @@ function setGraphsFromURL() {
   }
 }
 
-
 // Update the query string based on the current set of displayed graphs
 function setURLFromGraphs(suite) {
   suite = normalizeForURL(suite);
@@ -1063,7 +1170,12 @@ function unselectAllGraphs() {
 function checkAll(val) {
   for (var i = 0; i < allGraphs.length; i++) {
     var elem = document.getElementById('graph' + i);
-    elem.checked = val;
+    // Only tick the checkboxes that are visible. This allows users to
+    // filter for a string, hit 'select all', and only have that subset
+    // selected.
+    if ($(elem.parentElement).is(":visible")) {
+      elem.checked = val;
+    }
   }
 }
 
@@ -1090,6 +1202,7 @@ function getSuites() {
 
 
 function selectSuite(suite) {
+  filterBox.value = "";
   for (var i = 0; i < allGraphs.length; i++) {
     var elem = document.getElementById('graph' + i);
     if (allGraphs[i].suites.indexOf(suite) >= 0) {
@@ -1110,16 +1223,30 @@ function displaySelectedGraphs() {
 
   // clean up all the dygraphs
   while (gs.length > 0) {
-    gs.pop().destroy();
+    var temp = gs.pop();
+    indexMap = {};
+    temp.destroy();
   }
+
+  var jsons = [];
+
+
+  // Disable filtering until the jsons are done
+  disableFilterBox(true);
 
   // generate the dygraph(s) for the currently selected graphs
   for (var i = 0; i < allGraphs.length; i++) {
     var checkbox = document.getElementById('graph' + i);
     if (checkbox.checked) {
-      getDataAndGenGraph(allGraphs[i]);
+      jsons.push(getDataAndGenGraph(allGraphs[i]));
     }
   }
+
+  $.when.apply($, jsons).done(function() {
+      console.log("done with all json");
+      doFilter();
+      disableFilterBox(false);
+  });
 
   // update the url for the displayed graphs
   setURLFromGraphs(normalizeForURL(findSelectedSuite()));
@@ -1161,6 +1288,8 @@ function getDataAndGenGraph(graphInfo) {
       var err = textStatus + ', ' + error;
       console.log( 'Request for ' + dataFile + ' Failed: ' + err );
     });
+
+  return json;
 }
 
 
@@ -1293,7 +1422,9 @@ function applyFnToAllGraphs(fnToApply, blockRedraw) {
   globalBlockRedraw = blockRedraw;
   var gsLength = gs.length;
   for (var i = 0; i < gsLength; i++) {
-    fnToApply(gs[i]);
+    if (!gs[i].removed) {
+      fnToApply(gs[i]);
+    }
   }
   globalBlockRedraw = oldGlobalBlockRedraw;
 }
@@ -1411,6 +1542,15 @@ function normalizeForURL(str) {
   return str.toLowerCase().replace(nonAlphaNumRegex, '');
 }
 
+
+// gets the checkbox associated with a particular graph
+function getCheckboxForGraph(g) {
+  for (var i = 0; i < allGraphs.length; i++) {
+    if (allGraphs[i].title == g.graphInfo.title) {
+      return document.getElementById('graph' + i);
+    }
+  }
+}
 
 
 ////////////////////////////

@@ -28,7 +28,7 @@ module Graph500_main
 
     /* Quartiles */
     
-    //QuickSort (data);
+    //quickSort (data);
     res[0] = data[0];
     t = (n+1) / 4.0;
     k = t:int;
@@ -144,7 +144,7 @@ module Graph500_main
         }
       } while (0);
     }
-    QuickSort(tm);
+    quickSort(tm);
 
 
     forall k in 0..nbfs-1 do
@@ -172,7 +172,7 @@ module Graph500_main
   if (PRINT_LOCALE_INFORMATION) {
     coforall loc in Locales do on loc {
       writeln("Locale ID: ", loc.id, " of ", numLocales);
-      writeln("Locale ID: ", loc.id, " Number of cores " , loc.numCores);
+      writeln("Locale ID: ", loc.id, " Number of cores " , loc.numPUs());
       writeln("Locale ID: ", loc.id, " Max task parallelism " , loc.maxTaskPar);
     }
   }
@@ -225,7 +225,7 @@ module Graph500_main
 
   // Generate a list of valid starting roots
   // Valid starting roots have at least one edge to another node
-  var Rand_Gen = new RandomStream (seed = 9);
+  var Rand_Gen = new NPBRandomStream (seed = 9);
   var Unif_Random: [1..NUM_CANDIDATES] real;
   Rand_Gen.fillRandom ( Unif_Random );
   var runID: int = 1;

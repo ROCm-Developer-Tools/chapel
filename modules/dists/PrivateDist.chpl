@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -47,7 +47,7 @@ corresponding to that locale to that locale's number of cores.
 
     var A: [PrivateSpace] int;
     forall a in A do
-      a = here.numCores;
+      a = here.numPUs();
 
 
 **Data-Parallel Iteration**
@@ -68,19 +68,25 @@ between locales.
 */
 class Private: BaseDist {
   proc dsiNewRectangularDom(param rank: int, type idxType, param stridable: bool) {
-    return new PrivateDom(rank=rank, idxType=idxType, stridable=stridable);
+    return new PrivateDom(rank=rank, idxType=idxType, stridable=stridable, dist=this);
   }
 
-  proc writeThis(x: Writer) {
+  proc writeThis(x) {
     x.writeln("Private Distribution");
   }
+  // acts like a singleton
+  proc dsiClone() return this;
+
+  proc trackDomains() param return false;
+  proc dsiTrackDomains()    return false;
+
+  proc singleton() param return true;
 }
 
 class PrivateDom: BaseRectangularDom {
   param rank: int;
   type idxType;
   param stridable: bool;
-  var pid: int = -1;
   var dist: Private;
 
   iter these() { for i in 0..numLocales-1 do yield i; }
@@ -98,7 +104,7 @@ class PrivateDom: BaseRectangularDom {
       yield i;
   }
 
-  proc dsiSerialWrite(x: Writer) { x.write("Private Domain"); }
+  proc dsiSerialWrite(x) { x.write("Private Domain"); }
 
   proc dsiBuildArray(type eltType)
     return new PrivateArr(eltType=eltType, rank=rank, idxType=idxType, stridable=stridable, dom=this);
@@ -107,7 +113,7 @@ class PrivateDom: BaseRectangularDom {
   proc dsiLow return 0;
   proc dsiHigh return numLocales-1;
   proc dsiStride return 0;
-  proc dsiSetIndices(x: domain) { compilerError("cannot reassign private domain"); }
+  proc dsiSetIndices(x: domain) { halt("cannot reassign private domain"); }
   proc dsiGetIndices() { return {0..numLocales-1}; }
 
   proc dsiRequiresPrivatization() param return true;
@@ -124,6 +130,7 @@ class PrivateDom: BaseRectangularDom {
   proc dsiReprivatize(other, reprivatizeData) { }
 
   proc dsiMember(i) return 0 <= i && i <= numLocales-1;
+  proc dsiMyDist() return dist;
 }
 
 class PrivateArr: BaseArr {
@@ -133,7 +140,6 @@ class PrivateArr: BaseArr {
   param stridable: bool;
   var dom: PrivateDom(rank, idxType, stridable);
   var data: eltType;
-  var pid: int = -1;
 }
 
 proc PrivateArr.dsiGetBaseDom() return dom;
@@ -185,7 +191,7 @@ iter PrivateArr.these(param tag: iterKind, followThis) ref where tag == iterKind
     yield dsiAccess(i);
 }
 
-proc PrivateArr.dsiSerialWrite(x: Writer) {
+proc PrivateArr.dsiSerialWrite(x) {
   var first: bool = true;
   for i in dom {
     if first then first = !first; else write(" ");

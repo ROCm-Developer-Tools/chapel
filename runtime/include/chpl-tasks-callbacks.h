@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -21,6 +21,10 @@
 #define _chpl_tasks_callbacks_h_
 
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 //
 // Tasking callback support.
@@ -138,7 +142,8 @@ typedef struct {
 
     struct chpl_task_info_full {
                                 // chpl_task_cb_info_kind_full:
-      const char* filename;     //   source file of task definition
+      chpl_fn_int_t fid;        //   number of function to call
+      int32_t filename;         //   source file of task definition
       int lineno;               //   source line of task definition
       uint64_t id;              //   unique ID, within locale
       int is_executeOn;         //   !=0: task is for executeOn body
@@ -157,5 +162,9 @@ int chpl_task_install_callback(chpl_task_cb_event_kind_t,
                                chpl_task_cb_fn_t);
 int chpl_task_uninstall_callback(chpl_task_cb_event_kind_t,
                                  chpl_task_cb_fn_t);
+
+#ifdef __cplusplus
+} // end extern "C"
+#endif
 
 #endif // _chpl_tasks_callbacks_h_

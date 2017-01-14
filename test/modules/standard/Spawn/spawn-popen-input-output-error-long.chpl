@@ -6,7 +6,7 @@ use Spawn;
   assert(comp.exit_status == 0);
 }
 
-var sub = spawn(["./stdout-stderr", "-nl", "1"], stdin=PIPE, stdout=PIPE, stderr=PIPE);
+var sub = spawn(["./stdout-stderr", "-nl", "1"], stdin=BUFFERED_PIPE, stdout=PIPE, stderr=PIPE);
 
 config const n = 10000;
 for i in 1..n {
@@ -18,14 +18,16 @@ sub.communicate();
 var i = 1;
 var x:int;
 while sub.stdout.read(x) {
-  //writeln("stdout line: ", x);
+  if x != i then
+    writeln("got stdout ", x, " expected ", i);
   assert(x == i);
   i += 2;
 }
 
 i = 2;
 while sub.stderr.read(x) {
-  //writeln("stderr line: ", x);
+  if x != i then
+    writeln("got stderr ", x, " expected ", i);
   assert(x == i);
   i += 2;
 }
@@ -33,6 +35,8 @@ while sub.stderr.read(x) {
 
 assert(sub.running == false);
 assert(sub.exit_status == 0);
+
+sub.close();
 
 writeln("OK");
 

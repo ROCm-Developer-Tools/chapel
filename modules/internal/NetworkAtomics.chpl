@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -181,7 +181,7 @@ module NetworkAtomics {
       _v = value;
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }
@@ -372,7 +372,7 @@ module NetworkAtomics {
       _v = value;
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }
@@ -563,7 +563,7 @@ module NetworkAtomics {
       _v = value;
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }
@@ -754,7 +754,7 @@ module NetworkAtomics {
       _v = value;
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }
@@ -789,7 +789,7 @@ module NetworkAtomics {
 
   // bool, implemented with int(64)
   pragma "atomic type"
-  record ratomicflag {
+  record ratomicbool {
     var _v: int(64);
     inline proc read(order:memory_order = memory_order_seq_cst):bool {
       var ret: int(64);
@@ -845,34 +845,34 @@ inline proc compareExchangeWeak(expected:bool, desired:bool,
       _v = value:int(64);
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }
 
-  inline proc =(ref a:ratomicflag, b:ratomicflag) {
+  inline proc =(ref a:ratomicbool, b:ratomicbool) {
     a.write(b.read());
   }
-  inline proc =(ref a:ratomicflag, b) {
+  inline proc =(ref a:ratomicbool, b) {
     compilerError("Cannot directly assign network atomic variables");
   }
-  inline proc +(a:ratomicflag, b) {
+  inline proc +(a:ratomicbool, b) {
     compilerError("Cannot directly add network atomic variables");
     return a;
   }
-  inline proc -(a:ratomicflag, b) {
+  inline proc -(a:ratomicbool, b) {
     compilerError("Cannot directly subtract network atomic variables");
     return a;
   }
-  inline proc *(a:ratomicflag, b) {
+  inline proc *(a:ratomicbool, b) {
     compilerError("Cannot directly multiply network atomic variables");
     return a;
   }
-  inline proc /(a:ratomicflag, b) {
+  inline proc /(a:ratomicbool, b) {
     compilerError("Cannot directly divide network atomic variables");
     return a;
   }
-  inline proc %(a:ratomicflag, b) {
+  inline proc %(a:ratomicbool, b) {
     compilerError("Cannot directly divide network atomic variables");
     return a;
   }
@@ -1003,7 +1003,7 @@ inline proc compareExchangeWeak(expected:bool, desired:bool,
       _v = value;
     }
 
-    proc writeThis(x: Writer) {
+    proc writeThis(x) {
       x.write(read());
     }
   }

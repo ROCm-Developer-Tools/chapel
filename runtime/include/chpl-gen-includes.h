@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -38,9 +38,9 @@
 // one argument.
 //
 static inline
-void chpl_ftable_call(chpl_fn_int_t fid, void* arg)
+void chpl_ftable_call(chpl_fn_int_t fid, chpl_comm_on_bundle_t* bundle)
 {
-  (*chpl_ftable[fid])(arg);
+  (*chpl_ftable[fid])(bundle);
 }
 
 
@@ -61,20 +61,20 @@ chpl_localeID_t id_rt2pub(c_localeid_t i)
 }
 
 extern void
-chpl_getSublocaleID (int32_t *sublocaleID, int64_t _ln, c_string _fn);
+chpl_getSublocaleID (int32_t *sublocaleID, int64_t _ln, int32_t _fn);
 static inline
 int32_t chpl_gen_getSublocaleID(void)
 {
   int32_t sublocaleID;
-  chpl_getSublocaleID(&sublocaleID, 0, NULL);
+  chpl_getSublocaleID(&sublocaleID, 0, 0);
   return sublocaleID;
 }
-extern void chpl_getLocaleID (chpl_localeID_t* localeID,  int64_t _ln, c_string _fn);
+extern void chpl_getLocaleID (chpl_localeID_t* localeID,  int64_t _ln, int32_t _fn);
 static inline
 chpl_localeID_t chpl_gen_getLocaleID(void)
 {
   chpl_localeID_t localeID;
-  chpl_getLocaleID(&localeID, 0, NULL);
+  chpl_getLocaleID(&localeID, 0, 0);
   return localeID;
 }
 

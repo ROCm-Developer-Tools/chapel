@@ -5,13 +5,13 @@ import sys
 chplenv_dir = os.path.dirname(__file__)
 sys.path.insert(0, os.path.abspath(chplenv_dir))
 
-import chpl_arch, chpl_comm, chpl_platform
+import chpl_arch, chpl_comm, chpl_platform, overrides
 from utils import memoize
 
 
 @memoize
 def get():
-    substrate_val = os.environ.get('CHPL_COMM_SUBSTRATE')
+    substrate_val = overrides.get('CHPL_COMM_SUBSTRATE')
     if not substrate_val:
         comm_val = chpl_comm.get()
         platform_val = chpl_platform.get('target')
@@ -25,9 +25,6 @@ def get():
             elif platform_val == 'cray-xk':
                 substrate_val = 'gemini'
             elif platform_val == 'cray-xc':
-                if arch_val == 'knc':
-                    substrate_val = 'mpi'
-                else:
                     substrate_val = 'aries'
             elif platform_val == 'marenostrum':
                 substrate_val = 'udp'

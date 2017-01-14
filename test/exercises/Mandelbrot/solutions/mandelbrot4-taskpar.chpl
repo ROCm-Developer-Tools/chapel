@@ -17,7 +17,7 @@ config const maxSteps = 50;
 // 
 // The number of tasks we should spawn.
 //
-config const numTasks = here.numCores; // Cores on locale #0.
+config const numTasks = here.maxTaskPar;
 
 
 proc main() {
@@ -69,7 +69,7 @@ proc blockCompute(taskId, taskCount, Image: [?D] int) {
 
 //
 // This function helps block a range 'r' between 'count' tasks.
-// It returns the first index for the given task in the partiiton.
+// It returns the first index for the given task in the partition.
 // The end of a given partition is the start of the next partition minus one.
 //
 proc blockbound(id, count, r) {

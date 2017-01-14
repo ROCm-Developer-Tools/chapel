@@ -26,7 +26,7 @@ installation). The dependencies for these packages are listed in the next
 section.
 
 The primary packages required by `start_test` are: `subprocess32`,
-`argparse`, and `virtualenv` (for installation).
+`argparse`, `PyYAML`, and `virtualenv` (for installation).
 
 ### Sphinx
 
@@ -68,6 +68,14 @@ Command line argument parsing library, backported from Python 2.7.
 
 **Website**: https://pypi.python.org/pypi/argparse
 
+### PyYAML
+
+A YAML parser and emitter for Python
+
+**License**: MIT
+
+**Website**: https://pypi.python.org/pypi/PyYAML
+
 ### subprocess32
 
 Enhanced version of the subprocess standard library module, backported from
@@ -82,7 +90,7 @@ Python 3.
 Virtual Python Environment builder
 
 Used to create isolated environment to install other python packages, without
-interfering with system ppython packages.
+interfering with system python packages.
 
 **License**: Python Software Foundation License
 
@@ -129,7 +137,7 @@ Required by Sphinx.
 
 Python Documentation Utilities
 
-Required by Sphinx.
+Required by Sphinx, and man page generation.
 
 **License**: public domain, Python, 2-Clause BSD, GPL 3 (see COPYING.txt, also found at http://sourceforge.net/p/docutils/code/HEAD/tree/trunk/docutils/COPYING.txt)
 

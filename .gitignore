@@ -22,12 +22,14 @@ cscope.*
 /SVNLOG
 /.SVNLOG-revnum
 /bin
+/build
 /lib
 /tar
 
 # Compiler ignores.
 /compiler/BROWSE
 /compiler/chpl
+/compiler/codegen/reservedSymbolNames.h
 /compiler/ifa/prim_data.cpp
 /compiler/ifa/prim_data.h
 /compiler/ifa/make_prims/make_prims
@@ -36,13 +38,12 @@ cscope.*
 /compiler/main/COPYRIGHT
 /compiler/main/LICENSE
 /compiler/parser/bison-chapel.output
-/compiler/passes/reservedSymbolNames.h
 
 # Doc ignores.
 /doc/**/*.aux
 /doc/**/*.log
-/doc/chips/html
-/doc/chips/tmp
+/doc/developer/chips/html
+/doc/developer/chips/tmp
 /doc/developer/compilerOverview/compiler.pdf
 /doc/developer/compilerOverview/compiler.dvi
 /doc/developer/compilerOverview/compiler.toc
@@ -56,18 +57,6 @@ cscope.*
 /doc/tutorial/workbooks/*.bbl
 /doc/tutorial/workbooks/*.blg
 /doc/sphinx/build
-/doc/sphinx/source/*.rst
-/doc/sphinx/source/platforms/*.rst
-/doc/sphinx/source/technotes/*.rst
-/doc/sphinx/source/usingchapel/*.rst
-/doc/sphinx/source/modules/standard
-/doc/sphinx/source/modules/dists
-/doc/sphinx/source/modules/layouts
-/doc/sphinx/source/modules/internal
-!/doc/sphinx/source/index.rst
-!/doc/sphinx/source/technotes/index.rst
-!/doc/sphinx/source/platforms/index.rst
-!/doc/sphinx/source/usingchapel/index.rst
 
 
 # Make ignores.
@@ -76,6 +65,7 @@ cscope.*
 
 # Man ignores.
 /man/man1/
+/man/man3/
 
 # Modules ignores.
 /modules/docs
@@ -123,6 +113,7 @@ cscope.*
 /test/chpldoc/compflags/folder/my-docs
 /test/chpldoc/compflags/folder/my_docs
 /test/chpldoc/compflags/folder/save-sphinx/my-sphinx
+/test/chpldoc/compflags/folder/save-sphinx/deep-sphinx
 
 /test/chplvis/TREEvis
 /test/chplvis/benchmarks-hpcc/FFTvis
@@ -130,8 +121,6 @@ cscope.*
 /test/chplvis/benchmarks-hpcc/RAvis
 /test/chplvis/overhead/OH
 /test/chplvis/overhead/OH2
-
-/test/compflags/albrecht/chplenv/chplenv.good
 
 /test/compflags/bradc/savecDirExists
 /test/compflags/bradc/copyright/declint.good
@@ -271,7 +260,6 @@ cscope.*
 /test/memory/shannon/jacobi.log
 /test/memory/shannon/configVarFile.log
 
-/test/modules/gbt/printchplenv.good
 /test/modules/standard/FileSystem/fsouza/chdir/destination
 /test/modules/standard/FileSystem/fsouza/chown/file.txt
 /test/modules/standard/FileSystem/fsouza/isdir/my_dir
@@ -316,7 +304,7 @@ cscope.*
 /test/modules/standard/FileSystem/lydia/symlink/bar.txt
 /test/modules/standard/Path/lydia/realpath/blahblahblah.txt
 /test/modules/standard/Time/stonea/getCurrentDayOfWeek.good
-/test/modules/standard/machine/numCores.good
+/test/modules/standard/machine/numPUs.good
 /test/modules/standard/memory/countMemory/countMemory.*.good
 
 /test/multilocale/deitz/needMultiLocales/test_remote_file_read_class.txt
@@ -378,14 +366,9 @@ cscope.*
 /test/runtime/sungeun/chpl-env-gen.h
 /test/runtime/sungeun/chpl-env-gen.test.gen.c
 
-test/separate_compilation/jturner/libclassextern2.so.a
-test/separate_compilation/jturner/libfcfunc.so.a
-test/separate_compilation/jturner/libiterator.so.a
-test/separate_compilation/jturner/libmethodextern2.so.a
-test/separate_compilation/jturner/libsimplefloat.so.a
-test/separate_compilation/jturner/libsubclass.so.a
-
 /test/studies/590o/alexco/*.txt
+/test/studies/IMSuite/leader_elect_lcr/outputleader_elect_lcr_*.txt
+/test/studies/IMSuite/vertexColor/outputvertexColoring*.txt
 /test/studies/amr/**/_output
 /test/studies/amr/**/*.tmp.save
 /test/studies/dijkstra/RtsGraph_out.txt

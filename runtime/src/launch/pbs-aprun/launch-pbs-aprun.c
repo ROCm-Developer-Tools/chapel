@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -131,7 +131,7 @@ static char* genQsubOptions(char* genFilename, char* projectString, qsubVersion 
     fprintf(qsubScript, "#PBS -N Chpl-%.10s\n", genFilename);
   } else {
     optionString = chpl_mem_allocMany(maxOptLength, sizeof(char),
-                                      CHPL_RT_MD_COMMAND_BUFFER, -1, "");
+                                      CHPL_RT_MD_COMMAND_BUFFER, -1, 0);
     length += snprintf(optionString + length, maxOptLength - length,
                        "-z -V -I -N Chpl-%.10s", genFilename);
   }
@@ -352,16 +352,24 @@ static char** chpl_launch_create_argv(int argc, char* argv[],
     fprintf(stdout, "QSUB script written to '%s'\n", qsubOptions);
     return NULL;
   } else {
-  fprintf(expectFile, "\\n\"\n");
+    fprintf(expectFile, "\\n\"\n");
     fprintf(expectFile, "interact -o -ex \"$chpl_prompt\" {return}\n");
-    fprintf(expectFile, "send \"echo CHPL_EXIT_CODE:\\$?\\n\"\n");
+    fprintf(expectFile, "send \"set retval=$?\\n\"\n");
+    fprintf(expectFile, "send \"\\[ \\$retval = 0 \\] && echo \\\"JOB SUCCEEDED (done)\\\" || echo \\\"JOB FAILED: \\$retval (done)\\\"\\n\"\n");
+    // Being a bit excessive with the expects here
+    fprintf(expectFile, "expect -ex \"(done)\" {}\n");
+    fprintf(expectFile, "expect -ex \"(done)\" {}\n");
     fprintf(expectFile, "expect {\n");
-    fprintf(expectFile, "  -ex \"CHPL_EXIT_CODE:0\" {set exitval \"0\"}\n");
-    fprintf(expectFile, "  -re \"CHPL_EXIT_CODE:.\" {set exitval \"1\"}\n");
+    fprintf(expectFile, "    -ex \"JOB SUCCEEDED\" { set exitval \"0\" }\n");
+    fprintf(expectFile, "    -re \"JOB FAILED:.\" { set exitval \"1\" }\n");
     fprintf(expectFile, "}\n");
     fprintf(expectFile, "expect -re \"\\n$chpl_prompt\" {}\n");
+
     fprintf(expectFile, "send \"exit\\n\"\n"); // exit tcsh
+
     fprintf(expectFile, "send \"exit\\n\"\n"); // exit qsub
+    fprintf(expectFile, "expect -re \"qsub:.*completed\" {}\n"); // flush buffers for good measure
+
     fprintf(expectFile, "close\n");
     if (verbosity > 1) {
       fprintf(expectFile, "send_user \"\\n\\n\"\n");
@@ -414,7 +422,7 @@ int chpl_launch(int argc, char* argv[], int32_t numLocales) {
 
 
 int chpl_launch_handle_arg(int argc, char* argv[], int argNum,
-                           int32_t lineno, c_string filename) {
+                           int32_t lineno, int32_t filename) {
   int numArgs = 0;
   if (!strcmp(argv[argNum], CHPL_WALLTIME_FLAG)) {
     walltime = argv[argNum+1];

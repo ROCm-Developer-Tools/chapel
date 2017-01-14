@@ -31,7 +31,10 @@ function removePattern() {
     echo "Bad call to removePattern."
     exit 1
   fi
-  sed "/$1/ { N; d; }" $2 > $2.tmp
+  # remove the line that contains the pattern (assumed to be part of a
+  # symbol declaration) and any documentation comments associated with
+  # it until the next symbol declaration in the file.
+  awk "/$1/{flag=0;next}/\.\. .*:: /{flag=1}flag" $2 > $2.tmp
   mv $2.tmp $2
 }
 
@@ -95,11 +98,20 @@ function removePrefixVariables() {
   removePattern "var chpl_" $1
 }
 
+# remove Usage information
+function removeUsage() {
+  if [ $# -ne 1 ] || [ ! -f $1 ]; then
+    echo "Bad call to removeUsage."
+    exit 1;
+  fi
 
+  sed -e '/\*\*Usage\*\*/ { N; N; N; N; N; N; d; }' $1 > $1.tmp
+  mv $1.tmp $1
+}
 
-###############################################################################
-## Modules to fixup listed in the same order as INTERNAL_MODULES_TO_DOCUMENT ##
-###############################################################################
+#############################################################
+## Modules to fixup listed in INTERNAL_MODULES_TO_DOCUMENT ##
+#############################################################
 
 ## ChapelTuple ##
 
@@ -108,12 +120,13 @@ removePrefixFunctions $file
 removePattern "param size" $file
 removePattern "record:: _tuple" $file
 fixTitle "Tuples" $file
-
+removeUsage $file
 
 ## ChapelIO ##
 
 file="./ChapelIO.rst"
 fixTitle "IO Support" $file
+removeUsage $file
 
 ## End ChapelIO ##
 
@@ -123,6 +136,7 @@ fixTitle "IO Support" $file
 file="./ChapelIteratorSupport.rst"
 removePrefixFunctions $file
 fixTitle "Vectorizing Iterator" $file
+removeUsage $file
 
 
 ## End ChapelIteratorSupport ##
@@ -134,6 +148,7 @@ file="./ChapelLocale.rst"
 fixTitle "Locales" $file
 replace "LocaleSpace = chpl__buildDomainExpr(0..numLocales-1)" \
         "LocaleSpace = {0..numLocales-1}" $file
+removeUsage $file
 
 
 ## End ChapelLocale ##
@@ -146,6 +161,7 @@ replace "_syncvar" "sync" $file
 replace "_singlevar" "single" $file
 removePrefixFunctions $file
 fixTitle "Synchronization Variables" $file
+removeUsage $file
 
 ## End ChapelSyncvar ##
 
@@ -160,6 +176,7 @@ removePrefixFunctions $file
 removePrefixVariables $file
 
 fixTitle "Domain and Array Operations" $file
+removeUsage $file
 
 ## End ChapelArray ##
 
@@ -175,11 +192,12 @@ removePrefixFunctions $file
 
 replace "record" "type" $file
 
-replace "atomicflag" "atomic \(bool\)" $file
+replace "atomicbool" "atomic \(bool\)" $file
 replace "atomic_int64" "atomic \(T\)" $file
 replace "int(64)" "T" $file
 
 fixTitle "Atomics" $file
+removeUsage $file
 
 ## End Atomics ##
 
@@ -189,6 +207,7 @@ file="./ChapelRange.rst"
 
 removePrefixFunctions $file
 fixTitle "Ranges" $file
+removeUsage $file
 
 # End ChapelRange ##
 
@@ -198,12 +217,17 @@ file="./ChapelComplex_forDocs.rst"
 
 removePrefixFunctions $file
 fixTitle "Complex" $file
+removeUsage $file
 
 # End ChapelComplex_forDocs ##
 
+## String ##
 
+file="./String.rst"
+fixTitle "Strings" $file
+removeUsage $file
 
-
+## End of String ##
 
 ## UtilMisc_forDocs ##
 
@@ -211,5 +235,15 @@ file="./UtilMisc_forDocs.rst"
 
 removePrefixFunctions $file
 fixTitle "Misc Functions" $file
+removeUsage $file
 
 # End UtilMisc_forDocs ##
+
+## ChapelEnv ##
+
+file="./ChapelEnv.rst"
+fixTitle "Chapel Environment Variables" $file
+replace " = AppendExpr.Call09" "" $file
+removeUsage $file
+
+## End of ChapelEnv##

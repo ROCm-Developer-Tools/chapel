@@ -1,3 +1,0 @@
-# This test takes too long if --fast is not used so only run it for
-# performance testing
-CHPL_TEST_PERF != on

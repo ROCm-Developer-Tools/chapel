@@ -18,11 +18,11 @@ clean: FORCE
 	cd explicit && $(MAKE) clean
 
 stencil: FORCE
-stencil: CHPL_FLAGS += -suseStencilDist=true -sdefaultDoRADOpt=false
+stencil: CHPL_FLAGS += -suseStencilDist=true
 stencil: $(TARGETS)
 
 miniMD: miniMD.chpl helpers/*.chpl
-	$(CHPL) -o $@ $(CHPL_FLAGS) -M helpers $<
+	+$(CHPL) -o $@ $(CHPL_FLAGS) -M helpers $<
 
 explicitMiniMD: FORCE
 	cd explicit && $(MAKE)

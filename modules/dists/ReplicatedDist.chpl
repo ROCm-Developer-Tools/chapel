@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -181,9 +181,6 @@ class ReplicatedDist : BaseDist {
   const targetLocales;
   // "IDs" are indices into targetLocales
   proc targetIds return targetLocales.domain;
-
-  // privatized object id
-  var pid: int = -1;
 }
 
 
@@ -216,6 +213,10 @@ proc ReplicatedDist.dsiEqualDMaps(that: ReplicatedDist(?)) {
 
 proc ReplicatedDist.dsiEqualDMaps(that) param {
   return false;
+}
+
+proc ReplicatedDist.dsiDestroyDist() {
+  // no action necessary here
 }
 
 // privatization
@@ -273,9 +274,6 @@ class ReplicatedDom : BaseRectangularDom {
   var localDoms: [dist.targetIds] LocReplicatedDom(rank, idxType, stridable);
 
   proc numReplicands return localDoms.numElements;
-
-  // privatized object id
-  var pid: int = -1;
 }
 
 //
@@ -356,7 +354,7 @@ proc ReplicatedDist.dsiNewRectangularDom(param rank: int,
   : ReplicatedDom(rank, idxType, stridable, this.type)
 {
   if traceReplicatedDist then writeln("ReplicatedDist.dsiNewRectangularDom ",
-                                      (rank, typeToString(idxType), stridable));
+                                      (rank, idxType:string, stridable));
 
   // Have to call the default constructor because we need to initialize 'dist'
   // prior to initializing 'localDoms' (which needs a non-nil value for 'dist'.
@@ -458,7 +456,7 @@ iter ReplicatedDom.these(param tag: iterKind, followThis) where tag == iterKind.
 }
 
 /* Write the domain out to the given Writer serially. */
-proc ReplicatedDom.dsiSerialWrite(f: Writer): void {
+proc ReplicatedDom.dsiSerialWrite(f): void {
   // redirect to DefaultRectangular
   redirectee()._value.dsiSerialWrite(f);
   if printReplicatedLocales {
@@ -496,6 +494,12 @@ proc ReplicatedDom.dsiMember(indexx)
 proc ReplicatedDom.dsiIndexOrder(indexx)
   return redirectee().dsiIndexOrder(indexx);
 
+proc ReplicatedDom.dsiDestroyDom() {
+  coforall localeIdx in dist.targetIds {
+    on dist.targetLocales(localeIdx) do
+      delete localDoms(localeIdx);
+  }
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // arrays
@@ -513,9 +517,6 @@ class ReplicatedArr : BaseArr {
   // NOTE: 'dom' must be initialized prior to initializing 'localArrs'
   var localArrs: [dom.dist.targetIds]
               LocReplicatedArr(eltType, dom.rank, dom.idxType, dom.stridable);
-
-  // privatized object id
-  var pid: int = -1;
 }
 
 //
@@ -583,12 +584,12 @@ proc ReplicatedDom.dsiBuildArray(type eltType)
 }
 
 // Return the array element corresponding to the index - on the current locale
-proc ReplicatedArr.dsiAccess(indexx) ref: eltType {
+proc ReplicatedArr.dsiAccess(indexx) ref {
   return localArrs[here.id].arrLocalRep[indexx];
 }
 
 // Write the array out to the given Writer serially.
-proc ReplicatedArr.dsiSerialWrite(f: Writer): void {
+proc ReplicatedArr.dsiSerialWrite(f): void {
   var neednl = false;
   for locArr in localArrs {
 //  on locArr {  // may cause deadlock
@@ -597,6 +598,13 @@ proc ReplicatedArr.dsiSerialWrite(f: Writer): void {
         f.write(locArr.locale, ":\n");
       locArr.arrLocalRep._value.dsiSerialWrite(f);
 //  }
+  }
+}
+
+proc ReplicatedArr.dsiDestroyArr(isslice:bool) {
+  coforall localeIdx in dom.dist.targetIds {
+    on dom.dist.targetLocales(localeIdx) do
+      delete localArrs(localeIdx);
   }
 }
 

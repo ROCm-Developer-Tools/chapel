@@ -6,7 +6,7 @@ use Spawn;
   assert(comp.exit_status == 0);
 }
 
-var sub = spawn(["./stdout-stderr", "-nl", "1"], stdin=PIPE, stdout=PIPE, stderr=PIPE);
+var sub = spawn(["./stdout-stderr", "-nl", "1"], stdin=BUFFERED_PIPE, stdout=PIPE, stderr=PIPE);
 
 sub.stdin.writeln("Hello");
 sub.stdin.writeln("Everybody");
@@ -23,8 +23,9 @@ while sub.stderr.readline(line) {
   write("stderr line: ", line);
 }
 
-
 assert(sub.running == false);
 assert(sub.exit_status == 0);
+
+sub.close();
 
 unlink("stdout-stderr");

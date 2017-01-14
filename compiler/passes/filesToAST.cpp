@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -24,8 +24,10 @@
 #include "passes.h"
 
 #include "bison-chapel.h"
+#include "build.h"
 #include "config.h"
 #include "countTokens.h"
+#include "docsDriver.h"
 #include "expr.h"
 #include "files.h"
 #include "parser.h"
@@ -35,6 +37,7 @@ bool parsed = false;
 static void countTokensInCmdLineFiles();
 static void setIteratorTags();
 static void gatherWellKnownTypes();
+static void gatherWellKnownFns();
 
 // This structure and the following array provide a list of types that must be
 // defined in module code.  At this point, they are all classes.
@@ -55,11 +58,32 @@ static WellKnownType sWellKnownTypes[] = {
   {"BaseArr",            &dtBaseArr,       true},
   {"BaseDom",            &dtBaseDom,       true},
   {"BaseDist",           &dtDist,          true},
-  {"Writer",             &dtWriter,        true},
-  {"Reader",             &dtReader,        true},
-  {"chpl_main_argument", &dtMainArgument, false}
+  {"chpl_main_argument", &dtMainArgument, false},
+  {"chpl_comm_on_bundle_t", &dtOnBundleRecord,   false},
+  {"chpl_task_bundle_t",    &dtTaskBundleRecord, false}
 };
 
+
+struct WellKnownFn
+{
+  const char* name;
+  FnSymbol**  fn;
+  Flag        flag;
+  FnSymbol*   lastNameMatchedFn;
+};
+
+// These functions are a required part of the compiler/module interface.
+// They should generally be marked export so that they are always
+// resolved.
+static WellKnownFn sWellKnownFns[] = {
+  {"chpl_here_alloc",         &gChplHereAlloc, FLAG_LOCALE_MODEL_ALLOC},
+  {"chpl_here_free",          &gChplHereFree,  FLAG_LOCALE_MODEL_FREE},
+  {"chpl_doDirectExecuteOn",  &gChplDoDirectExecuteOn, FLAG_UNKNOWN},
+  {"_build_tuple",            &gBuildTupleType, FLAG_BUILD_TUPLE_TYPE},
+  {"_build_tuple_noref",      &gBuildTupleTypeNoRef, FLAG_BUILD_TUPLE_TYPE},
+  {"*",                       &gBuildStarTupleType, FLAG_BUILD_TUPLE_TYPE},
+  {"_build_star_tuple_noref", &gBuildStarTupleTypeNoRef, FLAG_BUILD_TUPLE_TYPE}
+};
 
 void parse() {
   yydebug = debugParserLevel;
@@ -67,20 +91,28 @@ void parse() {
   if (countTokens)
     countTokensInCmdLineFiles();
 
-  baseModule            = parseMod("ChapelBase",           MOD_INTERNAL);
-  INT_ASSERT(baseModule);
+  //
+  // If we're running chpldoc on just a single file, we don't want to
+  // bring in all the base, standard, etc. modules -- just the file
+  // we're documenting.
+  //
+  if (fDocs == false || fDocsProcessUsedModules) {
+    baseModule            = parseMod("ChapelBase",           MOD_INTERNAL);
+    INT_ASSERT(baseModule);
 
-  setIteratorTags();
+    setIteratorTags();
 
-  standardModule        = parseMod("ChapelStandard",       MOD_INTERNAL);
-  INT_ASSERT(standardModule);
+    standardModule        = parseMod("ChapelStandard",       MOD_INTERNAL);
+    INT_ASSERT(standardModule);
 
-  printModuleInitModule = parseMod("PrintModuleInitOrder", MOD_INTERNAL);
-  INT_ASSERT(printModuleInitModule);
+    printModuleInitModule = parseMod("PrintModuleInitOrder", MOD_INTERNAL);
+    INT_ASSERT(printModuleInitModule);
 
-  parseDependentModules(MOD_INTERNAL);
+    parseDependentModules(MOD_INTERNAL);
 
-  gatherWellKnownTypes();
+    gatherWellKnownTypes();
+    gatherWellKnownFns();
+  }
 
   {
     int         filenum       = 0;
@@ -108,13 +140,21 @@ void parse() {
     }
   }
 
-  parseDependentModules(MOD_USER);
+  //
+  // When generating chpldocs for just a single file, we don't want to
+  // parse dependent modules, as we're just documenting the file at
+  // hand.
+  //
+  if (fDocs == false || fDocsProcessUsedModules) {
+    parseDependentModules(MOD_USER);
 
-  forv_Vec(ModuleSymbol, mod, allModules) {
-    mod->addDefaultUses();
+    forv_Vec(ModuleSymbol, mod, allModules) {
+      mod->addDefaultUses();
+    }
   }
 
   checkConfigs();
+  convertForallExpressions();
 
   finishCountingTokens();
 
@@ -195,6 +235,59 @@ static void gatherWellKnownTypes() {
 
       if (*wkt.type_ == NULL)
         USR_FATAL_CONT(wkt_reqd_message, wkt.name);
+    }
+
+    USR_STOP();
+  } else {
+    if (dtString->symbol == NULL) {
+      // This means there was no declaration of the string type.
+      gAggregateTypes.remove(gAggregateTypes.index(dtString));
+      delete dtString;
+      dtString = NULL;
+    }
+  }
+}
+
+static void gatherWellKnownFns() {
+  int nEntries = sizeof(sWellKnownFns) / sizeof(sWellKnownFns[0]);
+  static const char* mult_def_message   = "'%s' defined more than once in Chapel internal modules.";
+  static const char* flag_reqd_message = "The '%s' function is missing a required flag.";
+  static const char* wkfn_reqd_message   = "Function '%s' must be defined in the Chapel internal modules.";
+
+  // Harvest well-known functions from among the global fn definitions.
+  // We check before assigning to the associated global to ensure that it
+  // is null.  In that way we can flag duplicate definitions.
+  forv_Vec(FnSymbol, fn, gFnSymbols) {
+    for (int i = 0; i < nEntries; ++i) {
+      WellKnownFn& wkfn = sWellKnownFns[i];
+
+      if (strcmp(fn->name, wkfn.name) == 0) {
+        wkfn.lastNameMatchedFn = fn;
+        if (wkfn.flag == FLAG_UNKNOWN || fn->hasFlag(wkfn.flag)) {
+          if (*wkfn.fn != NULL)
+            USR_WARN(fn, mult_def_message, wkfn.name);
+
+          *wkfn.fn = fn;
+        }
+      }
+    }
+  }
+
+  //
+  // When compiling for minimal modules, we don't require any specific
+  // well-known functions to be defined.
+  //
+  if (fMinimalModules == false) {
+    // Make sure all well-known functions are defined.
+    for (int i = 0; i < nEntries; ++i) {
+      WellKnownFn& wkfn = sWellKnownFns[i];
+      FnSymbol* lastMatched = wkfn.lastNameMatchedFn;
+      FnSymbol* fn = *wkfn.fn;
+
+      if (lastMatched == NULL)
+        USR_FATAL_CONT(wkfn_reqd_message, wkfn.name);
+      else if(! fn)
+        USR_FATAL_CONT(fn, flag_reqd_message, wkfn.name);
     }
 
     USR_STOP();

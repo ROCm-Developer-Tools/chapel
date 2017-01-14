@@ -15,15 +15,15 @@ for i in D {
   DomRealType += myIdx:realType;
   if doString {
     var s: string;
-    s.write(myIdx);
+    s = myIdx:string;
     ArithStringRef(i) = s;
     DomStringType += s;
   }
 }
-QuickSort(ArithIntRef);
-QuickSort(ArithUintRef);
-QuickSort(ArithRealRef);
-if doString then QuickSort(ArithStringRef);
+quickSort(ArithIntRef);
+quickSort(ArithUintRef);
+quickSort(ArithRealRef);
+if doString then quickSort(ArithStringRef);
 if debug then writeln(DomIntType);
 if debug then writeln(ArithIntRef);
 if debug then writeln(DomUintType);
@@ -58,14 +58,14 @@ proc testSerial(Dom, D, Arr, ArrRef) {
   }
   if debug then writeln(Arr);
   var success = true;
-  QuickSort(Arr);
+  quickSort(Arr);
   for i in D {
     if Arr(i) != ArrRef(i) {
       success = false;
       break;
     }
   }
-  writeln("Serial domain iteration (", typeToString(idxType), ") : ",
+  writeln("Serial domain iteration (", idxType:string, ") : ",
           if success then "SUCCESS" else "FAILED");
 }
 
@@ -83,13 +83,13 @@ proc testParallel(Dom, D, Arr, ArrRef) {
   }
   if debug then writeln(Arr);
   var success = true;
-  QuickSort(Arr);
+  quickSort(Arr);
   for i in D {
     if Arr(i) != ArrRef(i) {
       success = false;
       break;
     }
   }
-  writeln("Parallel domain iteration (", typeToString(idxType), ") : ",
+  writeln("Parallel domain iteration (", idxType:string, ") : ",
           if success then "SUCCESS" else "FAILED");
 }

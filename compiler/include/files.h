@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -28,8 +28,8 @@
 
 extern char executableFilename[FILENAME_MAX+1];
 extern char saveCDir[FILENAME_MAX+1];
-extern char ccflags[256];
-extern char ldflags[256];
+extern std::string ccflags;
+extern std::string ldflags;
 extern bool ccwarnings;
 extern Vec<const char*> incDirs;
 extern int numLibFlags;
@@ -44,9 +44,10 @@ struct fileinfo {
 #ifdef TARGET_HSA
 void codegen_makefile(fileinfo* mainfile, fileinfo *gpusrcfile,
                       const char** tmpbinname=NULL,
-                      bool skip_compile_link=false);
+                      bool skip_compile_link=false, 
+                      const std::vector<const char *>& splitFiles = std::vector<const char*>());
 #else
-void codegen_makefile(fileinfo* mainfile, const char** tmpbinname=NULL, bool skip_compile_link=false);
+void codegen_makefile(fileinfo* mainfile, const char** tmpbinname=NULL, bool skip_compile_link=false, const std::vector<const char *>& splitFiles = std::vector<const char*>());
 #endif
 
 void ensureDirExists(const char* /* dirname */, const char* /* explanation */);
@@ -59,7 +60,6 @@ const char* objectFileForCFile(const char* cfile);
 const char* genIntermediateFilename(const char* filename);
 
 void openCFile(fileinfo* fi, const char* name, const char* ext = NULL);
-void appendCFile(fileinfo* fi, const char* name, const char* ext = NULL);
 void closeCFile(fileinfo* fi, bool beautifyIt=true);
 
 fileinfo* openTmpFile(const char* tmpfilename, const char* mode = "w");
@@ -84,6 +84,7 @@ void genIncludeCommandLineHeaders(FILE* outfile);
 const char* createDebuggerFile(const char* debugger, int argc, char* argv[]);
 
 std::string runPrintChplEnv(std::map<std::string, const char*> varMap);
+std::string getChplPythonVersion(void);
 std::string runCommand(std::string& command);
 
 void setupModulePaths(void);

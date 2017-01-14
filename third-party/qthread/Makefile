@@ -16,18 +16,12 @@ QTHREAD_BUILD_DIR = $(QTHREAD_ABS_DIR)/$(QTHREAD_BUILD_SUBDIR)
 QTHREAD_DIR = $(QTHREAD_ABS_DIR)
 
 #
-# Cray X* builds are cross-compilations, as are Intel Phi KNC builds.
+# Cray X* builds are cross-compilations
 #
 ifneq (, $(filter cray-x%,$(CHPL_MAKE_TARGET_PLATFORM)))
 CHPL_QTHREAD_CFG_OPTIONS += --host=x86_64-cle-linux-gnu
-else ifeq ($(CHPL_MAKE_TARGET_ARCH),knc)
-CHPL_QTHREAD_CFG_OPTIONS += --host=x86_64-unknown-linux-gnu
-endif
-
-ifeq ($(CHPL_MAKE_TARGET_ARCH),knc)
-ifeq ($(CHPL_MAKE_TARGET_COMPILER),intel)
-CFLAGS += -mmic
-endif
+else ifneq ($(CHPL_MAKE_HOST_PLATFORM),$(CHPL_MAKE_TARGET_PLATFORM))
+CHPL_QTHREAD_CFG_OPTIONS += --host=$(CHPL_MAKE_TARGET_PLATFORM)-unknown-linux-gnu
 endif
 
 ifeq ($(CHPL_MAKE_HWLOC),hwloc)
@@ -53,21 +47,15 @@ endif
 CHPL_QTHREAD_CFG_OPTIONS += --enable-static --disable-shared
 
 # determine which scheduler to use. Default to nemesis, except for numa where
-# we want sherwood. Override with a user provided option if they requested one
+# we want distrib. Override with a user provided option if they requested one
 SCHEDULER = nemesis
 ifeq ($(CHPL_MAKE_LOCALE_MODEL),numa)
-SCHEDULER = sherwood
+SCHEDULER = distrib
 endif
 ifneq (, $(CHPL_QTHREAD_SCHEDULER))
 SCHEDULER = $(CHPL_QTHREAD_SCHEDULER)
 endif
 CHPL_QTHREAD_CFG_OPTIONS += --with-scheduler=$(SCHEDULER)
-
-ifeq (nemesis,$(SCHEDULER))
-CFLAGS += -DQTHREADS_SUPPORTS_REMOTE_CACHE=1
-else
-CFLAGS += -DQTHREADS_SUPPORTS_REMOTE_CACHE=0
-endif
 
 # spawn-caching has a semantic mismatch with chapel (and leads to deadlock with
 # some applications.) Qthreads team tends to build with spawn cache off too
@@ -106,22 +94,55 @@ qthread-config: FORCE
 # ahead in version numbers as that which was used when packaging the
 # Qthreads release
 #
-	-cd $(QTHREAD_SUBDIR) && find . -name "*.m4" | xargs touch configure.ac
-	sleep 2
+	cd $(QTHREAD_SUBDIR) && touch -c configure.ac
+	cd $(QTHREAD_SUBDIR) && find . -name "*.m4" | xargs touch
+	cd $(QTHREAD_SUBDIR) && touch -c aclocal.m4
 	cd $(QTHREAD_SUBDIR) && touch configure
-	sleep 2
 	cd $(QTHREAD_SUBDIR) && find . -name "*.in" | xargs touch
+
 #
 # Then configure
 #
 	mkdir -p $(QTHREAD_BUILD_DIR)
-	cd $(QTHREAD_BUILD_DIR) && $(QTHREAD_SUBDIR)/configure CC='$(CC)' CFLAGS='$(CFLAGS)' CXX='$(CXX)'  CXXFLAGS='$(CFLAGS)' --prefix=$(QTHREAD_INSTALL_DIR) --enable-interfaces=chapel CHPL_HOME=$(CHPL_MAKE_HOME) $(CHPL_QTHREAD_CFG_OPTIONS) 
+	cd $(QTHREAD_BUILD_DIR) \
+	&& $(QTHREAD_SUBDIR)/configure CC='$(CC)' CFLAGS='$(CFLAGS)' \
+	       CXX='$(CXX)'  CXXFLAGS='$(CFLAGS)' LDFLAGS='$(RUNTIME_LFLAGS)' \
+	       --prefix=$(QTHREAD_INSTALL_DIR) $(CHPL_QTHREAD_CFG_OPTIONS)
 
 qthread-build: FORCE
 	cd $(QTHREAD_BUILD_DIR) && $(MAKE)
 	cd $(QTHREAD_BUILD_DIR) && $(MAKE) install
 
-qthread: qthread-config qthread-build
+#
+# The two variables here answer different questions even though they're
+# set using the same logic.  For the first, the question is "Will remote
+# caching work with this Qthreads build?", which is true iff qthreads do
+# not move from one worker to another (thus invalidating TLS).  For the
+# second, it's "Is there only one worker per shepherd?", which changes
+# how the shim sets certain QT_* environment variables to parameterize
+# Qthreads behavior.  These two questions have the same scheduler-based
+# answer now, but that may not always be true.  If and when it's not,
+# we'll need separate checks to set them.
+#
+ifeq ($(SCHEDULER),$(findstring $(SCHEDULER),lifo mtsfifo mutexfifo nemesis))
+SUPPORTS_REMOTE_CACHE = 1
+ONE_WORKER_PER_SHEPHERD = 1
+else ifeq ($(SCHEDULER),$(findstring $(SCHEDULER),distrib nottingham sherwood))
+SUPPORTS_REMOTE_CACHE = 0
+ONE_WORKER_PER_SHEPHERD = 0
+else
+$(error Unrecognized Qthreads scheduler '$(SCHEDULER)')
+endif
+
+qthread-chapel-h: FORCE
+	echo "#define CHPL_QTHREAD_SUPPORTS_REMOTE_CACHE" \
+	     $(SUPPORTS_REMOTE_CACHE) \
+	     > $(QTHREAD_INSTALL_DIR)/include/qthread-chapel.h
+	echo "#define CHPL_QTHREAD_SCHEDULER_ONE_WORKER_PER_SHEPHERD" \
+	     $(ONE_WORKER_PER_SHEPHERD) \
+	     >> $(QTHREAD_INSTALL_DIR)/include/qthread-chapel.h
+
+qthread: qthread-config qthread-build qthread-chapel-h
 
 qthread-reconfig:
 	cd $(QTHREAD_SUBDIR) && autoreconf -f -i

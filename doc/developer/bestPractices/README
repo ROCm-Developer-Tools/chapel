@@ -43,8 +43,11 @@ GitCheatsheet.rst
 CHPL_DEVELOPER.txt
   The most important environment variable you want to set, and what it does.
 
-TestSystem.txt
+TestSystem.rst
   All about the Chapel testing system.
+
+SpellChecking.rst
+  How to use chplspell to spellcheck the Chapel project.
 
 Potpourri.txt
   Notes not in any of the above categories.

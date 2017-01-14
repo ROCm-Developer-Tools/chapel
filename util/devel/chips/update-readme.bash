@@ -1,11 +1,13 @@
 #!/bin/bash
 
 cat README.md.in > README.md
-for name in [0-9]*.rst
+
+for name in `ls -v [0-9]*.rst | sort -n`
 do
   echo $name
-  title=`head -n 1 $name`
-  echo "* [$title]($name)" >> README.md
+  title=`head -n 10 $name | grep -e '^[A-Za-z]' | head -n 1`
+  number=`echo $name | sed 's/.rst$//'`
+  echo "* [$number $title]($name)" >> README.md
 done
 
 echo >> README.md

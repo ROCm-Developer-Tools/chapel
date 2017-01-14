@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -21,19 +21,25 @@
 #include "callInfo.h"
 #include "expr.h"
 
-
-CallInfo::CallInfo(CallExpr* icall) : call(icall), scope(NULL) {
+CallInfo::CallInfo(CallExpr* icall, bool checkonly) :
+  call(icall),
+  scope(NULL),
+  name(NULL),
+  actuals(),
+  actualNames(),
+  badcall(false)
+{
   if (SymExpr* se = toSymExpr(call->baseExpr))
-    name = se->var->name;
+    name = se->symbol()->name;
   else if (UnresolvedSymExpr* use = toUnresolvedSymExpr(call->baseExpr))
     name = use->unresolved;
   if (call->numActuals() >= 2) {
     if (SymExpr* se = toSymExpr(call->get(1))) {
-      if (se->var == gModuleToken) {
+      if (se->symbol() == gModuleToken) {
         se->remove();
         se = toSymExpr(call->get(1));
         INT_ASSERT(se);
-        ModuleSymbol* mod = toModuleSymbol(se->var);
+        ModuleSymbol* mod = toModuleSymbol(se->symbol());
         INT_ASSERT(mod);
         se->remove();
         scope = mod->block;
@@ -49,11 +55,17 @@ CallInfo::CallInfo(CallExpr* icall) : call(icall), scope(NULL) {
     }
     SymExpr* se = toSymExpr(actual);
     INT_ASSERT(se);
-    Type* t = se->var->type;
-    if (t == dtUnknown && ! se->var->hasFlag(FLAG_TYPE_VARIABLE) )
-      USR_FATAL(call, "use of '%s' before encountering its definition, type unknown", se->var->name);
-    if (t->symbol->hasFlag(FLAG_GENERIC))
-      INT_FATAL(call, "the type of the actual argument '%s' is generic", se->var->name);
-    actuals.add(se->var);
+    Type* t = se->symbol()->type;
+    if (t == dtUnknown && ! se->symbol()->hasFlag(FLAG_TYPE_VARIABLE) ) {
+      if (checkonly) badcall = true;
+      else USR_FATAL(call, "use of '%s' before encountering its definition, "
+                           "type unknown", se->symbol()->name);
+    }
+    if (t->symbol->hasFlag(FLAG_GENERIC)) {
+      if (checkonly) badcall = true;
+      else INT_FATAL(call, "the type of the actual argument '%s' is generic",
+                            se->symbol()->name);
+    }
+    actuals.add(se->symbol());
   }
 }

@@ -143,7 +143,7 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
   SymbolMap smap;
   BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
   VarSymbol *wkitemId = newTemp("_wkitem_id", dtUInt[INT_SIZE_64]);
-  for_const_vector(CallExpr, initCall, initCalls) {
+  for_vector(CallExpr, initCall, initCalls) {
     success = false;
     Symbol *oldSym = (toSymExpr(initCall->get(1)))->var;
     SET_LINENO(oldSym);
@@ -222,17 +222,17 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
 {
   bool success;
   //BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
-  for_const_vector(CallExpr, testCall, testCalls) {
+  for_vector(CallExpr, testCall, testCalls) {
     success = false;
     Symbol *testSym = toSymExpr(testCall->get(1))->var;
     SymExpr *testRhs = new SymExpr(toSymExpr(testCall->get(2))->var);
     PrimitiveOp* primitiveTestOp = testCall->primitive;
     if (!primitiveTestOp) continue;
-    for_const_vector(CallExpr, incrCall, incrCalls) {
+    for_vector(CallExpr, incrCall, incrCalls) {
       Symbol *incrSym = toSymExpr(incrCall->get(1))->var;
       if (testSym == incrSym) {
         SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->var);
-        for_const_vector(CallExpr, initCall, initCalls) {
+        for_vector(CallExpr, initCall, initCalls) {
           Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
           if (testSym == initSym) {
             SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->var);

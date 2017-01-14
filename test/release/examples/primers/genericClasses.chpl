@@ -1,9 +1,8 @@
+// Generic Classes
+
 /*
- * Generic Classes Primer
- *
- * This primer covers generic class types.
- *
- */
+   This primer covers generic class types.
+*/
 
 //
 // A class is generic if it contains a type alias, contains a field
@@ -47,7 +46,7 @@ writeln("uf = ", uf, ", uf2 = ", uf2);
 
 //
 // To specify a generic class type (without creating an instance),
-// don't use the new keyword and just specify the generic arguments.
+// don't use the ``new`` keyword and just specify the generic arguments.
 // For fields that have no types, specify a type for that field,
 // instead of a value.
 //
@@ -62,3 +61,13 @@ uf3 = uf;
 writeln("taf3 = ", taf3);
 writeln("pf3 = ", pf3);
 writeln("uf3 = ", uf3);
+
+delete uf2.a;
+delete uf2;
+delete uf;
+
+delete pf2;
+delete pf;
+
+delete taf2;
+delete taf;

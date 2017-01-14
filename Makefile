@@ -1,4 +1,4 @@
-# Copyright 2004-2015 Cray Inc.
+# Copyright 2004-2017 Cray Inc.
 # Other additional copyright holders may be indicated within.
 #
 # The entirety of this work is licensed under the Apache License,
@@ -48,6 +48,9 @@ MAKEFLAGS = --no-print-directory
 
 export CHPL_MAKE_HOME=$(shell pwd)
 
+NEEDS_LLVM_RUNTIME=${CHPL_MAKE_HOME}/util/chplenv/chpl_llvm.py \
+                    --needs-llvm-runtime
+
 default: all
 
 all: comprt
@@ -57,6 +60,7 @@ comprt: FORCE
 	@$(MAKE) compiler
 	@$(MAKE) third-party-try-opt
 	@$(MAKE) always-build-test-venv
+	@$(MAKE) always-build-chpldoc
 	@$(MAKE) runtime
 	@$(MAKE) modules
 
@@ -71,8 +75,8 @@ modules: FORCE
 
 runtime: FORCE
 	cd runtime && $(MAKE)
-	-@if [ "llvm" = `${CHPL_MAKE_HOME}/util/chplenv/chpl_llvm.py` ]; then \
-	source ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
+	-@if [ ! -z `${NEEDS_LLVM_RUNTIME}` ]; then \
+	. ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
 	cd runtime && $(MAKE) ; \
 	fi
 
@@ -84,8 +88,8 @@ third-party-try-opt: third-party-try-re2 third-party-try-gmp
 third-party-try-re2: FORCE
 	-@if [ -z "$$CHPL_REGEXP" ]; then \
 	cd third-party && $(MAKE) try-re2; \
-	if [ "llvm" = `${CHPL_MAKE_HOME}/util/chplenv/chpl_llvm.py` ]; then \
-	source ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
+	if [ ! -z `${NEEDS_LLVM_RUNTIME}` ]; then \
+	. ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
 	$(MAKE) try-re2; \
 	fi \
 	fi
@@ -93,8 +97,8 @@ third-party-try-re2: FORCE
 third-party-try-gmp: FORCE
 	-@if [ -z "$$CHPL_GMP" ]; then \
 	cd third-party && $(MAKE) try-gmp; \
-	if [ "llvm" = `${CHPL_MAKE_HOME}/util/chplenv/chpl_llvm.py` ]; then \
-	source ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
+	if [ ! -z `${NEEDS_LLVM_RUNTIME}` ]; then \
+	. ${CHPL_MAKE_HOME}/util/config/set_clang_included.bash && \
 	$(MAKE) try-gmp; \
 	fi \
 	fi
@@ -109,7 +113,6 @@ test-venv: third-party-test-venv
 
 chpldoc: compiler third-party-chpldoc-venv
 	cd compiler && $(MAKE) chpldoc
-	cd modules && $(MAKE) sys-ctypes-docs
 	@test -r Makefile.devel && $(MAKE) man-chpldoc || echo ""
 
 always-build-test-venv: FORCE
@@ -117,16 +120,10 @@ always-build-test-venv: FORCE
 	$(MAKE) test-venv; \
 	fi
 
-clean-module-docs:
-	cd modules && $(MAKE) clean-documentation
-
-module-docs-only:
-	cd modules && $(MAKE) documentation
-
-module-docs: chpldoc
-# Call `make module-docs-only` as part of the recipe instead of as a
-# dependency so parallel make executions correctly build chpldoc first.
-	$(MAKE) module-docs-only
+always-build-chpldoc: FORCE
+	-@if [ -n "$$CHPL_ALWAYS_BUILD_CHPLDOC" ]; then \
+	$(MAKE) chpldoc; \
+	fi
 
 chplvis: compiler third-party-fltk FORCE
 	cd tools/chplvis && $(MAKE)
@@ -140,7 +137,7 @@ clean: FORCE
 	cd modules && $(MAKE) clean
 	cd runtime && $(MAKE) clean
 	cd third-party && $(MAKE) clean
-	-@[ -d doc/sphinx ] && cd doc/sphinx && $(MAKE) clean
+	if [ -a doc/Makefile ]; then cd doc && $(MAKE) clean; fi
 	rm -f util/chplenv/*.pyc
 
 cleanall: FORCE
@@ -148,8 +145,9 @@ cleanall: FORCE
 	cd modules && $(MAKE) cleanall
 	cd runtime && $(MAKE) cleanall
 	cd third-party && $(MAKE) cleanall
-	-@[ -d doc/sphinx ] && cd doc/sphinx && $(MAKE) cleanall
+	if [ -a doc/Makefile ]; then cd doc && $(MAKE) cleanall; fi
 	rm -f util/chplenv/*.pyc
+	rm -rf build
 
 cleandeps: FORCE
 	cd compiler && $(MAKE) cleandeps
@@ -161,9 +159,10 @@ clobber: FORCE
 	cd runtime && $(MAKE) clobber
 	cd third-party && $(MAKE) clobber
 	cd tools/chplvis && $(MAKE) clobber
-	-@[ -d doc/sphinx ] && cd doc/sphinx && $(MAKE) clobber
+	if [ -a doc/Makefile ]; then cd doc && $(MAKE) clobber; fi
 	rm -rf bin
 	rm -rf lib
+	rm -rf build
 	rm -f util/chplenv/*.pyc
 
 depend:

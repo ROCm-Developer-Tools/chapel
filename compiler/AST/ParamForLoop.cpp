@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -299,6 +299,9 @@ void ParamForLoop::verify()
 
   if (byrefVars                 != 0)
     INT_FATAL(this, "ParamForLoop::verify. byrefVars is not NULL");
+
+  if (forallIntents             != 0)
+    INT_FATAL(this, "ParamForLoop::verify. forallIntents is not NULL");
 }
 
 GenRet ParamForLoop::codegen()
@@ -344,7 +347,7 @@ Expr* ParamForLoop::getNextExpr(Expr* expr)
 
    * Inserts the body before the expression beforeHere
    * i should be a loop variable index (used to label iterations)
-   * Assumes that map already contains the mapping redifining
+   * Assumes that map already contains the mapping redefining
      the index variable.
    * continueSym is the symbol for the loop's continue label.
      This function will replace that with a new continue label
@@ -377,9 +380,9 @@ CallExpr* ParamForLoop::foldForResolve()
   if (!lse             || !hse             || !sse)
     USR_FATAL(this, "param for loop must be defined over a bounded param range");
 
-  VarSymbol* lvar      = toVarSymbol(lse->var);
-  VarSymbol* hvar      = toVarSymbol(hse->var);
-  VarSymbol* svar      = toVarSymbol(sse->var);
+  VarSymbol* lvar      = toVarSymbol(lse->symbol());
+  VarSymbol* hvar      = toVarSymbol(hse->symbol());
+  VarSymbol* svar      = toVarSymbol(sse->symbol());
 
   CallExpr*  noop      = new CallExpr(PRIM_NOOP);
 
@@ -389,7 +392,7 @@ CallExpr* ParamForLoop::foldForResolve()
   if (!lvar->immediate || !hvar->immediate || !svar->immediate)
     USR_FATAL(this, "param for loop must be defined over a bounded param range");
 
-  Symbol*      idxSym  = idxExpr->var;
+  Symbol*      idxSym  = idxExpr->symbol();
   Symbol*      continueSym = continueLabelGet();
   Type*        idxType = indexType();
   IF1_int_type idxSize = (get_width(idxType) == 32) ? INT_SIZE_32 : INT_SIZE_64;
@@ -399,9 +402,9 @@ CallExpr* ParamForLoop::foldForResolve()
 
   if (is_int_type(idxType))
   {
-    int64_t low    = lvar->immediate->int_value();
-    int64_t high   = hvar->immediate->int_value();
-    int64_t stride = svar->immediate->int_value();
+    int64_t low    = lvar->immediate->to_int();
+    int64_t high   = hvar->immediate->to_int();
+    int64_t stride = svar->immediate->to_int();
 
     if (stride <= 0)
     {
@@ -429,9 +432,9 @@ CallExpr* ParamForLoop::foldForResolve()
   {
     INT_ASSERT(is_uint_type(idxType) || is_bool_type(idxType));
 
-    uint64_t low    = lvar->immediate->uint_value();
-    uint64_t high   = hvar->immediate->uint_value();
-    int64_t  stride = svar->immediate->int_value();
+    uint64_t low    = lvar->immediate->to_uint();
+    uint64_t high   = hvar->immediate->to_uint();
+    int64_t  stride = svar->immediate->to_int();
 
     if (stride <= 0)
     {

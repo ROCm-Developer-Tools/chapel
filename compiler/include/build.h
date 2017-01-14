@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
  * The entirety of this work is licensed under the Apache License,
@@ -21,7 +21,9 @@
 #define _BUILD_H_
 
 #include <set>
+#include <vector>
 
+#include "bison-chapel.h"
 #include "flags.h"
 #include "stmt.h"
 #include "vec.h"
@@ -58,6 +60,8 @@ Expr* buildDotExpr(const char* base, const char* member);
 
 BlockStmt* buildChapelStmt(Expr* expr = NULL);
 BlockStmt* buildUseStmt(CallExpr* modules);
+BlockStmt* buildUseStmt(Expr* mod, std::vector<OnlyRename*>* names, bool except);
+bool processStringInRequireStmt(const char* str, bool parseTime);
 BlockStmt* buildRequireStmt(CallExpr* args);
 BlockStmt* buildTupleVarDeclStmt(BlockStmt* tupleBlock, Expr* type, Expr* init);
 BlockStmt* buildLabelStmt(const char* name, Expr* stmt);
@@ -80,27 +84,31 @@ BlockStmt* buildCoforallLoopStmt(Expr* indices,
                                  bool zippered = false);
 BlockStmt* buildGotoStmt(GotoTag tag, const char* name);
 BlockStmt* buildPrimitiveStmt(PrimitiveTag tag, Expr* e1 = NULL, Expr* e2 = NULL);
+CallExpr* zipToTuple(CallExpr* zipExpr);
 BlockStmt* buildForallLoopStmt(Expr* indices,
                                Expr* iterator,
-                               CallExpr* byref_vars,
+                               ForallIntents* forall_intents,
                                BlockStmt* body,
-                               bool zippered = false);
+                               bool zippered = false,
+                               VarSymbol* useThisGlobalOp = NULL);
 CallExpr* buildForLoopExpr(Expr* indices,
                            Expr* iterator,
                            Expr* expr,
                            Expr* cond = NULL,
                            bool maybeArrayType = false,
                            bool zippered = false);
-CallExpr* buildForallLoopExpr(Expr* indices,
+ForallExpr* buildForallLoopExpr(Expr* indices,
                               Expr* iterator,
                               Expr* expr,
                               Expr* cond = NULL,
                               bool maybeArrayType = false,
                               bool zippered = false);
-CallExpr* buildForallLoopExprFromArrayType(CallExpr* buildArrRTTypeCall,
+void convertForallExpressions();
+Expr* buildForallLoopExprFromArrayType(CallExpr* buildArrRTTypeCall,
                                            bool recursiveCall = false);
 BlockStmt* buildParamForLoopStmt(const char* index, Expr* range, BlockStmt* block);
-BlockStmt* buildAssignment(Expr* lhs, Expr* rhs, const char* op = NULL);
+BlockStmt* buildAssignment(Expr* lhs, Expr* rhs, const char* op);
+BlockStmt* buildAssignment(Expr* lhs, Expr* rhs, PrimitiveTag op);
 BlockStmt* buildLAndAssignment(Expr* lhs, Expr* rhs);
 BlockStmt* buildLOrAssignment(Expr* lhs, Expr* rhs);
 BlockStmt* buildSelectStmt(Expr* s, BlockStmt* whenstmts);
@@ -126,10 +134,11 @@ FnSymbol* buildLambda(FnSymbol* fn);
 FnSymbol* buildFunctionSymbol(FnSymbol*   fn,
                               const char* name,
                               IntentTag   thisTag,
-                              const char* class_name);
+                              Expr*       receiver);
 BlockStmt* buildFunctionDecl(FnSymbol*   fn,
                              RetTag      optRetTag,
                              Expr*       optRetType,
+                             bool        optThrowsError,
                              Expr*       optWhere,
                              BlockStmt*  optFnBody,
                              const char* docs);

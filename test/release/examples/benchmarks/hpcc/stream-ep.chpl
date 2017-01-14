@@ -1,5 +1,5 @@
 //
-// Embarassingly Parallel Implementation of STREAM Triad
+// Embarrassingly Parallel Implementation of STREAM Triad
 //
 // This version of the stream benchmark is not as elegant as
 // stream.chpl.  It is a per-locale code with no communication in the
@@ -56,7 +56,7 @@ config const numTrials = 10,
 // specify the fixed seed explicitly
 //
 config const useRandomSeed = true,
-             seed = if useRandomSeed then SeedGenerator.currentTime else 314159265;
+             seed = if useRandomSeed then SeedGenerator.oddCurrentTime else 314159265;
 
 //
 // *** To ensure determinism of output, there is no more printing of the

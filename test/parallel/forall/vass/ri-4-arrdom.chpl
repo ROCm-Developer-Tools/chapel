@@ -2,9 +2,11 @@
 
 use BlockDist, CyclicDist, BlockCycDist, ReplicatedDist;
 
+const defR = if CHPL_COMM=="none" then 3000 else 1500;
+
 config var
   n2 = 100,   // for compatibility with distributions/robust/arithmetic suite
-  r = 3000,   // how many times to repeat
+  r = defR,   // how many times to repeat
   d = n2,     // each dimension of the domain and array
   f = 500;    // frequency of reports, 0 if none
 
@@ -17,24 +19,24 @@ config param distType: DistType = if CHPL_COMM=="none" then DistType.default
 
 proc setupDistributions() {
   if distType == DistType.default then
-    return new DefaultDist();
+    return defaultDist;
 
   else if distType == DistType.block then
-    return new Block(rank=2, boundingBox={1..d, 1..d});
+    return new dmap(new Block(rank=2, boundingBox={1..d, 1..d}));
 
   else if distType == DistType.cyclic then
-    return new Cyclic(startIdx=(0,0));
+    return new dmap(new Cyclic(startIdx=(0,0)));
 
   else if distType == DistType.blockcyclic then
-    return new BlockCyclic(startIdx=(0,0), blocksize=(3,3));
+    return new dmap(new BlockCyclic(startIdx=(0,0), blocksize=(3,3)));
 
   else if distType == DistType.replicated then
-    return new ReplicatedDist();
+    return new dmap(new ReplicatedDist());
 
   else compilerError("unexpected 'distType': ", distType:c_string);
 }
 
-const Dist2D = new dmap(setupDistributions());
+const Dist2D = setupDistributions();
 
 var
   D1 = {1..d, 1..d} dmapped Dist2D,

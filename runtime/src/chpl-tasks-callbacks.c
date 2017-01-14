@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -102,7 +102,8 @@ int chpl_task_uninstall_callback(chpl_task_cb_event_kind_t event_kind,
 
 
 void chpl_task_do_callbacks_internal(chpl_task_cb_event_kind_t event_kind,
-                                     const char* filename,
+                                     chpl_fn_int_t fid,
+                                     int32_t filename,
                                      int lineno,
                                      uint64_t id,
                                      int is_executeOn) {
@@ -120,6 +121,7 @@ void chpl_task_do_callbacks_internal(chpl_task_cb_event_kind_t event_kind,
 
     switch (cbp->info_kinds[i]) {
     case chpl_task_cb_info_kind_full:
+      info.iu.full.fid = fid;
       info.iu.full.filename = filename;
       info.iu.full.lineno = lineno;
       info.iu.full.id = id;

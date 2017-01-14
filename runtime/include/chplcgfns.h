@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Cray Inc.
+ * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  * 
  * The entirety of this work is licensed under the Apache License,
@@ -39,6 +39,8 @@
 /* defined in chpl_compilation_config.c: */
 extern const char* chpl_compileCommand;
 extern const char* chpl_compileVersion;
+extern const char* chpl_compileDirectory;
+
 extern const char* CHPL_HOME;
 extern const char* CHPL_HOST_PLATFORM;
 extern const char* CHPL_HOST_COMPILER;
@@ -62,8 +64,20 @@ extern const char* CHPL_REGEXP;
 extern const char* CHPL_WIDE_POINTERS;
 extern const char* CHPL_LLVM;
 extern const char* CHPL_AUX_FILESYS;
+extern const char* CHPL_UNWIND;
 extern const int CHPL_STACK_CHECKS;
 extern const int CHPL_CACHE_REMOTE;
+
+// Sorted lookup table of filenames used with insertLineNumbers for error
+// messages and logging. Defined in chpl_compilation_config.c (needed by launchers)
+extern c_string chpl_filenameTable[];
+extern const int32_t chpl_filenameTableSize;
+
+// Lookup tables used as a symbol table by the stack unwinder for translating
+// C symbols into Chapel symbols. Defined in chpl_compilation_config.c
+extern c_string chpl_funSymTable[];
+extern int chpl_filenumSymTable[];
+extern const int32_t chpl_sizeSymTable;
 
 /* defined in main.c */
 extern char* chpl_executionCommand;
@@ -75,16 +89,14 @@ extern chpl_fn_p chpl_ftable[];
 extern const char* chpl_gpu_kernels[];
 extern const int64_t chpl_num_gpu_kernels;
 #endif
-// Sorted lookup table of filenames used with insertLineNumbers for error
-// messages and logging
-extern c_string chpl_filenameTable[];
-extern const int64_t chpl_filenameTableSize;
+extern chpl_fn_info chpl_finfo[];
 
 extern void chpl__initStringLiterals(void);
 
-void chpl__init_preInit(int64_t _ln, c_string _fn);
-void chpl__init_PrintModuleInitOrder(int64_t _ln, c_string _fn);
-void chpl__init_ChapelStandard(int64_t _ln, c_string _fn);
+
+void chpl__init_preInit(int64_t _ln, int32_t _fn);
+void chpl__init_PrintModuleInitOrder(int64_t _ln, int32_t _fn);
+void chpl__init_ChapelStandard(int64_t _ln, int32_t _fn);
 
 /* used for entry point: */
 extern int64_t chpl_gen_main(chpl_main_argument* const _arg);
