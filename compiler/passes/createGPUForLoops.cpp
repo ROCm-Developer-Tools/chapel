@@ -588,7 +588,7 @@ static bool canEliminate(Symbol* var,
   }
   if ((numAssign != 1) || (numOpEqual != 1)) return false;
 
-  return (defRhs->var == useLhs->var);
+  return (defRhs->symbol() == useLhs->symbol());
 }
 
 // In some cases, the increment block contains code of the following form:
@@ -610,7 +610,7 @@ static void removeTemporaryVariables(BlockStmt *block)
 
   Map<Symbol*,Vec<SymExpr*>*> defMap;
   Map<Symbol*,Vec<SymExpr*>*> useMap;
-  buildDefUseMaps(symSet, symExprs, defMap, useMap);
+  buildDefUseMaps(symSet, defMap, useMap);
 
   forv_Vec(Symbol, sym, symSet) {
     if (canEliminate(sym, defMap, useMap)) {
@@ -633,7 +633,7 @@ static void removeTemporaryVariables(BlockStmt *block)
         }
         if (call && isOpEqualPrim(call)) {
           SymExpr* lhs = toSymExpr(call->get(1));
-          lhs->var = useLhs->var;
+          lhs->setSymbol(useLhs->symbol());
         }
       }
       sym->defPoint->remove();
@@ -664,7 +664,7 @@ static void findOuterVars(FnSymbol* fn, SymbolMap* uses)
 
   for_vector(BaseAST, ast, asts) {
     if (SymExpr* symExpr = toSymExpr(ast)) {
-      Symbol* sym = symExpr->var;
+      Symbol* sym = symExpr->symbol();
       if (isLcnSymbol(sym)) {
         if (isOuterVar(sym, fn))
           uses->put(sym, gNil);
