@@ -31,34 +31,10 @@
 #include "stmt.h"
 #include "passes.h"
 
-// There are two questions:
-// 1- is the primitive/function eligible to run in a fast block?
-//    any blocking or system call disqualifies it since a fast
-//    AM handler can be run in a signal handler
-// 2- is the primitive/function communication free?
-
-// Any function containing communication can't run in a fast block.
-
-enum {
-  // The primitive is ineligible for a fast (e.g. uses a lock or allocator)
-  // AND it causes communication
-  NOT_FAST_NOT_LOCAL,
-  // Is the primitive ineligible for a fast (e.g. uses a lock or allocator)
-  // but communication free?
-  LOCAL_NOT_FAST,
-  // Does the primitive communicate?
-  // This implies NOT_FAST, unless it is in a local block
-  // if it is in a local block, this means IS_FAST.
-  FAST_NOT_LOCAL,
-  // Is the primitive function fast (ie, could it be run in a signal handler)
-  // IS_FAST implies IS_LOCAL.
-  FAST_AND_LOCAL
-};
-
 //
 // Return NOT_FAST, NOT_LOCAL, IS_LOCAL, or IS_FAST.
 //
-static int
+int
 classifyPrimitive(CallExpr *call) {
   INT_ASSERT(call->primitive);
   // Check primitives for suitability for executeOnFast and for communication
@@ -67,6 +43,23 @@ classifyPrimitive(CallExpr *call) {
     // TODO: Return FAST_AND_LOCAL for PRIM_UNKNOWNs that are side-effect free
     return NOT_FAST_NOT_LOCAL;
 
+  case PRIM_CHECK_NIL:
+  case PRIM_LOCAL_CHECK:
+#ifdef TARGET_HSA
+  // 2. We mark some primitives such as PRIM_CHECK_NIL and PRIM_LOCAL_CHECK as
+  // "NOT FAST" since they can lead to error messages but we are not allowing
+  // I/O from gpu kernels for now.
+  case PRIM_IS_GPU_SUBLOCALE: //is there a reason for a gpu-kernel to ask this?
+  case PRIM_GPU_REDUCE:
+   // These may block, so are deemed slow.
+    // However, they are local
+
+  // The following use filename and line numbers as arguments, which we don't
+  // want to pass inside a gpu kernel, and these are usually lead to error
+  // messages but we are not allowing I/O from gpu kernels for now. So we
+  // mark these as "NOT FAST"
+   return LOCAL_NOT_FAST;
+#endif
   case PRIM_NOOP:
   case PRIM_REF_TO_STRING:
   case PRIM_RETURN:
@@ -99,13 +92,11 @@ classifyPrimitive(CallExpr *call) {
   case PRIM_GET_PRIV_CLASS:
   case PRIM_NEW_PRIV_CLASS:
 
-  case PRIM_CHECK_NIL:
   case PRIM_GET_REAL:
   case PRIM_GET_IMAG:
 
   case PRIM_ADDR_OF:
   case PRIM_SET_REFERENCE:
-  case PRIM_LOCAL_CHECK:
 
   case PRIM_INIT_FIELDS:
   case PRIM_PTR_EQUAL:
@@ -308,6 +299,9 @@ classifyPrimitive(CallExpr *call) {
   case PRIM_BLOCK_DOWHILE_LOOP:
   case PRIM_BLOCK_FOR_LOOP:
   case PRIM_BLOCK_C_FOR_LOOP:
+#ifdef TARGET_HSA
+  case PRIM_GET_GLOBAL_ID:
+#endif
     return FAST_AND_LOCAL;
 
     // These don't block in the Chapel sense, but they may require a system
@@ -350,11 +344,18 @@ classifyPrimitive(CallExpr *call) {
   return NOT_FAST_NOT_LOCAL;
 }
 
-static int
+int
 setLocal(int is, bool inLocal)
 {
   // If it's in a local block, it's always local.
+#ifdef TARGET_HSA
+  // 1. In setLocal, if a single locale is targeted by the application, we mark
+  // everything as local.
+  // If a single locale is targeted, it's always local
+  if (inLocal || fLocal) {
+#else  
   if (inLocal) {
+#endif  
     if (is == NOT_FAST_NOT_LOCAL ) is = LOCAL_NOT_FAST;
     if (is == FAST_NOT_LOCAL )     is = FAST_AND_LOCAL;
   }
@@ -378,7 +379,7 @@ isLocal(int is)
 
 
 
-static int
+int
 classifyPrimitive(CallExpr *call, bool inLocal)
 {
   int is = classifyPrimitive(call);
@@ -389,7 +390,7 @@ classifyPrimitive(CallExpr *call, bool inLocal)
   return is;
 }
 
-static bool
+bool
 inLocalBlock(CallExpr *call) {
   for (Expr* parent = call->parentExpr; parent; parent = parent->parentExpr) {
     if (BlockStmt* blk = toBlockStmt(parent)) {
