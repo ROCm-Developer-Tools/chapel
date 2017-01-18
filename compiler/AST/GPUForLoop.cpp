@@ -79,9 +79,9 @@ static bool checkAndCollectLoopIdxExprs(const GPUForLoop *gpuForLoop,
   for_alist(expr, gpuForLoop->incrBlockGet()->body) {
     CallExpr *incrCall = toCallExpr(expr);
     if (incrCall) {
-      Symbol *incrSym = toSymExpr(incrCall->get(1))->var;
+      Symbol *incrSym = toSymExpr(incrCall->get(1))->symbol();
       for_vector(CallExpr, initCall, initCalls) {
-        Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+        Symbol *initSym = (toSymExpr(initCall->get(1)))->symbol();
         if (incrSym == initSym) {
           incrCalls.push_back(incrCall);
           ++numIncrements;
@@ -106,10 +106,10 @@ static bool checkAndCollectLoopIdxExprs(const GPUForLoop *gpuForLoop,
         callExprSet.insert(testCall);
       }
       callExprSet.insert(testCall);
-      Symbol *testSym = toSymExpr(testCall->get(1))->var;
+      Symbol *testSym = toSymExpr(testCall->get(1))->symbol();
       bool foundInit = false;
       for_vector(CallExpr, initCall, initCalls) {
-        Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+        Symbol *initSym = (toSymExpr(initCall->get(1)))->symbol();
         if (testSym == initSym) {
           foundInit = true;
           testCalls.push_back(testCall);
@@ -145,15 +145,15 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
   VarSymbol *wkitemId = newTemp("_wkitem_id", dtUInt[INT_SIZE_64]);
   for_vector(CallExpr, initCall, initCalls) {
     success = false;
-    Symbol *oldSym = (toSymExpr(initCall->get(1)))->var;
+    Symbol *oldSym = (toSymExpr(initCall->get(1)))->symbol();
     SET_LINENO(oldSym);
     VarSymbol *newIndex = newTemp("_new_index", oldSym->type);
     for_alist(expr, incrBlock->body) {
       CallExpr *incrCall = toCallExpr(expr);
-      if (incrCall && (toSymExpr(incrCall->get(1))->var == oldSym)) {
+      if (incrCall && (toSymExpr(incrCall->get(1))->symbol() == oldSym)) {
         PrimitiveOp* primitiveOp = incrCall->primitive;
-        SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->var);
-        SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->var);
+        SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->symbol());
+        SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->symbol());
         CallExpr *scaleExpr = new CallExpr(PRIM_MULT, incrRhs, wkitemId);
         switch (primitiveOp->tag) {
           case PRIM_ADD_ASSIGN:
@@ -191,8 +191,8 @@ static bool replaceIndexVarUsesIfPossible(FnSymbol *fn,
       SET_LINENO(oldSym);
       Symbol* newSym = e->value;
       for_vector(SymExpr, se, symExprs)
-        if (se->var == oldSym)
-          se->var = newSym;
+        if (se->symbol() == oldSym)
+          se->setSymbol(newSym);
     }
     for_alist_backward(expr, incrBlock->body)
       fn->insertAtHead(expr->remove());
@@ -224,18 +224,18 @@ static bool setWkitemCountIfPossible(CallExpr *call, GPUForLoop *gpuForLoop,
   //BlockStmt *incrBlock = gpuForLoop->incrBlockGet();
   for_vector(CallExpr, testCall, testCalls) {
     success = false;
-    Symbol *testSym = toSymExpr(testCall->get(1))->var;
-    SymExpr *testRhs = new SymExpr(toSymExpr(testCall->get(2))->var);
+    Symbol *testSym = toSymExpr(testCall->get(1))->symbol();
+    SymExpr *testRhs = new SymExpr(toSymExpr(testCall->get(2))->symbol());
     PrimitiveOp* primitiveTestOp = testCall->primitive;
     if (!primitiveTestOp) continue;
     for_vector(CallExpr, incrCall, incrCalls) {
-      Symbol *incrSym = toSymExpr(incrCall->get(1))->var;
+      Symbol *incrSym = toSymExpr(incrCall->get(1))->symbol();
       if (testSym == incrSym) {
-        SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->var);
+        SymExpr *incrRhs = new SymExpr(toSymExpr(incrCall->get(2))->symbol());
         for_vector(CallExpr, initCall, initCalls) {
-          Symbol *initSym = (toSymExpr(initCall->get(1)))->var;
+          Symbol *initSym = (toSymExpr(initCall->get(1)))->symbol();
           if (testSym == initSym) {
-            SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->var);
+            SymExpr *initRhs = new SymExpr(toSymExpr(initCall->get(2))->symbol());
             CallExpr *diffExpr;
             switch (primitiveTestOp->tag) {
               case PRIM_LESSOREQUAL:

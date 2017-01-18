@@ -4943,12 +4943,12 @@ static bool codegenIsSpecialPrimitive(BaseAST* target, Expr* e, GenRet& ret) {
 #ifdef TARGET_HSA
          case PRIM_IS_GPU_SUBLOCALE:
          {
-           codegenAssign(get(1), codegenIsGPUSublocale());
+           codegenAssign(call->get(1), codegenIsGPUSublocale());
            break;
          }
          case PRIM_GET_GLOBAL_ID:
          {
-           codegenAssign(get(1),
+           codegenAssign(call->get(1),
                          codegenCallExpr("get_global_id",
                                          new_IntSymbol(0, INT_SIZE_64)));
            break;
@@ -4963,16 +4963,16 @@ static bool codegenIsSpecialPrimitive(BaseAST* target, Expr* e, GenRet& ret) {
                  std::string reduce_fn = "hsa_reduce_int" +
                      numToString(get_width(data_type));
                  SymExpr* actual = toSymExpr(call->get(2));
-                 VarSymbol* var_op = toVarSymbol(actual->var);
-                 VarSymbol* var_src = toVarSymbol(toSymExpr(call->get(3))->var);
-                 VarSymbol* var_len = toVarSymbol(toSymExpr(call->get(4))->var);
+                 VarSymbol* var_op = toVarSymbol(actual->symbol());
+                 VarSymbol* var_src = toVarSymbol(toSymExpr(call->get(3))->symbol());
+                 VarSymbol* var_len = toVarSymbol(toSymExpr(call->get(4))->symbol());
                  INT_ASSERT(var_op != NULL);
                  INT_ASSERT(var_src != NULL);
                  GenRet r = codegenCallExpr(reduce_fn.c_str(),
                          var_op,
                          var_src,
                          var_len);
-                 codegenAssign(get(1), r);
+                 codegenAssign(call->get(1), r);
              } else {
                  INT_FATAL(data_type, "gpu reduction not implemented for given "
                          "element type");

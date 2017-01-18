@@ -271,7 +271,7 @@ genGPUKernelTable(std::vector<FnSymbol*> & kernelFns, bool isHeader) {
     //if (kernelNames.n == 0)
      // fprintf(hdrfile, "\"\"");
     fprintf(hdrfile, "\n};\n");
-    genGlobalInt64(ktable_count, kernelFns.size());
+    genGlobalInt32(ktable_count, kernelFns.size());
   }
 }
 #endif
@@ -1133,7 +1133,7 @@ static void codegen_gpu_header() {
     current.clear();
     current.move(next);
     current.set_to_vec();
-    qsort(current.v, current.n, sizeof(current.v[0]), compareSymbol);
+    qsort(current.v, current.n, sizeof(current.v[0]), compareSymbol2);
     next.clear();
   }
 

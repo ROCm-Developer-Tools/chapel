@@ -1180,8 +1180,8 @@ void loopInvariantCodeMotion(void) {
           if(defDominatesAllUses(curLoop, symExpr, dominators, localMap, localUseMap)) {
             if(defDominatesAllExits(curLoop, symExpr, dominators, localMap)) {
               curLoop->insertBefore(call);
-              if(defsInLoop.count(symExpr->var) == 1) {
-                curLoop->insertBefore(symExpr->var->defPoint);
+              if(defsInLoop.count(symExpr->symbol()) == 1) {
+                curLoop->insertBefore(symExpr->symbol()->defPoint);
               }
             }
           }   
