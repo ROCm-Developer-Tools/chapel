@@ -113,5 +113,9 @@ echo -n "Setting CHPL_TARGET_COMPILER"
 export CHPL_TARGET_COMPILER=hsa
 echo " to hsa"
 
+echo -n "Setting CHPL_ROCM"
+export CHPL_ROCM=1
+echo " to 1"
+
 export MANPATH="$CHPL_HOME"/man:"$MYMANPATH"
 echo "Updating MANPATH to include $CHPL_HOME/man"
