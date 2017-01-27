@@ -4943,19 +4943,20 @@ static bool codegenIsSpecialPrimitive(BaseAST* target, Expr* e, GenRet& ret) {
 #ifdef TARGET_HSA
          case PRIM_IS_GPU_SUBLOCALE:
          {
-           codegenAssign(call->get(1), codegenIsGPUSublocale());
+           ret = codegenIsGPUSublocale();
+           retval = true;
            break;
          }
          case PRIM_GET_GLOBAL_ID:
          {
-           codegenAssign(call->get(1),
-                         codegenCallExpr("get_global_id",
-                                         new_IntSymbol(0, INT_SIZE_64)));
+           ret = codegenCallExpr("get_global_id",
+                                         new_IntSymbol(0, INT_SIZE_64));
+           retval = true;
            break;
          }
          case PRIM_GPU_REDUCE:
          {
-             Type *data_type = call->get(1)->typeInfo();
+             Type *data_type = target->typeInfo();
              /*FIXME: After gpu kernels for all possible reductions have
               * been implemented, remove this conditional.
               */
@@ -4972,11 +4973,13 @@ static bool codegenIsSpecialPrimitive(BaseAST* target, Expr* e, GenRet& ret) {
                          var_op,
                          var_src,
                          var_len);
-                 codegenAssign(call->get(1), r);
+                 // codegenAssign(call->get(1), r);
+                 ret = r;
              } else {
                  INT_FATAL(data_type, "gpu reduction not implemented for given "
                          "element type");
              }
+             retval = true;
              break;
          }
 #endif

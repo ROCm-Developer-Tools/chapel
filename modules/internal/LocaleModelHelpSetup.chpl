@@ -89,6 +89,20 @@ module LocaleModelHelpSetup {
     here.runningTaskCntSet(0);  // locale init parallelism mis-sets this
   }
 
+  proc helpSetupRootLocaleHSA(dst:RootLocale) {
+    var root_accum:chpl_root_locale_accum;
+
+    forall locIdx in dst.chpl_initOnLocales() {
+      chpl_task_setSubloc(c_sublocid_any);
+      const node = new LocaleModel(dst);
+      dst.myLocales[locIdx] = node;
+      root_accum.accum(node);
+    }
+
+    root_accum.setRootLocaleValues(dst);
+    here.runningTaskCntSet(0);  // locale init parallelism mis-sets this
+  }
+
   proc helpSetupLocaleFlat(dst:LocaleModel, out local_name:string) {
     const _node_id = chpl_nodeID: int;
 
@@ -150,5 +164,42 @@ module LocaleModelHelpSetup {
       }
       chpl_task_setSubloc(origSubloc);
     }
+  }
+
+  proc helpSetupLocaleHSA(dst:LocaleModel, out local_name:string, out numSublocales) {
+    const _node_id = chpl_nodeID: int;
+
+    helpSetupLocaleFlat(dst, local_name);
+
+    extern proc chpl_task_getNumSublocales(): int(32);
+    numSublocales = chpl_task_getNumSublocales();
+
+    extern proc chpl_task_getMaxPar(): uint(32);
+
+
+    extern proc chpl_hsa_initialize(): c_int;
+    var initHsa =  chpl_hsa_initialize();
+    if (initHsa == 1) {
+      halt("Could not initialize HSA");
+    }
+
+    var comm, spawnfn : c_string;
+    extern proc chpl_nodeName() : c_string;
+    if sys_getenv("CHPL_COMM".c_str(), comm) == 0 && comm == "gasnet" &&
+       sys_getenv("GASNET_SPAWNFN".c_str(), spawnfn) == 0 && spawnfn == "L"
+    then local_name = chpl_nodeName():string + "-" + _node_id : string;
+    else local_name = chpl_nodeName():string;
+
+    numSublocales = 2;
+
+    const origSubloc = chpl_task_getRequestedSubloc();
+
+    chpl_task_setSubloc(0:chpl_sublocID_t);
+    dst.CPU = new CPULocale(0:chpl_sublocID_t, dst);
+
+    chpl_task_setSubloc(1:chpl_sublocID_t);
+
+    dst.GPU = new GPULocale(1:chpl_sublocID_t, dst);
+    chpl_task_setSubloc(origSubloc);
   }
 }

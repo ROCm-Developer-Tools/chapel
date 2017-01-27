@@ -79,13 +79,13 @@ chpl_localeID_t chpl_gen_getLocaleID(void)
 }
 
 #ifdef TARGET_HSA
-extern void chpl_isGPUSublocale(bool * isGPU, int64_t _ln, c_string _fn);
+extern void chpl_isGPUSublocale(bool * isGPU, int64_t _ln, int32_t _fn);
 
 static inline
 bool chpl_gen_isGPUSublocale(void)
 {
   bool isGPU;
-  chpl_isGPUSublocale(&isGPU, 0, NULL);
+  chpl_isGPUSublocale(&isGPU, 0, 0);
   return isGPU;
 }
 #endif

@@ -41,7 +41,7 @@ module DefaultRectangular {
 
   config param defRectArrMultiDDataSizeThreshold = 2**20;
 
-  inline proc defRectSimpleDData param return !localeModelHasSublocales;
+  inline proc defRectSimpleDData param return !(CHPL_LOCALE_MODEL=="numa");
 
   class DefaultDist: BaseDist {
     proc dsiNewRectangularDom(param rank: int, type idxType, param stridable: bool)

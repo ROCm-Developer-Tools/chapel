@@ -87,7 +87,7 @@ extern chpl_fn_p chpl_ftable[];
 
 #ifdef TARGET_HSA
 extern const char* chpl_gpu_kernels[];
-extern const int64_t chpl_num_gpu_kernels;
+extern const int32_t chpl_num_gpu_kernels;
 #endif
 extern chpl_fn_info chpl_finfo[];
 
