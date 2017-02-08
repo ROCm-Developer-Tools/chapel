@@ -2062,7 +2062,7 @@ buildReduceScanPreface2(FnSymbol* fn, Symbol* eltType, Symbol* globalOp,
  * the CPU.
  */
 static
-CallExpr* buildCPUReduceExpr(VarSymbol *data,
+CallExpr* buildCPUReduceExpr(ArgSymbol* data,
                              VarSymbol* globalOp,
                              VarSymbol* eltType,
                              Expr* opExpr,
@@ -2072,23 +2072,6 @@ CallExpr* buildCPUReduceExpr(VarSymbol *data,
   fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
-
-  // data will hold the reduce-d expression as an argument
-  // we'll store dataExpr in the call to the chpl__reduce function.
-  ArgSymbol* data = new ArgSymbol(INTENT_BLANK, "chpl_toReduce", dtAny);
-  fn->insertFormalAtTail(data);
-
-  VarSymbol* eltType = newTemp("chpl_eltType");
-  buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
-
-  // If we can handle it via a forall with a reduce intent, do so.
-  CallExpr* forallExpr = buildReduceViaForall(fn, opExpr, dataExpr,
-                                              data, eltType, zippered);
-  if (forallExpr)
-    return forallExpr;
-
-  VarSymbol* globalOp = newTemp("chpl_globalOp");
-  buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
 
   BlockStmt* serialBlock = buildChapelStmt();
   VarSymbol* index = newTemp("_index");
@@ -2172,7 +2155,7 @@ CallExpr* buildCPUReduceExpr(VarSymbol *data,
         result, new CallExpr(new CallExpr(
             ".", globalOp, new_CStringSymbol("generate")))));
   fn->insertAtTail("'return'(%S)", result);
-  return new CallExpr(new DefExpr(fn), dataExpr);
+  return new CallExpr(new DefExpr(fn));
 }
 
 
@@ -2216,11 +2199,33 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
 
-  VarSymbol* data = newTemp();
-  VarSymbol* eltType = newTemp();
-  VarSymbol* globalOp = newTemp();
+  //  VarSymbol* data = newTemp();
+  //  VarSymbol* eltType = newTemp();
+  //  VarSymbol* globalOp = newTemp();
 
-  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr, zippered);
+  // data will hold the reduce-d expression as an argument
+  // we'll store dataExpr in the call to the chpl__reduce function.
+  ArgSymbol* data = new ArgSymbol(INTENT_BLANK, "chpl_toReduce", dtAny);
+  fn->insertFormalAtTail(data);
+
+  VarSymbol* eltType = newTemp("chpl_eltType");
+  buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
+
+  // If we can handle it via a forall with a reduce intent, do so.
+  
+  CallExpr* forallExpr = buildReduceViaForall(fn, opExpr, dataExpr,
+                                              data, eltType, zippered);
+  if (forallExpr) 
+      return forallExpr;
+  
+  VarSymbol* globalOp = newTemp("chpl_globalOp");
+  buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
+
+  //  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr, zippered);
+  /* FIXME: The following code is still not executing correctly, our tests
+     are currently running through the ReduceViaForall code above so not actually
+     hitting the code below.
+   */
 
   CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, eltType, opExpr,
                                               zippered);
