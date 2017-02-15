@@ -14,21 +14,12 @@
 atmi_kernel_t reduction_kernel;
 atmi_kernel_t *gpu_kernels;
 
+atmi_machine_t *g_machine;
+
 enum {
     GPU_KERNEL_IMPL = 10565,
     REDUCTION_GPU_IMPL = 42
 };    
-/*
-typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
-    uint64_t in;
-    uint64_t out;
-    uint32_t count;
-} hsail_reduce_kernarg_t;
-
-typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
-    uint64_t bundle;
-} hsail_kernarg_t;
-*/
 
 int chpl_hsa_initialize(void);
 

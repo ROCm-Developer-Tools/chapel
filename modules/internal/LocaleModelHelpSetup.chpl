@@ -172,9 +172,6 @@ module LocaleModelHelpSetup {
 
     helpSetupLocaleFlat(dst, local_name);
 
-    extern proc chpl_task_getNumSublocales(): int(32);
-    numSublocales = chpl_task_getNumSublocales();
-
     extern proc chpl_task_getMaxPar(): uint(32);
 
 
@@ -191,7 +188,8 @@ module LocaleModelHelpSetup {
     then local_name = chpl_nodeName():string + "-" + _node_id : string;
     else local_name = chpl_nodeName():string;
 
-    numSublocales = 2;
+    extern proc chpl_task_getNumSublocales(): int(32);
+    numSublocales = chpl_task_getNumSublocales();
 
     const origSubloc = chpl_task_getRequestedSubloc();
 

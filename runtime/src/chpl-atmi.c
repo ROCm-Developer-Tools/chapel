@@ -26,9 +26,6 @@
  */
 int chpl_hsa_initialize(void)
 {
-    atmi_status_t st = atmi_init(ATMI_DEVTYPE_ALL);
-    if(st != ATMI_STATUS_SUCCESS) return -1;
-
     char reduce_kernel_filename[1024];
     char gen_kernel_filename[1024];
     int arglen = strlen(chpl_executionCommand)+1;
@@ -68,7 +65,7 @@ int chpl_hsa_initialize(void)
     /* FIXME: Create all reduction kernels, not just the int64-sum kernel */
     const char *modules[2] = {reduce_kernel_filename, gen_kernel_filename};
     atmi_platform_type_t module_types[2] = {module_type, module_type};
-    st = atmi_module_register(modules, module_types, 2);
+    atmi_status_t st = atmi_module_register(modules, module_types, 2);
     OUTPUT_ATMI_STATUS(st, Registering all modules);
 
     size_t reduction_arg_sizes[] = {sizeof(uint64_t), sizeof(uint64_t), sizeof(uint32_t)};

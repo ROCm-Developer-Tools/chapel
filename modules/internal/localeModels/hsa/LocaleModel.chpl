@@ -157,7 +157,7 @@ module LocaleModel {
       return {0..#numSublocales};
     }
 
-    proc getChildCount() return 0;
+    proc getChildCount() return numSublocales;
 
     iter getChildIndices() : int {
       for idx in {0..#numSublocales} do // chpl_emptyLocaleSpace do

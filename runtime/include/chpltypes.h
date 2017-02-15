@@ -189,6 +189,7 @@ typedef int32_t chpl_bool32;
 typedef int64_t chpl_bool64;
 
 typedef void (*chpl_fn_p)(void*); // function pointer for runtime ftable
+typedef const char *chpl_fn_name;
 typedef int16_t chpl_fn_int_t;    // int type for ftable indexing
 
 // Function table names and information, for VisualDebug use
