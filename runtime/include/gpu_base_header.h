@@ -62,7 +62,10 @@ typedef uint_least8_t atomic_uint_least8_t;
 typedef uint_least16_t atomic_uint_least16_t;
 typedef uint_least32_t atomic_uint_least32_t;
 typedef uint_least64_t atomic_uint_least64_t;
-typedef chpl_bool atomic_flag_n;
+typedef chpl_bool atomic_bool;
+typedef uint64_t atomic__real64;
+typedef uint32_t atomic__real32;
+
 
 
 # define INT8_C(c)      c
