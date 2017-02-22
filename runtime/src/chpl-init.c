@@ -203,6 +203,7 @@ void chpl_rt_init(int argc, char* argv[]) {
 //
 void chpl_rt_finalize(int return_value) {
   //chpl_rt_postUserCodeHook();
+  int err= hsa_shutdown();
   chpl_exit_all(return_value);
 }
 

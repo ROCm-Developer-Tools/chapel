@@ -104,6 +104,7 @@ load_module_from_file(const char * file_name, char ** buf, int * buf_size)
         goto err_free_buffer;
     }
 
+    fclose(fp);
     return SUCCESS;
 
 err_free_buffer:
@@ -365,10 +366,11 @@ int hsa_create_kernels(const char * file_name)
       if (HSA_STATUS_SUCCESS != st) {
         goto err_free_kernel_name;
       }
-      chpl_free(kernel_name);
+      //chpl_free(kernel_name);
     }
 
     chpl_free(module_buffer);
+   // chpl_free(kernel_name);
 
     return SUCCESS;
 
@@ -490,7 +492,7 @@ int hsa_create_reduce_kernels(const char * fn_name, const char * file_name)
         goto err_free_kernel_name;
     }
 
-    chpl_free(kernel_name);
+    //chpl_free(kernel_name);
     chpl_free(module_buffer);
 
     return SUCCESS;
@@ -577,5 +579,9 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
          1, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > 0);
   hsa_memory_free((void*)args);
   hsa_signal_destroy(completion_signal);
+  
+  chpl_free (gen_kernels.symbol_info);
+  hsa_executable_destroy(gen_kernels.executable);
+  hsa_code_object_destroy(gen_kernels.code_object);
 }
 
