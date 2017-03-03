@@ -73,7 +73,6 @@ int
 load_module_from_file(const char * file_name, char ** buf, int * buf_size)
 {
 
-printf("loading file %s : \n",  file_name);
     FILE *fp = fopen(file_name, "rb");
     size_t read_size, file_size;
     if (NULL == fp) {
@@ -129,7 +128,6 @@ err_close_file:
  */
 int chpl_hsa_initialize(void)
 { 
-printf("inside the hsa_init \n");
     uint32_t gpu_max_queue_size;
     char reduce_kernel_filename[1024];
     char gen_kernel_filename[1024];
@@ -138,9 +136,7 @@ printf("inside the hsa_init \n");
                                      CHPL_RT_MD_CFG_ARG_COPY_DATA, 0, 0);
     char *binName;
     int cx;
-printf("calling hsa_init \n");
     hsa_status_t st = hsa_init();
-printf("after hsa_init \n");
     OUTPUT_HSA_STATUS(st, HSA initialization);
     if (HSA_STATUS_SUCCESS != st) {
         return ERROR;
@@ -205,7 +201,6 @@ printf("after hsa_init \n");
                   "%s/runtime/src/%s/chpl-hsa-reducekernels.o", CHPL_HOME,
 #endif
                    CHPL_RUNTIME_OBJDIR);
-printf("******  %s   size =%d\n",CHPL_RUNTIME_OBJDIR, cx);
     if (cx < 0 || cx  >= 1023) {
       OUTPUT_HSA_STATUS(ERROR, Creating reduce kernel filename);
         hsa_queue_destroy(hsa_device.command_queue);
@@ -233,7 +228,6 @@ printf("******  %s   size =%d\n",CHPL_RUNTIME_OBJDIR, cx);
       hsa_shut_down();
       return ERROR;
     }
-printf("after reduce kernel creation \n");
     if (ERROR == hsa_create_kernels(gen_kernel_filename)) {
       hsa_queue_destroy(hsa_device.command_queue);
       hsa_shut_down();
@@ -277,7 +271,6 @@ int hsa_create_kernels(const char * file_name)
     hsa_executable_symbol_t symbol;
     int size;
 
-printf("inside hsa_create_kernels \n");
     char * module_buffer;
     if (SUCCESS != load_module_from_file(file_name, &module_buffer, &size)) {
         st = HSA_STATUS_ERROR;
@@ -455,7 +448,6 @@ int hsa_create_reduce_kernels(const char * file_name)
 #else
     	size = asprintf(&kernel_name, "&__OpenCL_%s_kernel", fn_name);
 #endif 
-printf("***************   fn_name = %s  size= %d \n", fn_name, size);
     	if (-1 == size) {
         	goto err_destroy_custom_kernel;
     	}
