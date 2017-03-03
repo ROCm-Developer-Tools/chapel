@@ -33,13 +33,25 @@
 #include "symbol.h"
 #include "type.h"
 
+#include "codegen.h"
+
 #include <map>
 #include <utility>
+
+#include <iostream>     // std::cout, std::ostream, std::ios
+#include <fstream>
 
 static BlockStmt* findStmtWithTag(PrimitiveTag tag, BlockStmt* blockStmt);
 static void buildSerialIteratorFn(FnSymbol* fn, const char* iteratorName,
                                   Expr* expr, Expr* cond, Expr* indices,
                                   bool zippered, Expr*& stmt);
+static void
+buildReduceScanPreface1(FnSymbol* fn, Symbol* data, Symbol* eltType,
+                       Expr* opExpr, Expr* dataExpr, bool zippered);
+static void
+buildReduceScanPreface2(FnSymbol* fn, Symbol* eltType, Symbol* globalOp,
+                        Expr* opExpr);
+
 
 static void
 checkControlFlow(Expr* expr, const char* context) {
@@ -1755,6 +1767,13 @@ CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
   fnred->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   fnred->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fnred->addFlag(FLAG_INLINE);
+
+   //buildReduceScanPreface1(fnred, data, eltType, opExpr, dataExpr, false);
+   //buildReduceScanPreface2(fnred, eltType, globalOp, opExpr);
+
+
+
+
   fnred->retType = eltType->type;
 
   BlockStmt *stmt = new BlockStmt();
@@ -1787,9 +1806,9 @@ CallExpr* buildGPUReduceExpr(Expr* opExpr, Expr* dataExpr, VarSymbol *eltType) {
 }
 #endif
 
-static void
-buildReduceScanPreface2(FnSymbol* fn, Symbol* eltType, Symbol* globalOp,
-                        Expr* opExpr);
+//static void
+//buildReduceScanPreface2(FnSymbol* fn, Symbol* eltType, Symbol* globalOp,
+//                        Expr* opExpr);
 
 //
 // Given (forall IND in ITER do EXPR), compute the type of EXPR
@@ -1895,10 +1914,13 @@ static void addElseClauseForSerialIter(BlockStmt* forall,
 // If not - i.e. if there is something we are not handling (yet) -
 // then return NULL.
 //
+
+
 static CallExpr*
-buildReduceViaForall(FnSymbol* fn, Expr* opExpr, Expr* dataExpr,
+buildReduceViaForall(Expr* opExpr, Expr* dataExpr,
                      ArgSymbol* data, VarSymbol* eltType, bool zippered)
 {
+
   if (zippered) {
     // A zippered reduction - not handled yet.
     return NULL;
@@ -1949,8 +1971,17 @@ buildReduceViaForall(FnSymbol* fn, Expr* opExpr, Expr* dataExpr,
     // Otherwise we do not know what opFun it should be.
     return NULL;
   }
+  static int uid = 1;
+  FnSymbol* fn = new FnSymbol(astr("chpl__loopcpureduce", istr(uid++)));
+  fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
+  fn->addFlag(FLAG_INLINE);
 
+
+  fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   VarSymbol* globalOp = newTemp("chpl_reduceGlob");
+  
+
+  buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
   buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
 
   VarSymbol* result = newTemp("chpl_reduceResult");
@@ -2018,7 +2049,7 @@ buildReduceViaForall(FnSymbol* fn, Expr* opExpr, Expr* dataExpr,
   fn->insertAtTail(new CallExpr(PRIM_RETURN, result));
 
   // Success.
-  return new CallExpr(new DefExpr(fn), dataExpr);
+  return new CallExpr(new DefExpr(fn));
 }
 
 
@@ -2069,9 +2100,15 @@ CallExpr* buildCPUReduceExpr(ArgSymbol* data,
                              bool zippered) {
   static int uid = 1;
   FnSymbol* fn = new FnSymbol(astr("chpl__cpureduce", istr(uid++)));
+  //fn->insertFormalAtTail(data);
   fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
+
+  //buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
+  //buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
+
+
 
   BlockStmt* serialBlock = buildChapelStmt();
   VarSymbol* index = newTemp("_index");
@@ -2199,37 +2236,44 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
 
-  //  VarSymbol* data = newTemp();
-  //  VarSymbol* eltType = newTemp();
-  //  VarSymbol* globalOp = newTemp();
+   //VarSymbol* data = newTemp();
+    //VarSymbol* eltType = newTemp();
+    //VarSymbol* globalOp = newTemp();
 
   // data will hold the reduce-d expression as an argument
   // we'll store dataExpr in the call to the chpl__reduce function.
+  
+ 
   ArgSymbol* data = new ArgSymbol(INTENT_BLANK, "chpl_toReduce", dtAny);
   fn->insertFormalAtTail(data);
 
+  Expr* dataExpr_copy = dataExpr->copy();
+  Expr* opExpr_copy = opExpr->copy();
+
   VarSymbol* eltType = newTemp("chpl_eltType");
+  VarSymbol* eltType_copy= eltType->copy();
+  VarSymbol* globalOp = newTemp("chpl_globalOp");
+ 
+ /*
+  changes to handle reduce on GPU while keepin gthe Loop for CPU:
+   1) create a new function in buildReduceViaForall with it own preface,
+    as this function updates the parameter directly we create a copy of them and passes them to the new function
+ */       
   buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
 
   // If we can handle it via a forall with a reduce intent, do so.
-  
-  CallExpr* forallExpr = buildReduceViaForall(fn, opExpr, dataExpr,
-                                              data, eltType, zippered);
-  if (forallExpr) 
-      return forallExpr;
-  
-  VarSymbol* globalOp = newTemp("chpl_globalOp");
-  buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
+  CallExpr* forallExpr = buildReduceViaForall( opExpr_copy, dataExpr_copy,
+                                              data, eltType_copy, zippered);
 
-  //  buildReduceScanPreface(fn, data, eltType, globalOp, opExpr, dataExpr, zippered);
-  /* FIXME: The following code is still not executing correctly, our tests
-     are currently running through the ReduceViaForall code above so not actually
-     hitting the code below.
-   */
-
-  CallExpr * cpu_reduce =  buildCPUReduceExpr(data, globalOp, eltType, opExpr,
-                                              zippered);
-  VarSymbol* resultcpu = new VarSymbol("_resultcpu");
+   buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
+   CallExpr * cpu_reduce = forallExpr; 
+   if(forallExpr == NULL)
+       {
+        //buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
+        cpu_reduce =  buildCPUReduceExpr(data, globalOp, eltType, opExpr,
+                                            zippered);
+      }
+   VarSymbol* resultcpu = new VarSymbol("_resultcpu");
 #ifdef TARGET_HSA
   /* FIXME: We assume that if dataExpr is unresolved it is a variable name,
    * which will be later resolved to an array of appropriate type. Otherwise
@@ -2237,9 +2281,10 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
    * fit for GPU offload. This is flaky.
    * For now, we consider gpu offload only for single-locale execution.
    */
-  if (fLocal && toUnresolvedSymExpr(dataExpr)) {
+  if (fLocal && toUnresolvedSymExpr(dataExpr)) 
+      {
     CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
-
+        	
     VarSymbol* isGpu = newTemp("_is_gpu");
     fn->insertAtTail(new DefExpr(isGpu));
     fn->insertAtTail(new CallExpr(PRIM_MOVE, isGpu,
@@ -2249,21 +2294,23 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
     VarSymbol* resultgpu = new VarSymbol("_resultgpu");
     BlockStmt* thenBlock = buildChapelStmt();
     thenBlock->insertAtTail(new DefExpr(resultgpu, gpu_reduce));
-    thenBlock->insertAtTail("'delete'(%S)", globalOp);
+    //thenBlock->insertAtTail("'delete'(%S)", globalOp);
     thenBlock->insertAtTail("'return'(%S)", resultgpu);
     BlockStmt* elseBlock = buildChapelStmt();
     elseBlock->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
-    elseBlock->insertAtTail("'delete'(%S)", globalOp);
+    //elseBlock->insertAtTail("'delete'(%S)", globalOp);
     elseBlock->insertAtTail("'return'(%S)", resultcpu);
     fn->insertAtTail(new CondStmt(new SymExpr(isGpu),
           thenBlock, elseBlock));
-    return new CallExpr(new DefExpr(fn));
+    return new CallExpr(new DefExpr(fn), dataExpr);
   }
 #endif
+
   fn->insertAtTail(new DefExpr(resultcpu, cpu_reduce));
-  fn->insertAtTail("'delete'(%S)", globalOp);
+  //fn->insertAtTail("'delete'(%S)", globalOp);
   fn->insertAtTail("'return'(%S)", resultcpu);
-  return new CallExpr(new DefExpr(fn));
+  return new CallExpr(new DefExpr(fn), dataExpr); 
+ 
 }
 
 

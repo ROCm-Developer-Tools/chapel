@@ -14,7 +14,7 @@ proc run_reduce(count: int) {
   }
 
   var sum: int = 0;
-  on (Locales[0]:LocaleModel).GPU do {
+  on (Locales[0]:LocaleModel) do {
     sum =  + reduce A;
   }
   assert(sum == count * count);

@@ -4960,7 +4960,11 @@ static bool codegenIsSpecialPrimitive(BaseAST* target, Expr* e, GenRet& ret) {
              /*FIXME: After gpu kernels for all possible reductions have
               * been implemented, remove this conditional.
               */
-             if (is_int_type(data_type) && (get_width(data_type) == 64)) {
+             if (is_int_type(data_type) &&
+                ((get_width(data_type) == 64) ||
+                (get_width(data_type) == 32)  ||
+                (get_width(data_type) == 16)  ||
+                (get_width(data_type) == 8) )) {
                  std::string reduce_fn = "hsa_reduce_int" +
                      numToString(get_width(data_type));
                  SymExpr* actual = toSymExpr(call->get(2));

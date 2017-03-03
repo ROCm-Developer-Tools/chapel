@@ -3,26 +3,13 @@
 #include "chplrt.h"
 #include "chplexit.h"
 #include "chpl-mem.h"
-
-/*enum ReduceOp {
-    MAX,
-    MIN,
-    SUM,
-    PROD,
-    BITAND,
-    BITOR,
-    BITXOR,
-    LOGAND,
-    LOGOR
-  };
-*/
-
+#include <strings.h>
 /*
  * Enqueue a reduction kernel
  */
 static inline
-void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, size_t count,
-                              uint32_t grid_size_x,
+void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, enum ReduceOp op,
+                              size_t count, uint32_t grid_size_x,
                               hsa_signal_t completion_signal,
                               hsa_symbol_info_t *symbol_info,
                               hsail_reduce_kernarg_t *args)
@@ -69,6 +56,7 @@ void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, size_t count,
 
   args->in = (uint64_t)inbuf;
   args->out = (uint64_t)outbuf;
+  args->op = (uint64_t)op;
   args->count = (uint32_t)count;
 
   dispatch_packet->kernarg_address = (void*)args;
@@ -86,6 +74,7 @@ void hsa_enqueue_reducekernel(void *inbuf, void *outbuf, size_t count,
  */
 static inline
 void hsa_sched_reducekernels(size_t count, hsa_symbol_info_t *symbol_info,
+                             const char *op,
                              void *darray[2], size_t *iter_ct,
                              size_t *items_left)
 {
@@ -93,6 +82,30 @@ void hsa_sched_reducekernels(size_t count, hsa_symbol_info_t *symbol_info,
   hsa_signal_t completion_signal;
   size_t incount, outcount, i, iter, in, out;
   uint32_t max_num_wkgrps, num_wkgroups, grid_size_x;
+  enum ReduceOp opType;
+
+  if (!strcasecmp(op, "MaxReduceScanOp"))
+    opType = MAX;
+  else if (!strcasecmp(op, "MinReduceScanOp"))
+    opType = MIN;
+  else if (!strcasecmp(op, "SumReduceScanOp"))
+    opType = SUM;
+  else if (!strcasecmp(op, "ProductReduceScanOp"))
+    opType = PROD;
+  else if (!strcasecmp(op, "LogicalAndReduceScanOp"))
+    opType = LOGICAL_AND;
+  else if (!strcasecmp(op, "LogicalOrReduceScanOp"))
+    opType = LOGICAL_OR;
+  else if (!strcasecmp(op, "BitwiseAndReduceScanOp"))
+    opType = BIT_AND;
+  else if (!strcasecmp(op, "BitwiseOrReduceScanOp"))
+    opType = BIT_OR;
+  else if (!strcasecmp(op, "BitwiseXorReduceScanOp"))
+    opType = BIT_XOR;
+  else {
+    printf ("op not found %s\n", op);
+    chpl_exit_any(1);
+  }
 
   /*FIXME: This is an overestimation. Allocation count should be equal to the
    * number of iters.
@@ -112,7 +125,7 @@ void hsa_sched_reducekernels(size_t count, hsa_symbol_info_t *symbol_info,
     hsa_memory_allocate(hsa_device.kernarg_region,
                         symbol_info->kernarg_segment_size,
                         (void**)&args[iter]);
-    hsa_enqueue_reducekernel(darray[in], darray[out], incount,
+    hsa_enqueue_reducekernel(darray[in], darray[out], opType, incount,
                              grid_size_x, completion_signal, symbol_info,
                              args[iter]);
     iter += 1;
@@ -137,72 +150,230 @@ void hsa_sched_reducekernels(size_t count, hsa_symbol_info_t *symbol_info,
   (*iter_ct) = iter;
 }
 
-/*int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count)
-{
-  int32_t res;
-  size_t iter, items_left, out, i;
-  int32_t * darray[2];
-  hsa_symbol_info_t * symbol_info;
-  symbol_info = &kernel.symbol_info[0]; //TODO: Remove hardcoded 0 index
-  darray[0] = src;
-  if (0 != chpl_posix_memalign((void **) &darray[1], 64,
-                               count * sizeof(int32_t))) {
-    chpl_exit_any(1);
-  }
-
-  hsa_sched_reducekernels(count, symbol_info, (void**)darray,
-                          &iter, &items_left);
-
-  res = 0;
-  out = (iter & 1);
-  chpl_msg(2, "HSA: Using CPU to reduce %lu items\n", items_left);
-  for (i = 0; i < items_left; ++i) res += darray[out][i];
-
-  chpl_free (darray[1]);
-  return res;
-}*/
-
 int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count)
 {
   int64_t res;
   size_t iter, items_left, out, i;
   int64_t * darray[2];
   hsa_symbol_info_t * symbol_info;
-  symbol_info = &kernel.symbol_info[0]; //TODO: Remove hardcoded 0 index
+  symbol_info = &reduce_kernels.symbol_info[REDUCE_INT64];
   darray[0] = src;
   if (0 != chpl_posix_memalign((void **) &darray[1], 64,
                                count * sizeof(int64_t))) {
     chpl_exit_any(1);
   }
 
-  hsa_sched_reducekernels(count, symbol_info, (void**)darray,
+  hsa_sched_reducekernels(count, symbol_info, op, (void**)darray,
                           &iter, &items_left);
 
-  res = 0;
   out = (iter & 1);
   chpl_msg(2, "HSA: Using CPU to reduce %lu items\n", items_left);
-  for (i = 0; i < items_left; ++i) res += darray[out][i];
+    if (!strcasecmp(op, "MaxReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i)
+        res = res > darray[out][i] ? res : darray[out][i];
+    } else if (!strcasecmp(op, "MinReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i) {
+        res = res < darray[out][i] ? res : darray[out][i];
+      }
+    } else if (!strcasecmp(op, "SumReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res += darray[out][i];
+    } else if (!strcasecmp(op, "ProductReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res *= darray[out][i];
+    } else if (!strcasecmp(op, "LogicalAndReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res = res && darray[out][i];
+    } else if (!strcasecmp(op, "LogicalOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res || darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseAndReduceScanOp")) {
+      res = -1;
+      for (i = 0; i < items_left; ++i) res = res & darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res | darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseXorReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res ^ darray[out][i];
+    } else {
+      printf ("op not found %s\n", op);
+      chpl_exit_any(1);
+    }
 
   chpl_free (darray[1]);
   return res;
 }
 
-  //FIXME: use the op argument like this to extend this to different ops
-  /*if (!strcasecmp(op, "Max"))
-    opType = MAX;
-    else if (!strcasecmp(op, "Min"))
-    opType = MIN;
-    else if (!strcasecmp(op, "Sum"))
-    opType = SUM;
-    else if (!strcasecmp(op, "Product"))
-    opType = PROD;
-    else if (!strcasecmp(op, "LogicalAnd"))
-    opType = LOGAND;
-    else if (!strcasecmp(op, "LogicalOr"))
-    opType = LOGOR;
-    else if (!strcasecmp(op, "BitwiseAnd"))
-    opType = BITAND;
-    else if (!strcasecmp(op, "BitwiseOr"))
-    opType = BITOR;
-    else if (!strcasecmp(op, "BitwiseXor"))
-    opType = BITXOR; */
+int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count)
+{
+  int32_t res;
+  size_t iter, items_left, out, i;
+  int32_t * darray[2];
+  hsa_symbol_info_t * symbol_info;
+  symbol_info = &reduce_kernels.symbol_info[REDUCE_INT32];
+  darray[0] = src;
+  if (0 != chpl_posix_memalign((void **) &darray[1], 64,
+                               count * sizeof(int32_t))) {
+    chpl_exit_any(1);
+  }
+
+  hsa_sched_reducekernels(count, symbol_info, op, (void**)darray,
+                          &iter, &items_left);
+
+  out = (iter & 1);
+  chpl_msg(2, "HSA: Using CPU to reduce %lu items\n", items_left);
+    if (!strcasecmp(op, "MaxReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i)
+        res = res > darray[out][i] ? res : darray[out][i];
+    } else if (!strcasecmp(op, "MinReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i) {
+        res = res < darray[out][i] ? res : darray[out][i];
+      }
+    } else if (!strcasecmp(op, "SumReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res += darray[out][i];
+    } else if (!strcasecmp(op, "ProductReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res *= darray[out][i];
+    } else if (!strcasecmp(op, "LogicalAndReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res = res && darray[out][i];
+    } else if (!strcasecmp(op, "LogicalOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res || darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseAndReduceScanOp")) {
+      res = -1;
+      for (i = 0; i < items_left; ++i) res = res & darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res | darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseXorReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res ^ darray[out][i];
+    } else {
+      printf ("op not found %s\n", op);
+      chpl_exit_any(1);
+    }
+
+  chpl_free (darray[1]);
+  return res;
+}
+
+int16_t hsa_reduce_int16(const char *op, int16_t *src, size_t count)
+{
+  int16_t res;
+  size_t iter, items_left, out, i;
+  int16_t * darray[2];
+  hsa_symbol_info_t * symbol_info;
+  symbol_info = &reduce_kernels.symbol_info[REDUCE_INT16];
+  darray[0] = src;
+  if (0 != chpl_posix_memalign((void **) &darray[1], 64,
+                               count * sizeof(int16_t))) {
+    chpl_exit_any(1);
+  }
+
+  hsa_sched_reducekernels(count, symbol_info, op, (void**)darray,
+                          &iter, &items_left);
+
+  out = (iter & 1);
+  chpl_msg(2, "HSA: Using CPU to reduce %lu items\n", items_left);
+    if (!strcasecmp(op, "MaxReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i)
+        res = res > darray[out][i] ? res : darray[out][i];
+    } else if (!strcasecmp(op, "MinReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i) {
+        res = res < darray[out][i] ? res : darray[out][i];
+      }
+    } else if (!strcasecmp(op, "SumReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res += darray[out][i];
+    } else if (!strcasecmp(op, "ProductReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res *= darray[out][i];
+    } else if (!strcasecmp(op, "LogicalAndReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res = res && darray[out][i];
+    } else if (!strcasecmp(op, "LogicalOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res || darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseAndReduceScanOp")) {
+      res = -1;
+      for (i = 0; i < items_left; ++i) res = res & darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res | darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseXorReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res ^ darray[out][i];
+    } else {
+      printf ("op not found %s\n", op);
+      chpl_exit_any(1);
+    }
+
+  chpl_free (darray[1]);
+  return res;
+}
+int8_t hsa_reduce_int8(const char *op, int8_t *src, size_t count)
+{
+  int8_t res;
+  size_t iter, items_left, out, i;
+  int8_t * darray[2];
+  hsa_symbol_info_t * symbol_info;
+  symbol_info = &reduce_kernels.symbol_info[REDUCE_INT8];
+  darray[0] = src;
+  if (0 != chpl_posix_memalign((void **) &darray[1], 64,
+                               count * sizeof(int8_t))) {
+    chpl_exit_any(1);
+  }
+
+  hsa_sched_reducekernels(count, symbol_info, op, (void**)darray,
+                          &iter, &items_left);
+
+  out = (iter & 1);
+  chpl_msg(2, "HSA: Using CPU to reduce %lu items\n", items_left);
+   if (!strcasecmp(op, "MaxReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i)
+        res = res > darray[out][i] ? res : darray[out][i];
+    } else if (!strcasecmp(op, "MinReduceScanOp")) {
+      res = darray[out][0];
+      for (i = 0; i < items_left; ++i) {
+        res = res < darray[out][i] ? res : darray[out][i];
+      }
+    } else if (!strcasecmp(op, "SumReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res += darray[out][i];
+    } else if (!strcasecmp(op, "ProductReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res *= darray[out][i];
+    } else if (!strcasecmp(op, "LogicalAndReduceScanOp")) {
+      res = 1;
+      for (i = 0; i < items_left; ++i) res = res && darray[out][i];
+    } else if (!strcasecmp(op, "LogicalOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res || darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseAndReduceScanOp")) {
+      res = -1;
+      for (i = 0; i < items_left; ++i) res = res & darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseOrReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res | darray[out][i];
+    } else if (!strcasecmp(op, "BitwiseXorReduceScanOp")) {
+      res = 0;
+      for (i = 0; i < items_left; ++i) res = res ^ darray[out][i];
+    } else {
+      printf ("op not found %s\n", op);
+      chpl_exit_any(1);
+    }
+
+  chpl_free (darray[1]);
+  return res;
+}
+

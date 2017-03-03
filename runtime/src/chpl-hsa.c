@@ -21,6 +21,7 @@
 
 #define SUCCESS 0
 #define ERROR 1
+
 //#define RUNTIME_OBJDIR #CHPL_RUNTIME_OBJDIR
 /*
  * Determine if the given agent is of type HSA_DEVICE_TYPE_GPU and sets the
@@ -71,6 +72,8 @@ get_kernarg_memory_region(hsa_region_t region, void* data)
 int
 load_module_from_file(const char * file_name, char ** buf, int * buf_size)
 {
+
+printf("loading file %s : \n",  file_name);
     FILE *fp = fopen(file_name, "rb");
     size_t read_size, file_size;
     if (NULL == fp) {
@@ -125,7 +128,8 @@ err_close_file:
  * Finalize kernels for pre-defined reductions
  */
 int chpl_hsa_initialize(void)
-{
+{ 
+printf("inside the hsa_init \n");
     uint32_t gpu_max_queue_size;
     char reduce_kernel_filename[1024];
     char gen_kernel_filename[1024];
@@ -134,7 +138,9 @@ int chpl_hsa_initialize(void)
                                      CHPL_RT_MD_CFG_ARG_COPY_DATA, 0, 0);
     char *binName;
     int cx;
+printf("calling hsa_init \n");
     hsa_status_t st = hsa_init();
+printf("after hsa_init \n");
     OUTPUT_HSA_STATUS(st, HSA initialization);
     if (HSA_STATUS_SUCCESS != st) {
         return ERROR;
@@ -192,7 +198,6 @@ int chpl_hsa_initialize(void)
         hsa_shut_down();
         return ERROR;
     }
-
     cx = snprintf(reduce_kernel_filename, 1024,
 #ifdef ROCM
                   "%s/runtime/src/%s/chpl-hsa-reducekernels.hsaco", CHPL_HOME,
@@ -200,7 +205,8 @@ int chpl_hsa_initialize(void)
                   "%s/runtime/src/%s/chpl-hsa-reducekernels.o", CHPL_HOME,
 #endif
                    CHPL_RUNTIME_OBJDIR);
-    if (cx < 0 || cx  >= 256) {
+printf("******  %s   size =%d\n",CHPL_RUNTIME_OBJDIR, cx);
+    if (cx < 0 || cx  >= 1023) {
       OUTPUT_HSA_STATUS(ERROR, Creating reduce kernel filename);
         hsa_queue_destroy(hsa_device.command_queue);
         hsa_shut_down();
@@ -215,19 +221,19 @@ int chpl_hsa_initialize(void)
 #endif
     chpl_mem_free(argCopy, 0, 0);
 
-    if (cx < 0 || cx  >= 256) {
+    if (cx < 0 || cx  >= 1023) {
       OUTPUT_HSA_STATUS(ERROR, Creating generated kernel filename);
         hsa_queue_destroy(hsa_device.command_queue);
         hsa_shut_down();
         return ERROR;
     }
     /* FIXME: Create all reduction kernels, not just the int64-sum kernel */
-    if (ERROR == hsa_create_reduce_kernels("reduce_int64_sum",
-                                       reduce_kernel_filename)) {
+    if (ERROR == hsa_create_reduce_kernels(reduce_kernel_filename)) {
       hsa_queue_destroy(hsa_device.command_queue);
       hsa_shut_down();
       return ERROR;
     }
+printf("after reduce kernel creation \n");
     if (ERROR == hsa_create_kernels(gen_kernel_filename)) {
       hsa_queue_destroy(hsa_device.command_queue);
       hsa_shut_down();
@@ -271,6 +277,7 @@ int hsa_create_kernels(const char * file_name)
     hsa_executable_symbol_t symbol;
     int size;
 
+printf("inside hsa_create_kernels \n");
     char * module_buffer;
     if (SUCCESS != load_module_from_file(file_name, &module_buffer, &size)) {
         st = HSA_STATUS_ERROR;
@@ -393,7 +400,7 @@ err_free_module_buffer:
  * Setup reduce kernels
  *
  */
-int hsa_create_reduce_kernels(const char * fn_name, const char * file_name)
+int hsa_create_reduce_kernels(const char * file_name)
 {
     hsa_status_t st;
     char * kernel_name;
@@ -408,7 +415,7 @@ int hsa_create_reduce_kernels(const char * fn_name, const char * file_name)
     }
 
     st = hsa_code_object_deserialize(module_buffer, size, NULL,
-                                     &kernel.code_object);
+                                     &reduce_kernels.code_object);
     OUTPUT_HSA_STATUS(st, HSA code object deserialization);
     if (HSA_STATUS_SUCCESS != st) {
         goto err_free_module_buffer;
@@ -416,81 +423,86 @@ int hsa_create_reduce_kernels(const char * fn_name, const char * file_name)
 
     st = hsa_executable_create(HSA_PROFILE_FULL,
             HSA_EXECUTABLE_STATE_UNFROZEN,
-            "", &kernel.executable);
+            "", &reduce_kernels.executable);
     OUTPUT_HSA_STATUS(st, Create the executable);
     if (HSA_STATUS_SUCCESS != st) {
         goto err_destroy_custom_kernel;
     }
 
-    st = hsa_executable_load_code_object(kernel.executable,
+    st = hsa_executable_load_code_object(reduce_kernels.executable,
             hsa_device.agent,
-            kernel.code_object, "");
+            reduce_kernels.code_object, "");
     OUTPUT_HSA_STATUS(st, Loading the code object);
     if (HSA_STATUS_SUCCESS != st) {
         goto err_destroy_custom_kernel;
     }
 
-    st = hsa_executable_freeze(kernel.executable, "");
+    st = hsa_executable_freeze(reduce_kernels.executable, "");
     OUTPUT_HSA_STATUS(st, Freeze the executable reduction);
     if (HSA_STATUS_SUCCESS != st) {
         goto err_destroy_custom_kernel;
     }
-
-#ifdef ROCM
-    size = asprintf(&kernel_name, "%s", fn_name);
-#else
-    size = asprintf(&kernel_name, "&__OpenCL_%s_kernel", fn_name);
-#endif
-    if (-1 == size) {
+    reduce_kernels.symbol_info = chpl_calloc(NUM_REDUCE_KERNELS,
+                                     sizeof(hsa_symbol_info_t));
+    if (NULL == reduce_kernels.symbol_info) {
         goto err_destroy_custom_kernel;
     }
 
-    st = hsa_executable_get_symbol(kernel.executable, NULL,
-            kernel_name, hsa_device.agent, 0, &symbol);
-    OUTPUT_HSA_STATUS(st, Get symbol handle from executable);
-    if (HSA_STATUS_SUCCESS != st) {
-        goto err_free_kernel_name;
-    }
+   for (int i = REDUCE_INT64; i != NUM_REDUCE_KERNELS; ++i) {
+      const char *fn_name = reducekernel_name((const enum ReduceKernel)i);
+#ifdef ROCM
+    	size = asprintf(&kernel_name, "%s", fn_name);
+#else
+    	size = asprintf(&kernel_name, "&__OpenCL_%s_kernel", fn_name);
+#endif 
+printf("***************   fn_name = %s  size= %d \n", fn_name, size);
+    	if (-1 == size) {
+        	goto err_destroy_custom_kernel;
+    	}
 
-    kernel.symbol_info = chpl_calloc(1, sizeof(hsa_symbol_info_t));
-    if (NULL == kernel.symbol_info) {
-        goto err_free_kernel_name;
-    }
-    st = hsa_executable_symbol_get_info(
+    	st = hsa_executable_get_symbol(reduce_kernels.executable, NULL,
+            kernel_name, hsa_device.agent, 0, &symbol);
+    	OUTPUT_HSA_STATUS(st, Get xxx symbol handle from executable);
+    	if (HSA_STATUS_SUCCESS != st) {
+        	goto err_free_kernel_name;
+    	}
+
+    	st = hsa_executable_symbol_get_info(
             symbol,
             HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
-            &kernel.symbol_info->kernel_object);
-    OUTPUT_HSA_STATUS(st, Pull the kernel object handle from symbol);
-    if (HSA_STATUS_SUCCESS != st) {
-        goto err_free_kernel_name;
-    }
+            &reduce_kernels.symbol_info[i].kernel_object);
+    	OUTPUT_HSA_STATUS(st, Pull the kernel object handle from symbol);
+    	if (HSA_STATUS_SUCCESS != st) {
+        	goto err_free_kernel_name;
+    	}
 
-    st = hsa_executable_symbol_get_info(
+    	st = hsa_executable_symbol_get_info(
             symbol,
             HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE,
-            &kernel.symbol_info->kernarg_segment_size);
-    OUTPUT_HSA_STATUS(st, Pull the kernarg segment size from executable);
-    if (HSA_STATUS_SUCCESS != st) {
-        goto err_free_kernel_name;
-    }
+            &reduce_kernels.symbol_info[i].kernarg_segment_size);
+    	OUTPUT_HSA_STATUS(st, Pull the kernarg segment size from executable);
+    	if (HSA_STATUS_SUCCESS != st) {
+        	goto err_free_kernel_name;
+    	}
 
-    st = hsa_executable_symbol_get_info(
+    	st = hsa_executable_symbol_get_info(
             symbol,
             HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE,
-            &kernel.symbol_info->group_segment_size);
-    OUTPUT_HSA_STATUS(st, Pull the group segment size from executable);
-    if (HSA_STATUS_SUCCESS != st) {
-        goto err_free_kernel_name;
-    }
+            &reduce_kernels.symbol_info[i].group_segment_size);
+    	OUTPUT_HSA_STATUS(st, Pull the group segment size from executable);
+    	if (HSA_STATUS_SUCCESS != st) {
+        	goto err_free_kernel_name;
+    	}
 
-    st = hsa_executable_symbol_get_info(
+    	st = hsa_executable_symbol_get_info(
             symbol,
             HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE,
-            &kernel.symbol_info->private_segment_size);
-    OUTPUT_HSA_STATUS(st, Pull the private segment size from executable);
-    if (HSA_STATUS_SUCCESS != st) {
-        goto err_free_kernel_name;
-    }
+            &reduce_kernels.symbol_info[i].private_segment_size);
+    	OUTPUT_HSA_STATUS(st, Pull the private segment size from executable);
+    	if (HSA_STATUS_SUCCESS != st) {
+        	goto err_free_kernel_name;
+    	}
+    }	
 
     //chpl_free(kernel_name);
     chpl_free(module_buffer);
@@ -501,9 +513,9 @@ err_free_kernel_name:
     chpl_free(kernel_name);
 
 err_destroy_custom_kernel:
-    chpl_free (kernel.symbol_info);
-    hsa_executable_destroy(kernel.executable);
-    hsa_code_object_destroy(kernel.code_object);
+    chpl_free (reduce_kernels.symbol_info);
+    hsa_executable_destroy(reduce_kernels.executable);
+    hsa_code_object_destroy(reduce_kernels.code_object);
 
 err_free_module_buffer:
     chpl_free(module_buffer);

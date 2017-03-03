@@ -7,6 +7,24 @@
 #include "chpl-hsa-kernelparams.h"
 
 #define HSA_ARGUMENT_ALIGN_BYTES 16
+enum ReduceKernel {
+ REDUCE_INT64,
+ REDUCE_INT32,
+ REDUCE_INT16,
+ REDUCE_INT8,
+ NUM_REDUCE_KERNELS,
+};
+
+static inline
+const char *reducekernel_name(const enum ReduceKernel kernel_id) {
+  static const char *kernel_names[] = {
+    "reduce_int64",
+    "reduce_int32",
+    "reduce_int16",
+    "reduce_int8"
+  };
+  return kernel_names[kernel_id];
+}
 
 struct hsa_device_t {
     hsa_agent_t agent;
@@ -32,7 +50,7 @@ struct hsa_kernel_t {
     hsa_symbol_info_t * symbol_info;
 };
 typedef struct hsa_kernel_t hsa_kernel_t;
-hsa_kernel_t kernel;
+hsa_kernel_t reduce_kernels;
 hsa_kernel_t gen_kernels;
 
 typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
@@ -46,6 +64,7 @@ typedef struct __attribute__ ((aligned(HSA_ARGUMENT_ALIGN_BYTES))) {
 #endif
     uint64_t in;
     uint64_t out;
+    uint64_t op;
     uint32_t count;
 } hsail_reduce_kernarg_t;
 
@@ -66,11 +85,13 @@ hsa_status_t get_kernarg_memory_region(hsa_region_t region, void * data);
 int load_module_from_file(const char* file_name, char ** buf, int * size);
 int chpl_hsa_initialize(void);
 int hsa_shutdown(void);
-int hsa_create_reduce_kernels(const char * fn_name, const char * file_name);
+int hsa_create_reduce_kernels(const char * file_name);
 int hsa_create_kernels(const char * file_name);
 
-int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count);
 int64_t hsa_reduce_int64(const char *op, int64_t *src, size_t count);
+int32_t hsa_reduce_int32(const char *op, int32_t *src, size_t count);
+int16_t hsa_reduce_int16(const char *op, int16_t *src, size_t count);
+int8_t hsa_reduce_int8(const char *op, int8_t *src, size_t count);
 
 void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
                         uint32_t wkitem_count_x, void *bundled_args);
