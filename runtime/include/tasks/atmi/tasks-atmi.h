@@ -51,7 +51,7 @@ void chpl_task_yield(void);
 // between C code and Chapel code in the runtime.
 //
 typedef uint64_t chpl_taskID_t;
-#define chpl_nullTaskID ATMI_NULL_TASK_HANDLE
+#define chpl_nullTaskID ATMI_TASK_HANDLE(0xFFFFFFFFFFFFFFFF) 
 
 //
 // Sync variables
