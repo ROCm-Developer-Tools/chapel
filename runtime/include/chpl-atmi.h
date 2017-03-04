@@ -13,12 +13,15 @@
 
 atmi_kernel_t reduction_kernel;
 atmi_kernel_t *gpu_kernels;
+atmi_kernel_t main_kernel;
+int g_num_cpu_kernels;
 
 atmi_machine_t *g_machine;
 
 enum {
     GPU_KERNEL_IMPL = 10565,
-    REDUCTION_GPU_IMPL = 42
+    REDUCTION_GPU_IMPL = 42,
+    CPU_FUNCTION_IMPL = 43
 };    
 
 int chpl_hsa_initialize(void);

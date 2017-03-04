@@ -30,7 +30,7 @@
 #include "chpl-atmi.h"
 #include "chpl-tasks-prvdata.h"
 #include "chpltypes.h"
-
+#include "chpl-mem.h"
 #include "qthread.h"
 #include "qthread-chapel.h"
 
@@ -50,8 +50,8 @@ void chpl_task_yield(void);
 // Type (and default value) used to communicate task identifiers
 // between C code and Chapel code in the runtime.
 //
-typedef unsigned int chpl_taskID_t;
-#define chpl_nullTaskID QTHREAD_NULL_TASK_ID
+typedef uint64_t chpl_taskID_t;
+#define chpl_nullTaskID ATMI_NULL_TASK_HANDLE
 
 //
 // Sync variables
@@ -93,7 +93,7 @@ typedef struct {
 } chpl_task_bundle_t;
 
 // Structure of task-local storage
-typedef struct chpl_qthread_tls_s {
+typedef struct chpl_atmi_tls_s {
   chpl_task_bundle_t *bundle;
   // The below fields could move to chpl_task_bundleData_t
   // That would reduce the size of the task local storage,
@@ -102,39 +102,23 @@ typedef struct chpl_qthread_tls_s {
   /* Reports */
   int     lock_filename;
   int     lock_lineno;
-} chpl_qthread_tls_t;
+} chpl_atmi_tls_t;
+
+extern pthread_key_t tls_cache;
 
 extern pthread_t chpl_qthread_process_pthread;
 extern pthread_t chpl_qthread_comm_pthread;
 
-extern chpl_qthread_tls_t chpl_qthread_process_tls;
-extern chpl_qthread_tls_t chpl_qthread_comm_task_tls;
+extern chpl_atmi_tls_t chpl_qthread_process_tls;
+extern chpl_atmi_tls_t chpl_qthread_comm_task_tls;
 
 #define CHPL_TASK_STD_MODULES_INITIALIZED chpl_task_stdModulesInitialized
 void chpl_task_stdModulesInitialized(void);
 
+extern pthread_t null_thread;
+
 // Wrap qthread_get_tasklocal() and assert that it is always available.
-static inline chpl_qthread_tls_t* chpl_qthread_get_tasklocal(void)
-{
-    chpl_qthread_tls_t* tls;
-
-    if (chpl_qthread_done_initializing) {
-        tls = (chpl_qthread_tls_t*)
-               qthread_get_tasklocal(sizeof(chpl_qthread_tls_t));
-        if (tls == NULL) {
-            pthread_t me = pthread_self();
-            if (pthread_equal(me, chpl_qthread_comm_pthread))
-                tls = &chpl_qthread_comm_task_tls;
-            else if (pthread_equal(me, chpl_qthread_process_pthread))
-                tls = &chpl_qthread_process_tls;
-        }
-        assert(tls);
-    }
-    else
-        tls = NULL;
-
-    return tls;
-}
+extern chpl_atmi_tls_t* chpl_atmi_get_tasklocal(void);
 
 #ifdef CHPL_TASK_GET_PRVDATA_IMPL_DECL
 #error "CHPL_TASK_GET_PRVDATA_IMPL_DECL is already defined!"
@@ -143,7 +127,7 @@ static inline chpl_qthread_tls_t* chpl_qthread_get_tasklocal(void)
 #endif
 static inline chpl_task_prvData_t* chpl_task_getPrvData(void)
 {
-    chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
     if (data) {
         return &data->prvdata;
     }
@@ -162,7 +146,11 @@ static inline chpl_task_prvData_t* chpl_task_getPrvData(void)
 static inline
 c_sublocid_t chpl_task_getSubloc(void)
 {
-    return (c_sublocid_t) qthread_shep();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
+    if (data) 
+        return data->bundle->requestedSubloc;
+    else 
+        return c_sublocid_any;
 }
 
 #ifdef CHPL_TASK_SETSUBLOC_IMPL_DECL
@@ -173,8 +161,6 @@ c_sublocid_t chpl_task_getSubloc(void)
 static inline
 void chpl_task_setSubloc(c_sublocid_t subloc)
 {
-    qthread_shepherd_id_t curr_shep;
-
     assert(subloc != c_sublocid_none);
 
     // Only change sublocales if the caller asked for a particular one,
@@ -188,16 +174,10 @@ void chpl_task_setSubloc(c_sublocid_t subloc)
     //       before tasking init and in any case would be done from the
     //       main thread of execution, which doesn't have a shepherd.
     //       The code below wouldn't work in that situation.
-    if ((curr_shep = qthread_shep()) != NO_SHEPHERD) {
-        chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
-        if (data) {
-            data->bundle->requestedSubloc = subloc;
-        }
-
-        if (subloc != c_sublocid_any &&
-            (qthread_shepherd_id_t) subloc != curr_shep) {
-            qthread_migrate_to((qthread_shepherd_id_t) subloc);
-        }
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
+    if (data) {
+        data->bundle->requestedSubloc = subloc;
+        printf("Setting ATMI requested subloc to %d\n", subloc);
     }
 }
 
@@ -209,10 +189,11 @@ void chpl_task_setSubloc(c_sublocid_t subloc)
 static inline
 c_sublocid_t chpl_task_getRequestedSubloc(void)
 {
-    chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
     if (data) {
         return data->bundle->requestedSubloc;
     }
+    
     return c_sublocid_any;
 }
 

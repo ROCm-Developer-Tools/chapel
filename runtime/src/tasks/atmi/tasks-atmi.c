@@ -66,6 +66,11 @@
 #include <unistd.h>
 #include <math.h>
 
+#define max_num_cpu_kernels 4096
+int cpu_kernels_initialized[max_num_cpu_kernels] = {0}; 
+atmi_kernel_t cpu_kernels[max_num_cpu_kernels];
+
+
 #define OUTPUT_ATMI_STATUS(status, msg) \
 { \
     if (ATMI_STATUS_SUCCESS != (status)) { \
@@ -75,8 +80,6 @@
         return status; \
     } \
 }
-
-
 
 //#define SUPPORT_BLOCKREPORT
 //#define SUPPORT_TASKREPORT
@@ -182,19 +185,21 @@ chpl_task_bundle_t chpl_qthread_comm_task_bundle = {
                                    .requested_fn = NULL,
                                    .id = chpl_nullTaskID };
 
-chpl_qthread_tls_t chpl_qthread_process_tls = {
+chpl_atmi_tls_t chpl_qthread_process_tls = {
                                .bundle = &chpl_qthread_process_bundle,
                                .lock_filename = 0,
                                .lock_lineno = 0 };
 
-chpl_qthread_tls_t chpl_qthread_comm_task_tls = {
+chpl_atmi_tls_t chpl_qthread_comm_task_tls = {
                                .bundle = &chpl_qthread_comm_task_bundle,
                                .lock_filename = 0,
                                .lock_lineno = 0 };
 
 //
-// chpl_qthread_get_tasklocal() is in tasks-qthreads.h
+// chpl_atmi_get_tasklocal() is in tasks-qthreads.h
 //
+
+pthread_key_t tls_cache;
 
 static syncvar_t exit_ret = SYNCVAR_STATIC_EMPTY_INITIALIZER;
 
@@ -203,11 +208,11 @@ static volatile chpl_bool canCountRunningTasks = false;
 void chpl_task_yield(void)
 {
     PROFILE_INCR(profile_task_yield,1);
-    if (qthread_shep() == NO_SHEPHERD) {
+    /*if (qthread_shep() == NO_SHEPHERD) {
         sched_yield();
     } else {
         qthread_yield();
-    }
+    }*/
 }
 
 // Sync variables
@@ -251,10 +256,37 @@ void chpl_sync_unlock(chpl_sync_aux_t *s)
     qthread_incr(&s->lockers_out, 1);
 }
 
+inline chpl_atmi_tls_t* chpl_atmi_get_tasklocal(void)
+{
+    chpl_atmi_tls_t* tls = NULL;
+
+    pthread_t me = pthread_self();
+    if (pthread_equal(me, chpl_qthread_comm_pthread))
+        tls = &chpl_qthread_comm_task_tls;
+    else if (pthread_equal(me, chpl_qthread_process_pthread))
+        tls = &chpl_qthread_process_tls;
+    else {
+        atmi_task_handle_t t = get_atmi_task_handle();
+        if(t != ATMI_NULL_TASK_HANDLE) {
+            tls = (chpl_atmi_tls_t *)pthread_getspecific(tls_cache);
+            if(tls == NULL) {
+                // FIXME: when to free?
+                tls = (chpl_atmi_tls_t *)chpl_mem_alloc(sizeof(chpl_atmi_tls_t),
+                                               CHPL_RT_MD_THREAD_PRV_DATA,
+                                               0, 0);
+                pthread_setspecific(tls_cache, tls);
+            }
+        }
+        assert(tls != NULL);
+    }
+
+    return tls;
+}
+
 static inline void about_to_block(int32_t  lineno,
                                   int32_t filename)
 {
-    chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
     assert(data);
 
     data->lock_lineno   = lineno;
@@ -342,7 +374,7 @@ static void chapel_display_thread(qt_key_t     addr,
                                   void        *tls,
                                   void        *callarg)
 {
-    chpl_qthread_tls_t *rep = (chpl_qthread_tls_t *)tls;
+    chpl_atmi_tls_t *rep = (chpl_atmi_tls_t *)tls;
 
     if (rep) {
         if ((rep->lock_lineno > 0) && rep->lock_filename) {
@@ -683,8 +715,8 @@ static void setupTasklocalStorage(void) {
     // Make sure Qthreads knows how much space we need for per-task
     // local storage.
     tasklocal_size = chpl_qt_getenv_num("TASKLOCAL_SIZE", 0);
-    if (tasklocal_size < sizeof(chpl_qthread_tls_t)) {
-        snprintf(newenv, sizeof(newenv), "%zu", sizeof(chpl_qthread_tls_t));
+    if (tasklocal_size < sizeof(chpl_atmi_tls_t)) {
+        snprintf(newenv, sizeof(newenv), "%zu", sizeof(chpl_atmi_tls_t));
         chpl_qt_setenv("TASKLOCAL_SIZE", newenv, 1);
     }
 }
@@ -698,13 +730,28 @@ static void setupWorkStealing(void) {
     chpl_qt_setenv("STEAL_RATIO", "0", 0);
 }
 
+static aligned_t chapel_wrapper(void *arg);
+static aligned_t main_wrapper(void *arg);
+// If we stored chpl_taskID_t in chpl_task_bundleData_t,
+// this struct and the following function may not be necessary.
+typedef void (*main_ptr_t)(void);
+typedef struct {
+  chpl_task_bundle_t arg;
+  main_ptr_t chpl_main;
+} main_wrapper_bundle_t;
+
 void chpl_task_init(void)
 {
     atmi_status_t st = atmi_init(ATMI_DEVTYPE_ALL);
-    printf("ATMI task initialized\n");
     if(st != ATMI_STATUS_SUCCESS) return;
 
     g_machine = atmi_machine_get_info();
+    
+    pthread_key_create(&tls_cache, NULL);
+    //g_num_cpu_kernels = sizeof(chpl_ftable)/sizeof(chpl_ftable[0]);
+    size_t main_arg_size = sizeof(main_wrapper_bundle_t);
+    atmi_kernel_create_empty(&main_kernel, 1, &main_arg_size);
+    atmi_kernel_add_cpu_impl(main_kernel, (atmi_generic_fp)main_wrapper, CPU_FUNCTION_IMPL);
 
     int32_t   commMaxThreads;
     int32_t   hwpar;
@@ -748,11 +795,18 @@ void chpl_task_init(void)
 
 void chpl_task_exit(void)
 {
+    //for(int i = 0; i < g_num_cpu_kernels; i++) {
+    for(int i = 0; i < max_num_cpu_kernels; i++) {
+        if(cpu_kernels_initialized[i]) 
+            atmi_kernel_release(cpu_kernels[i]);
+    }
+    atmi_kernel_release(main_kernel);
     atmi_finalize();
 #ifdef CHAPEL_PROFILE
     profile_print();
 #endif /* CHAPEL_PROFILE */
 
+    pthread_key_delete(tls_cache);
     if (qthread_shep() == NO_SHEPHERD) {
         /* sometimes, tasking is told to shutdown even though it hasn't been
          * told to start yet */
@@ -781,20 +835,12 @@ static inline void wrap_callbacks(chpl_task_cb_event_kind_t event_kind,
 }
 
 
-// If we stored chpl_taskID_t in chpl_task_bundleData_t,
-// this struct and the following function may not be necessary.
-typedef void (*main_ptr_t)(void);
-typedef struct {
-  chpl_task_bundle_t arg;
-  main_ptr_t chpl_main;
-} main_wrapper_bundle_t;
-
 static aligned_t main_wrapper(void *arg)
 {
-    chpl_qthread_tls_t         *tls = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t         *tls = chpl_atmi_get_tasklocal();
     main_wrapper_bundle_t *m_bundle = (main_wrapper_bundle_t*) arg;
     chpl_task_bundle_t      *bundle = &m_bundle->arg;
-    chpl_qthread_tls_t         pv = {.bundle = bundle};
+    chpl_atmi_tls_t         pv = {.bundle = bundle};
 
     *tls = pv;
 
@@ -809,18 +855,17 @@ static aligned_t main_wrapper(void *arg)
     return 0;
 }
 
-
 static aligned_t chapel_wrapper(void *arg)
 {
-    chpl_qthread_tls_t    *tls = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t    *tls = chpl_atmi_get_tasklocal();
     chpl_task_bundle_t *bundle = (chpl_task_bundle_t*) arg;
-    chpl_qthread_tls_t      pv = {.bundle = bundle};
+    chpl_atmi_tls_t      pv = {.bundle = bundle};
 
     *tls = pv;
 
     if (bundle->countRunning)
       chpl_taskRunningCntInc(0, 0);
-
+    
     wrap_callbacks(chpl_task_cb_event_kind_begin, bundle);
 
     // launch GPU kernel here? 
@@ -869,8 +914,18 @@ void chpl_task_callMain(void (*chpl_main)(void))
 
     wrap_callbacks(chpl_task_cb_event_kind_create, &arg.arg);
 
-    qthread_fork_syncvar_copyargs(main_wrapper, &arg, sizeof(arg), &exit_ret);
-    qthread_syncvar_readFF(NULL, &exit_ret);
+    int cpu_id = 0;//subloc;
+    ATMI_LPARM_CPU(lparm, cpu_id);
+    lparm->kernel_id = CPU_FUNCTION_IMPL;
+    lparm->synchronous = ATMI_TRUE;
+    void *kernargs[1];
+    //void *arg1 = (void *)&arg;
+    kernargs[0] = (void *)&arg;
+    //atmi_task_launch(lparm, main_kernel, kernargs);
+
+    main_wrapper(&arg);
+    //qthread_fork_syncvar_copyargs(main_wrapper, &arg, sizeof(arg), &exit_ret);
+    //qthread_syncvar_readFF(NULL, &exit_ret);
 }
 
 void chpl_task_stdModulesInitialized(void)
@@ -911,6 +966,7 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
                              int                 lineno,
                              int32_t             filename)
 {
+    //printf("Adding %d fn to task list\n", fid);
     chpl_bool serial_state = chpl_task_getSerial();
     chpl_fn_p requested_fn = chpl_ftable[fid];
 
@@ -935,12 +991,24 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
 
         wrap_callbacks(chpl_task_cb_event_kind_create, arg);
 
-        if (subloc == c_sublocid_any) {
+        int cpu_id = 0;//subloc;
+        ATMI_LPARM_CPU(lparm, cpu_id);
+        lparm->kernel_id = CPU_FUNCTION_IMPL;
+        //lparm->synchronous = ATMI_TRUE;
+        void *kernargs[1];
+        if(!cpu_kernels_initialized[fid]) {
+            atmi_kernel_create_empty(&cpu_kernels[fid], 1, &arg_size);
+            atmi_kernel_add_cpu_impl(cpu_kernels[fid], (atmi_generic_fp)chapel_wrapper, CPU_FUNCTION_IMPL);
+            cpu_kernels_initialized[fid] = 1;
+        }
+        kernargs[0] = (void *)arg;
+        atmi_task_launch(lparm, cpu_kernels[fid], kernargs);
+        /*if (subloc == c_sublocid_any) {
             qthread_fork_copyargs(chapel_wrapper, arg, arg_size, NULL);
         } else {
             qthread_fork_copyargs_to(chapel_wrapper, arg, arg_size,
                                      NULL, (qthread_shepherd_id_t) subloc);
-        }
+        }*/
     }
 }
 
@@ -954,6 +1022,7 @@ static inline void taskCallBody(chpl_fn_int_t fid, chpl_fn_name fname, chpl_fn_p
                                 c_sublocid_t subloc,  chpl_bool serial_state,
                                 int lineno, int32_t filename)
 {
+    //printf("Adding %d fn to task call body\n", fid);
     chpl_task_bundle_t *bundle = (chpl_task_bundle_t*) arg;
 
     bundle->serial_state       = serial_state;
@@ -969,12 +1038,24 @@ static inline void taskCallBody(chpl_fn_int_t fid, chpl_fn_name fname, chpl_fn_p
 
     wrap_callbacks(chpl_task_cb_event_kind_create, bundle);
 
-    if (subloc < 0) {
+    int cpu_id = 0;//subloc;
+    ATMI_LPARM_CPU(lparm, cpu_id);
+    lparm->kernel_id = CPU_FUNCTION_IMPL;
+    //lparm->synchronous = ATMI_TRUE;
+    void *kernargs[1];
+    if(!cpu_kernels_initialized[fid]) {
+        atmi_kernel_create_empty(&cpu_kernels[fid], 1, &arg_size);
+        atmi_kernel_add_cpu_impl(cpu_kernels[fid], (atmi_generic_fp)chapel_wrapper, CPU_FUNCTION_IMPL);
+        cpu_kernels_initialized[fid] = 1;
+    }
+    kernargs[0] = (void *)arg;
+    atmi_task_launch(lparm, cpu_kernels[fid], kernargs);
+    /*if (subloc < 0) {
         qthread_fork_copyargs(chapel_wrapper, arg, arg_size, NULL);
     } else {
         qthread_fork_copyargs_to(chapel_wrapper, arg, arg_size,
-                                 NULL, (qthread_shepherd_id_t) subloc);
-    }
+                                 NULL, (qthread_shepherd_id_t) 0);
+    }*/
 }
 
 void chpl_task_taskCallFTable(chpl_fn_int_t fid,
@@ -1024,20 +1105,13 @@ void chpl_task_startMovedTask(chpl_fn_int_t       fid,
 // Returns '(unsigned int)-1' if called outside of the tasking layer.
 chpl_taskID_t chpl_task_getId(void)
 {
-    chpl_qthread_tls_t *tls = chpl_qthread_get_tasklocal();
-    chpl_taskID_t *id_ptr = NULL;
-
     PROFILE_INCR(profile_task_getId,1);
 
-    if (tls == NULL)
+    atmi_task_handle_t t = get_atmi_task_handle();
+    if(t == ATMI_NULL_TASK_HANDLE)
         return (chpl_taskID_t) -1;
 
-    id_ptr = &tls->bundle->id;
-
-    if (*id_ptr == chpl_nullTaskID)
-        *id_ptr = qthread_incr(&next_task_id, 1);
-
-    return *id_ptr;
+    return t;
 }
 
 void chpl_task_sleep(double secs)
@@ -1077,18 +1151,27 @@ void chpl_task_sleep(double secs)
 
 /* The get- and setSerial() methods assume the beginning of the task-local
  * data segment holds a chpl_bool denoting the serial state. */
+#if 0
+chpl_bool get_serial(chpl_taskID_t id) {
+    if(g_task_map.find(id) == g_task_map.end()) 
+        return true;
+    else
+        return g_task_map[id];
+}
+#endif
+
 chpl_bool chpl_task_getSerial(void)
 {
-    chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
 
     PROFILE_INCR(profile_task_getSerial,1);
-
+    
     return data->bundle->serial_state;
 }
 
 void chpl_task_setSerial(chpl_bool state)
 {
-    chpl_qthread_tls_t * data = chpl_qthread_get_tasklocal();
+    chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
     data->bundle->serial_state = state;
 
     PROFILE_INCR(profile_task_setSerial,1);
@@ -1096,14 +1179,14 @@ void chpl_task_setSerial(chpl_bool state)
 
 uint32_t chpl_task_getMaxPar(void) {
     //chpl_internal_error("Qthreads max tasks par asked\n");
-    printf("Qthreads max task par asked\n");
+    //printf("Qthreads max task par asked\n");
     //
     // We assume here that the caller (in the LocaleModel module code)
     // is interested in the number of workers on the whole node, and
     // will decide itself how much parallelism to create across and
     // within sublocales, if there are any.
     //
-    return (uint32_t) qthread_num_workers();
+    return (uint32_t) 8;//qthread_num_workers();
 }
 
 c_sublocid_t chpl_task_getNumSublocales(void)
@@ -1145,7 +1228,7 @@ int32_t chpl_task_getNumBlockedTasks(void)
 
 uint32_t chpl_task_getNumThreads(void)
 {
-    return (uint32_t)qthread_num_workers();
+    return (uint32_t) 8;//qthread_num_workers();
 }
 
 // Ew. Talk about excessive bookkeeping.

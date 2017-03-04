@@ -20,8 +20,8 @@ CLOC=/opt/rocm/cloc/bin/cloc.sh
 LIBS+=-latmi_runtime -lm
 
 # TODO: move these in third-party directory?
-GEN_LFLAGS+=-L/opt/rocm/lib -L/opt/rocm/hsa/lib -L/opt/rocm/libatmi/lib
-HSA_INCLUDES=-I/opt/rocm/libatmi/include
+GEN_LFLAGS+=-L/opt/rocm/lib -L/opt/rocm/hsa/lib -L/opt/rocm/atmi/lib
+HSA_INCLUDES=-I/opt/rocm/atmi/include
 else
 # HSA locations
 CLOC=$(THIRD_PARTY_DIR)/hsa/cloc/bin/cloc.sh
