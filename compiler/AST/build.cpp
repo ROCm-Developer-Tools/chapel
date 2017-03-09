@@ -2283,6 +2283,12 @@ CallExpr* buildReduceExpr(Expr* opExpr, Expr* dataExpr, bool zippered) {
    */
   if (fLocal && toUnresolvedSymExpr(dataExpr)) 
       {
+
+    if (fReportGPUForLoops) {
+              printf("Generating GPU Reduce Operation \n");
+        }
+
+
     CallExpr * gpu_reduce =  buildGPUReduceExpr(opExpr, dataExpr, eltType);
         	
     VarSymbol* isGpu = newTemp("_is_gpu");
