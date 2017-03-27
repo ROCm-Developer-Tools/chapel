@@ -84,7 +84,8 @@ hsa_status_t get_gpu_agent(hsa_agent_t agent, void * data);
 hsa_status_t get_kernarg_memory_region(hsa_region_t region, void * data);
 int load_module_from_file(const char* file_name, char ** buf, int * size);
 int chpl_hsa_initialize(void);
-int hsa_shutdown(void);
+//int hsa_shutdown(void);
+void hsa_shutdown(void);
 int hsa_create_reduce_kernels(const char * file_name);
 int hsa_create_kernels(const char * file_name);
 

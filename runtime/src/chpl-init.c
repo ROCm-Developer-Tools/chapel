@@ -76,6 +76,7 @@ static void recordExecutionCommand(int argc, char *argv[]) {
     (char*)chpl_mem_allocMany(length+1, sizeof(char),
                               CHPL_RT_MD_EXECUTION_COMMAND, 0, 0);
   sprintf(chpl_executionCommand, "%s", argv[0]);
+
   for (i = 1; i < argc; i++) {
     strcat(chpl_executionCommand, " ");
     strcat(chpl_executionCommand, argv[i]);
@@ -203,7 +204,6 @@ void chpl_rt_init(int argc, char* argv[]) {
 //
 void chpl_rt_finalize(int return_value) {
   //chpl_rt_postUserCodeHook();
-  int err= hsa_shutdown();
   chpl_exit_all(return_value);
 }
 

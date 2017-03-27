@@ -240,7 +240,7 @@ int chpl_hsa_initialize(void)
 /**
  * Release resources used by the base kernels and tear down the HSA structures
  */
-int hsa_shutdown(void)
+void hsa_shutdown(void)
 {
     int err = SUCCESS;
     hsa_status_t st;
@@ -257,7 +257,7 @@ int hsa_shutdown(void)
         err = ERROR;
     }
 
-    return err;
+    //return err;
 }
 
 /**
@@ -266,11 +266,21 @@ int hsa_shutdown(void)
  */
 int hsa_create_kernels(const char * file_name)
 {
+    
     hsa_status_t st;
     char * kernel_name;
     hsa_executable_symbol_t symbol;
     int size;
 
+    char * real_suffix = "_real";
+
+    char* pch = strstr(file_name,real_suffix); 
+    char origin_exec[256];
+    if(pch){
+   	strncpy(origin_exec,file_name, strlen(file_name)-strlen(pch));
+        strcat(origin_exec,"_gpu.hsaco");
+        file_name=origin_exec; 
+   }
     char * module_buffer;
     if (SUCCESS != load_module_from_file(file_name, &module_buffer, &size)) {
         st = HSA_STATUS_ERROR;
@@ -566,10 +576,10 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
   args->prnt_buff = 0;
   args->vqueue_pntr = 0;
   args->aqlwrap_pntr = 0;
+
 #endif
 
   args->bundle = (uint64_t)bundled_args;
-
   dispatch_packet->kernarg_address = (void*)args;
   dispatch_packet->completion_signal = completion_signal;
 
@@ -577,8 +587,9 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
       (uint8_t)HSA_PACKET_TYPE_KERNEL_DISPATCH,
       __ATOMIC_RELEASE);
 
+
   hsa_signal_store_release(command_queue->doorbell_signal, index);
-  //sleep(5);
+  //sleep(2);
   while (hsa_signal_wait_acquire(completion_signal, HSA_SIGNAL_CONDITION_LT,
          1, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > 0);
   hsa_memory_free((void*)args);

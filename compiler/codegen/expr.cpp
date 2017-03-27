@@ -529,7 +529,16 @@ GenRet codegenGetSublocaleID(void)
 static
 GenRet codegenGetLocaleID(void)
 {
-  GenRet ret =  codegenCallExpr("chpl_gen_getLocaleID");
+  GenRet ret; 
+#ifdef TARGET_HSA
+   if (!gGPUcodegen) {
+#endif
+   ret =  codegenCallExpr("chpl_gen_getLocaleID");
+#ifdef TARGET_HSA
+   }else{
+   ret =  codegenCallExpr("chpl_gen_gpu_getLocaleID");
+   }
+#endif
   ret.chplType = LOCALE_ID_TYPE;
 #ifdef HAVE_LLVM
   GenInfo* info = gGenInfo;

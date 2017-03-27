@@ -80,6 +80,11 @@ module LocaleModel {
 
     proc GPULocale() {
     }
+    proc ~GPULocale() {
+     extern proc hsa_shutdown(): void ;
+     hsa_shutdown();
+    }
+
 
     proc GPULocale(_sid, _parent) {
       sid = _sid;

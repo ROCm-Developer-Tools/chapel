@@ -95,3 +95,11 @@ typedef struct {
   int32_t node;
   int32_t subloc;
 } chpl_localeID_t;
+
+static inline
+chpl_localeID_t chpl_gen_gpu_getLocaleID(void)
+{
+  chpl_localeID_t localeID = {0,0};
+  return localeID;
+}
+
