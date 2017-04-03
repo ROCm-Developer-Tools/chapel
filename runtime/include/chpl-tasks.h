@@ -158,10 +158,15 @@ void chpl_task_addToTaskList(
          void**,             // task list
          c_nodeid_t,         // locale (node) where task list resides
          chpl_bool,          // is begin{} stmt?  (vs. cobegin or coforall)
+         void *,             // task group
          int,                // line at which function begins
          int32_t);           // name of file containing function
 void chpl_task_executeTasksInList(void**);
 
+void *chpl_taskGroupInit(int lineno, int32_t filename);
+void *chpl_taskGroupGet();
+void chpl_taskGroupFinalize(void *task_group);
+void chpl_taskGroupComplete();
 //
 // Call a chpl_ftable[] function in a task.
 //

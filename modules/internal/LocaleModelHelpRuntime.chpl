@@ -118,7 +118,7 @@ module LocaleModelHelpRuntime {
                                       args: chpl_task_bundle_p, args_size: size_t,
                                       subloc_id: int,
                                       ref tlist: c_void_ptr, tlist_node_id: int,
-                                      is_begin: bool);
+                                      is_begin: bool, tgroup: c_void_ptr);
   extern proc chpl_task_executeTasksInList(ref tlist: c_void_ptr);
 
   //
@@ -131,10 +131,12 @@ module LocaleModelHelpRuntime {
                              args: chpl_task_bundle_p,      // function args
                              args_size: size_t,     // args size
                              ref tlist: c_void_ptr, // task list
+                             tgroup: c_void_ptr, // task group
                              tlist_node_id: int     // task list owner node
                             ) {
+    warning("begin fn : ", fn);
     chpl_task_addToTaskList(fn, args, args_size,
-                            subloc_id, tlist, tlist_node_id, true);
+                            subloc_id, tlist, tlist_node_id, true, tgroup);
   }
 
   //
@@ -148,10 +150,12 @@ module LocaleModelHelpRuntime {
                               args: chpl_task_bundle_p,      // function args
                               args_size: size_t,     // args size
                               ref tlist: c_void_ptr, // task list
+                              tgroup: c_void_ptr, // task group
                               tlist_node_id: int     // task list owner node
                              ) {
+    warning("cobegin fn : ", fn);
     chpl_task_addToTaskList(fn, args, args_size,
-                            subloc_id, tlist, tlist_node_id, false);
+                            subloc_id, tlist, tlist_node_id, false, tgroup);
    }
 
   //

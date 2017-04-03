@@ -763,7 +763,8 @@ module ChapelBase {
     type taskType;
     var i: iType,
         taskCnt: taskType,
-        taskList: c_void_ptr = _defaultOf(c_void_ptr);
+        taskList: c_void_ptr = _defaultOf(c_void_ptr),
+        taskGroup: c_void_ptr = _defaultOf(c_void_ptr);
   }
 
   // This function is called once by the initiating task.  No on
@@ -786,15 +787,52 @@ module ChapelBase {
     }
   }
 
+
   // Compiler looks for this variable to determine the return type of
   // the "get end count" primitive.
   type _remoteEndCountType = _endCountAlloc(false).type;
 
+  pragma "insert line file info"
+  extern proc chpl_taskGroupInit(): c_void_ptr;
+  extern proc chpl_taskGroupGet(): c_void_ptr;
+  extern proc chpl_taskGroupComplete();
+  extern proc chpl_taskGroupFinalize(task_group: c_void_ptr);
+ 
   // This function is called once by the initiating task.  As above, no
   // on statement needed.
   pragma "dont disable remote value forwarding"
   inline proc _endCountFree(e: _EndCount) {
     delete e;
+  }
+
+  // This function is called by the initiating task once for each new
+  // task *before* any of the tasks are started.  As above, no on
+  // statement needed.
+  pragma "dont disable remote value forwarding"
+  pragma "no remote memory fence"
+  proc _addToTaskGroup(e: _EndCount, param countRunningTasks=true) {
+    e.taskGroup = chpl_taskGroupGet();
+  }
+
+  pragma "dont disable remote value forwarding"
+  pragma "no remote memory fence"
+  proc _addToTaskGroup(e: _EndCount, param countRunningTasks=true, numTasks) {
+    e.taskGroup = chpl_taskGroupGet();
+  }
+
+  // This function is called by the initiating task once for each new
+  // task *before* any of the tasks are started.  As above, no on
+  // statement needed.
+  pragma "dont disable remote value forwarding"
+  pragma "no remote memory fence"
+  proc _initTaskGroup(e: _EndCount, param countRunningTasks=true) {
+    e.taskGroup = chpl_taskGroupInit();
+  }
+
+  pragma "dont disable remote value forwarding"
+  pragma "no remote memory fence"
+  proc _initTaskGroup(e: _EndCount, param countRunningTasks=true, numTasks) {
+    e.taskGroup = chpl_taskGroupInit();
   }
 
   // This function is called by the initiating task once for each new
@@ -838,6 +876,26 @@ module ChapelBase {
     e.i.sub(1, memory_order_release);
   }
 
+  // This function is called once by each newly initiated task.  No on
+  // statement is needed because the call to sub() will do a remote
+  // fork (on) if needed.
+  pragma "dont disable remote value forwarding"
+  proc _completeTaskGroup(e: _EndCount) {
+    chpl_taskGroupComplete();
+  }
+
+  // This function is called once by the initiating task.  As above, no
+  // on statement needed.
+  pragma "dont disable remote value forwarding"
+  proc _finalizeTaskGroup(e: _EndCount, param countRunningTasks=true) {
+      chpl_taskGroupFinalize(e.taskGroup);
+  }
+
+  pragma "dont disable remote value forwarding"
+  proc _finalizeTaskGroup(e: _EndCount, param countRunningTasks=true, numTasks) {
+    chpl_taskGroupFinalize(e.taskGroup);
+  }
+
   // This function is called once by the initiating task.  As above, no
   // on statement needed.
   pragma "dont disable remote value forwarding"
@@ -867,13 +925,33 @@ module ChapelBase {
   proc _waitEndCount(e: _EndCount, param countRunningTasks=true, numTasks) {
     // See if we can help with any of the started tasks
     chpl_taskListExecute(e.taskList);
-
+    
     // Wait for all tasks to finish
     e.i.waitFor(0, memory_order_acquire);
 
     if countRunningTasks {
       here.runningTaskCntSub(numTasks:int-1);
     }
+  }
+
+  proc _addToTaskGroup(param countRunningTasks=true) {
+    var e = __primitive("get end count");
+    _addToTaskGroup(e, countRunningTasks);
+  }
+
+  proc _initTaskGroup(param countRunningTasks=true) {
+    var e = __primitive("get end count");
+    _initTaskGroup(e, countRunningTasks);
+  }
+
+  proc _completeTaskGroup() {
+    var e = __primitive("get end count");
+    _completeTaskGroup(e);
+  }
+
+  proc _finalizeTaskGroup(param countRunningTasks=true) {
+    var e = __primitive("get end count");
+    _finalizeTaskGroup(e, countRunningTasks);
   }
 
   proc _upEndCount(param countRunningTasks=true) {

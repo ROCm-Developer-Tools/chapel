@@ -45,6 +45,7 @@
 #include "chplsys.h"
 #include "chpl-linefile-support.h"
 #include "chpl-tasks.h"
+#include "chpl-atomics.h"
 #include "chpl-tasks-callbacks-internal.h"
 //#include "tasks-qthreads.h"
 #include "tasks-atmi.h"
@@ -69,6 +70,8 @@
 #define max_num_cpu_kernels 4096
 int cpu_kernels_initialized[max_num_cpu_kernels] = {0}; 
 atmi_kernel_t cpu_kernels[max_num_cpu_kernels];
+atmi_kernel_t dummy_kernel;
+static uint_least64_t atmi_tg_id = 0;
 
 
 #define OUTPUT_ATMI_STATUS(status, msg) \
@@ -732,6 +735,7 @@ static void setupWorkStealing(void) {
 
 static aligned_t chapel_wrapper(void *arg);
 static aligned_t main_wrapper(void *arg);
+static aligned_t dummy_wrapper();
 // If we stored chpl_taskID_t in chpl_task_bundleData_t,
 // this struct and the following function may not be necessary.
 typedef void (*main_ptr_t)(void);
@@ -752,6 +756,8 @@ void chpl_task_init(void)
     size_t main_arg_size = sizeof(main_wrapper_bundle_t);
     atmi_kernel_create_empty(&main_kernel, 1, &main_arg_size);
     atmi_kernel_add_cpu_impl(main_kernel, (atmi_generic_fp)main_wrapper, CPU_FUNCTION_IMPL);
+    atmi_kernel_create_empty(&dummy_kernel, 0, NULL);
+    atmi_kernel_add_cpu_impl(dummy_kernel, (atmi_generic_fp)dummy_wrapper, CPU_FUNCTION_IMPL);
 
     int32_t   commMaxThreads;
     int32_t   hwpar;
@@ -800,6 +806,7 @@ void chpl_task_exit(void)
         if(cpu_kernels_initialized[i]) 
             atmi_kernel_release(cpu_kernels[i]);
     }
+    atmi_kernel_release(dummy_kernel);
     atmi_kernel_release(main_kernel);
     atmi_finalize();
 #ifdef CHAPEL_PROFILE
@@ -834,6 +841,8 @@ static inline void wrap_callbacks(chpl_task_cb_event_kind_t event_kind,
     }
 }
 
+
+static aligned_t dummy_wrapper() {} 
 
 static aligned_t main_wrapper(void *arg)
 {
@@ -956,6 +965,48 @@ int chpl_task_createCommTask(chpl_fn_p fn,
                           NULL, comm_task_wrapper, &wrapper_info);
 }
 
+void *chpl_taskGroupGet() {
+    void *ret = (void *)get_atmi_task_group();
+    printf("Adding to task group: %p\n", ret);
+    return ret;
+}
+
+void *chpl_taskGroupInit(int lineno, int32_t filename) {
+    atmi_task_group_t *tg = (atmi_task_group_t *)chpl_malloc(sizeof(atmi_task_group_t));
+    // TODO: add to a list of task groups and free all of them at the very end.
+    int next_id = atomic_fetch_add_explicit_uint_least64_t(&atmi_tg_id, 1, memory_order_relaxed);
+    printf("Next task group ID: %d\n", next_id);
+    tg->id = next_id;
+    tg->ordered = ATMI_FALSE;
+    return tg;                                                                             
+}
+
+void chpl_taskGroupComplete() {
+    // no-op in ATMI. down count in other tasking layers
+}
+
+void chpl_taskGroupFinalize(void *tg) {
+    int cpu_id = 0; // which subloc?
+    atmi_task_group_t *cur_tg = get_atmi_task_group();
+
+    if(cur_tg) {
+        // if I am within a task, provide a chain dependency to the incoming group
+        ATMI_LPARM_CPU(lparm, cpu_id);
+        lparm->kernel_id = CPU_FUNCTION_IMPL; 
+        lparm->groupable = ATMI_TRUE;
+        lparm->group = cur_tg; 
+        lparm->num_required_groups = 1;
+        lparm->required_groups = (atmi_task_group_t **)&tg; 
+        atmi_task_launch(lparm, dummy_kernel, NULL);
+    }
+    else {
+        // if I am not within a task (main task), simply sync
+        printf("Waiting for task group: %p\n", tg);
+        atmi_task_group_sync((atmi_task_group_t *)tg);
+    }
+    //chpl_free(tg);
+}
+
 void chpl_task_addToTaskList(chpl_fn_int_t       fid,
                              chpl_task_bundle_t *arg,
                              size_t              arg_size,
@@ -963,6 +1014,7 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
                              void              **task_list,
                              int32_t             task_list_locale,
                              chpl_bool           is_begin_stmt,
+                             void               *task_group,
                              int                 lineno,
                              int32_t             filename)
 {
@@ -995,6 +1047,11 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
         ATMI_LPARM_CPU(lparm, cpu_id);
         lparm->kernel_id = CPU_FUNCTION_IMPL;
         //lparm->synchronous = ATMI_TRUE;
+        if(task_group) { 
+            lparm->groupable = ATMI_TRUE;
+            lparm->group = (atmi_task_group_t *)task_group;
+        }
+
         void *kernargs[1];
         if(!cpu_kernels_initialized[fid]) {
             atmi_kernel_create_empty(&cpu_kernels[fid], 1, &arg_size);

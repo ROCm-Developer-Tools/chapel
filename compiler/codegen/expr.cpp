@@ -5350,11 +5350,12 @@ void CallExpr::codegenInvokeOnFun() {
 void CallExpr::codegenInvokeTaskFun(const char* name) {
   FnSymbol*           fn            = isResolved();
   GenRet              taskList      = codegenValue(get(1));
+  GenRet              taskGroup     = codegenValue(get(6));
   GenRet              taskListNode;
   GenRet              taskBundle;
   GenRet              bundleSize;
 
-  std::vector<GenRet> args(8);
+  std::vector<GenRet> args(9);
 
   // get(1) is a ref/wide ref to a task list value
   // get(2) is the node ID owning the task list
@@ -5374,9 +5375,10 @@ void CallExpr::codegenInvokeTaskFun(const char* name) {
   args[2]      = codegenCast("chpl_task_bundle_p", taskBundle);
   args[3]      = bundleSize;
   args[4]      = taskList;
-  args[5]      = codegenValue(taskListNode);
-  args[6]      = fn->linenum();
-  args[7]      = new_IntSymbol(gFilenameLookupCache[fn->fname()], INT_SIZE_32);
+  args[5]      = taskGroup;
+  args[6]      = codegenValue(taskListNode);
+  args[7]      = fn->linenum();
+  args[8]      = new_IntSymbol(gFilenameLookupCache[fn->fname()], INT_SIZE_32);
 
   genComment(fn->cname, true);
 

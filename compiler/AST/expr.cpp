@@ -793,7 +793,8 @@ CallExpr::CallExpr(BaseAST* base,
                    BaseAST* arg2,
                    BaseAST* arg3,
                    BaseAST* arg4,
-                   BaseAST* arg5) :
+                   BaseAST* arg5,
+                   BaseAST* arg6) :
   Expr(E_CallExpr),
   primitive(NULL),
   baseExpr(NULL),
@@ -815,6 +816,7 @@ CallExpr::CallExpr(BaseAST* base,
   callExprHelper(this, arg3);
   callExprHelper(this, arg4);
   callExprHelper(this, arg5);
+  callExprHelper(this, arg6);
 
   argList.parent = this;
 
@@ -827,7 +829,8 @@ CallExpr::CallExpr(PrimitiveOp* prim,
                    BaseAST*     arg2,
                    BaseAST*     arg3,
                    BaseAST*     arg4,
-                   BaseAST*     arg5) :
+                   BaseAST*     arg5,
+                   BaseAST*     arg6) :
   Expr(E_CallExpr),
   primitive(prim),
   baseExpr(NULL),
@@ -840,6 +843,7 @@ CallExpr::CallExpr(PrimitiveOp* prim,
   callExprHelper(this, arg3);
   callExprHelper(this, arg4);
   callExprHelper(this, arg5);
+  callExprHelper(this, arg6);
 
   argList.parent = this;
 
@@ -851,7 +855,8 @@ CallExpr::CallExpr(PrimitiveTag prim,
                    BaseAST*     arg2,
                    BaseAST*     arg3,
                    BaseAST*     arg4,
-                   BaseAST*     arg5) :
+                   BaseAST*     arg5,
+                   BaseAST*     arg6) :
   Expr(E_CallExpr),
   primitive(primitives[prim]),
   baseExpr(NULL),
@@ -864,6 +869,7 @@ CallExpr::CallExpr(PrimitiveTag prim,
   callExprHelper(this, arg3);
   callExprHelper(this, arg4);
   callExprHelper(this, arg5);
+  callExprHelper(this, arg6);
 
   argList.parent = this;
 
@@ -876,7 +882,8 @@ CallExpr::CallExpr(const char* name,
                    BaseAST*    arg2,
                    BaseAST*    arg3,
                    BaseAST*    arg4,
-                   BaseAST*    arg5) :
+                   BaseAST*    arg5,
+                   BaseAST*    arg6) :
   Expr(E_CallExpr),
   primitive(NULL),
   baseExpr(new UnresolvedSymExpr(name)),
@@ -889,6 +896,7 @@ CallExpr::CallExpr(const char* name,
   callExprHelper(this, arg3);
   callExprHelper(this, arg4);
   callExprHelper(this, arg5);
+  callExprHelper(this, arg6);
 
   argList.parent = this;
 

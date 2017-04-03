@@ -283,6 +283,7 @@ void insertLineNumbers() {
     insertNilChecks();
   }
 
+  printf("Done 1\n");
   // loop over all primitives that require a line number and filename
   // and pass them an actual line number and filename
   forv_Vec(CallExpr, call, gCallExprs) {
@@ -291,6 +292,7 @@ void insertLineNumbers() {
     }
   }
 
+  printf("Done 2\n");
   // loop over all marked functions ("insert line file info"), add
   // line number and filename arguments to these functions, and add
   // them to the queue
@@ -304,6 +306,7 @@ void insertLineNumbers() {
     }
   }
 
+  printf("Done 3\n");
   // loop over all functions in the queue and all calls to these
   // functions, and pass the calls an actual line number and filename
   forv_Vec(FnSymbol, fn, queue) {
@@ -312,7 +315,9 @@ void insertLineNumbers() {
     }
   }
 
+  printf("Done 4\n");
   moveLinenoInsideArgBundle();
+  printf("Done 5\n");
 }
 
 static void moveLinenoInsideArgBundle()
@@ -325,8 +330,8 @@ static void moveLinenoInsideArgBundle()
     //  than the expected number.  Both block types below expect an
     //  argument bundle, and the on-block expects an additional argument
     //  that is the locale on which it should be executed.
-    if ((fn->numFormals() > 4 && fn->hasFlag(FLAG_ON_BLOCK)) ||
-        (fn->numFormals() > 5 && !fn->hasFlag(FLAG_ON_BLOCK) &&
+    if ((fn->numFormals() > 5 && fn->hasFlag(FLAG_ON_BLOCK)) ||
+        (fn->numFormals() > 6 && !fn->hasFlag(FLAG_ON_BLOCK) &&
          (fn->hasFlag(FLAG_BEGIN_BLOCK) ||
           fn->hasFlag(FLAG_COBEGIN_OR_COFORALL_BLOCK)))) {
 
