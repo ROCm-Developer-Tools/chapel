@@ -759,6 +759,7 @@ void chpl_task_init(void)
     atmi_kernel_create_empty(&dummy_kernel, 0, NULL);
     atmi_kernel_add_cpu_impl(dummy_kernel, (atmi_generic_fp)dummy_wrapper, CPU_FUNCTION_IMPL);
 
+    atmi_task_handle_t dummy_handle = atmi_task_create(dummy_kernel);
     int32_t   commMaxThreads;
     int32_t   hwpar;
     pthread_t initer;
@@ -1165,8 +1166,16 @@ chpl_taskID_t chpl_task_getId(void)
     PROFILE_INCR(profile_task_getId,1);
 
     atmi_task_handle_t t = get_atmi_task_handle();
+    // Rationale to return 0 instead of chpl_nullTaskID: ATMI returns -1 as the NULL 
+    // task, but we maintain 0 as the null task in chpl-atmi. 
+    // Impl: chpl-atmi does not create a new task for the main wrapper. Instead it
+    // creates a dummy ATMI task in the beginning but does not launch/activate
+    // it. This helps us recognize 0 as the main/dummy task and not -1 that is
+    // expected by ATMI as the NULL task. 
+    // FIXME: this could go against the chpl design of having *every* task being
+    // launched, including the main wrapper task. Any problems with that?
     if(t == ATMI_NULL_TASK_HANDLE)
-        return (chpl_taskID_t) -1;
+        return (chpl_taskID_t) 0;
 
     return t;
 }

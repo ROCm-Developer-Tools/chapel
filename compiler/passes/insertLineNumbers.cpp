@@ -283,7 +283,6 @@ void insertLineNumbers() {
     insertNilChecks();
   }
 
-  printf("Done 1\n");
   // loop over all primitives that require a line number and filename
   // and pass them an actual line number and filename
   forv_Vec(CallExpr, call, gCallExprs) {
@@ -292,7 +291,6 @@ void insertLineNumbers() {
     }
   }
 
-  printf("Done 2\n");
   // loop over all marked functions ("insert line file info"), add
   // line number and filename arguments to these functions, and add
   // them to the queue
@@ -306,7 +304,6 @@ void insertLineNumbers() {
     }
   }
 
-  printf("Done 3\n");
   // loop over all functions in the queue and all calls to these
   // functions, and pass the calls an actual line number and filename
   forv_Vec(FnSymbol, fn, queue) {
@@ -315,9 +312,7 @@ void insertLineNumbers() {
     }
   }
 
-  printf("Done 4\n");
   moveLinenoInsideArgBundle();
-  printf("Done 5\n");
 }
 
 static void moveLinenoInsideArgBundle()

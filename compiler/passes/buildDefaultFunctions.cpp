@@ -581,7 +581,7 @@ static void build_chpl_entry_points() {
   // endcount (see comment above)
   //
   if (fMinimalModules == false) {
-#ifdef TARGET_HSA
+#ifndef TARGET_HSA
     chpl_gen_main->insertAtTail(new CallExpr("_waitEndCount"));
 #else    
     chpl_gen_main->insertAtTail(new CallExpr("_finalizeTaskGroup"));
