@@ -2940,7 +2940,11 @@ buildSyncStmt(Expr* stmt) {
   block->insertAtTail(new CallExpr(PRIM_MOVE, endCountSave, new CallExpr(PRIM_GET_END_COUNT)));
   block->insertAtTail(new CallExpr(PRIM_SET_END_COUNT, new CallExpr("_endCountAlloc", /* forceLocalTypes= */gFalse)));
   block->insertAtTail(stmt);
+#ifndef TARGET_HSA
   block->insertAtTail(new CallExpr("_waitEndCount"));
+#else
+  block->insertAtTail(new CallExpr("_finalizeTaskGroup"));
+#endif
   block->insertAtTail(new CallExpr("_endCountFree", new CallExpr(PRIM_GET_END_COUNT)));
   block->insertAtTail(new CallExpr(PRIM_SET_END_COUNT, endCountSave));
   return block;
