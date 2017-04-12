@@ -47,7 +47,7 @@ classifyPrimitive(CallExpr *call) {
   case PRIM_CHECK_NIL:
   case PRIM_LOCAL_CHECK:
 #ifdef TARGET_HSA
-  // 2. We mark some primitives such as PRIM_CHECK_NIL and PRIM_LOCAL_CHECK as
+  // We mark some primitives such as PRIM_CHECK_NIL and PRIM_LOCAL_CHECK as
   // "NOT FAST" since they can lead to error messages but we are not allowing
   // I/O from gpu kernels for now.
   case PRIM_IS_GPU_SUBLOCALE: //is there a reason for a gpu-kernel to ask this?
@@ -350,7 +350,7 @@ setLocal(int is, bool inLocal)
 {
   // If it's in a local block, it's always local.
 #ifdef TARGET_HSA
-  // 1. In setLocal, if a single locale is targeted by the application, we mark
+  // In setLocal, if a single locale is targeted by the application, we mark
   // everything as local.
   // If a single locale is targeted, it's always local
   if (inLocal || fLocal) {

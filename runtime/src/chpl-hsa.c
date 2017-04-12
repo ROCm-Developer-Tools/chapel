@@ -180,8 +180,7 @@ int chpl_hsa_initialize(void)
             HSA_AGENT_INFO_WORKGROUP_MAX_DIM,
             &hsa_device.max_items_per_group_dim);
     OUTPUT_HSA_STATUS(st, GPU max workitem acquisition);
-    /*printf ("Max work items per workgroup dim: %d\n",
-            hsa_device.max_items_per_group_dim);*/
+
     gpu_max_queue_size = 0;
     st = hsa_agent_get_info(hsa_device.agent,
             HSA_AGENT_INFO_QUEUE_MAX_SIZE,
@@ -237,7 +236,7 @@ int chpl_hsa_initialize(void)
         hsa_shut_down();
         return ERROR;
     }
-    /* FIXME: Create all reduction kernels, not just the int64-sum kernel */
+
     if (ERROR == hsa_create_reduce_kernels(reduce_kernel_filename)) {
       hsa_queue_destroy(hsa_device.command_queue);
       hsa_shut_down();
@@ -271,8 +270,6 @@ void hsa_shutdown(void)
     if (HSA_STATUS_SUCCESS != st) {
         err = ERROR;
     }
-
-    //return err;
 }
 
 /**
@@ -338,7 +335,6 @@ int hsa_create_kernels(const char * file_name)
     }
 
     for (int64_t i = 0; i < chpl_num_gpu_kernels; ++i) {
-      //FIXME: get the actual kernel name
       const char * fn_name = chpl_gpu_kernels[i];
 #if ROCM
       size = asprintf(&kernel_name, "%s", fn_name);
@@ -391,11 +387,9 @@ int hsa_create_kernels(const char * file_name)
       if (HSA_STATUS_SUCCESS != st) {
         goto err_free_kernel_name;
       }
-      //chpl_free(kernel_name);
     }
 
     chpl_free(module_buffer);
-   // chpl_free(kernel_name);
 
     return SUCCESS;
 
@@ -521,7 +515,6 @@ int hsa_create_reduce_kernels(const char * file_name)
     	}
     }	
 
-    //chpl_free(kernel_name);
     chpl_free(module_buffer);
 
     return SUCCESS;
@@ -604,7 +597,7 @@ void hsa_enqueue_kernel(int kernel_idx, uint32_t wkgrp_size_x,
 
 
   hsa_signal_store_release(command_queue->doorbell_signal, index);
-  //sleep(2);
+
   while (hsa_signal_wait_acquire(completion_signal, HSA_SIGNAL_CONDITION_LT,
          1, UINT64_MAX, HSA_WAIT_STATE_ACTIVE) > 0);
   hsa_memory_free((void*)args);

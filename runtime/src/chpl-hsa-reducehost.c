@@ -122,8 +122,8 @@ void hsa_sched_reducekernels(size_t count, hsa_symbol_info_t *symbol_info,
     chpl_exit_any(1);
   }
 
-  /*FIXME: This is an overestimation. Allocation count should be equal to the
-   * number of iters.
+  /* TODO: This is currently an overestimation. Allocation count should be 
+   * equal to the number of iters.
    */
   args = chpl_malloc(count * sizeof (hsail_reduce_kernarg_t*));
   hsa_signal_create(count, 0, NULL, &completion_signal);

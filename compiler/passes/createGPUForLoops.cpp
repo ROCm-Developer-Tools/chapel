@@ -28,8 +28,10 @@
 // Return true if the for loop can be considered for gpu offload ie. if the
 // enclosing function or any function in the call-chain for the enclosing fn
 // has the flag FLAG_REQUEST_GPU_OFFLOAD set. A way to allow the programmer to
-// restrict what loops can be considered for GPU offload. TODO: this shuold
-// go away once the code is sufficiently stable.
+// restrict what loops can be considered for GPU offload. 
+// TODO: this code is helpful in reducing the number of loops that are 
+// transformed to OpenCL. The code, along with the request gpu offload pragma
+// can be removed in the future.
 static bool isGPUOffloadRequested(CForLoop *cForLoop)
 {
   FnSymbol *fn = toFnSymbol(cForLoop->parentSymbol);
@@ -65,7 +67,7 @@ extern bool inLocalBlock(CallExpr *call);
 // no locks, the extern functions in the atomics module are local and safe for
 // fast on. However, we consider all extern functions to be not fit for GPU
 // offload. (TODO: This should not be the case, and we should look at what
-// extern functions can be run on the GPU). This is the reason that we donot
+// extern functions can be run on the GPU). This is the reason that we do not
 // use the FLAG_FAST_ON flag directly.
 
 static bool fitForGPUOffload(FnSymbol * fn, std::set<FnSymbol*>& fnSet)
