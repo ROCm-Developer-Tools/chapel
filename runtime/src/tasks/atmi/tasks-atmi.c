@@ -67,6 +67,10 @@
 #include <unistd.h>
 #include <math.h>
 
+// FIXME: Good idea to recycle the task groups, so this will limit 
+// the depth of nested coforall s and cobegins. Fix to use an ATMI
+// environment variable.
+#define max_num_task_groups 8
 #define max_num_cpu_kernels 4096
 int cpu_kernels_initialized[max_num_cpu_kernels] = {0}; 
 atmi_kernel_t cpu_kernels[max_num_cpu_kernels];
@@ -759,6 +763,11 @@ void chpl_task_init(void)
     atmi_kernel_create_empty(&dummy_kernel, 0, NULL);
     atmi_kernel_add_cpu_impl(dummy_kernel, (atmi_generic_fp)dummy_wrapper, CPU_FUNCTION_IMPL);
 
+    // this increment needed to let the main task not be treated as an ATMI task
+    // because we directly launch the main task with the main thread and dont treat 
+    // it as an ATMI task. This increment fools the rest of the runtime to think that
+    // the main task is an ATMI task, but it is in fact not an ATMI task.
+    int next_id = atomic_fetch_add_explicit_uint_least64_t(&atmi_tg_id, 1, memory_order_relaxed);
     atmi_task_handle_t dummy_handle = atmi_task_create(dummy_kernel);
     int32_t   commMaxThreads;
     int32_t   hwpar;
@@ -968,7 +977,6 @@ int chpl_task_createCommTask(chpl_fn_p fn,
 
 void *chpl_taskGroupGet() {
     void *ret = (void *)get_atmi_task_group();
-    printf("Adding to task group: %p\n", ret);
     return ret;
 }
 
@@ -976,7 +984,9 @@ void *chpl_taskGroupInit(int lineno, int32_t filename) {
     atmi_task_group_t *tg = (atmi_task_group_t *)chpl_malloc(sizeof(atmi_task_group_t));
     // TODO: add to a list of task groups and free all of them at the very end.
     int next_id = atomic_fetch_add_explicit_uint_least64_t(&atmi_tg_id, 1, memory_order_relaxed);
-    printf("Next task group ID: %d\n", next_id);
+    // loop around the task groups. 
+    // FIXME: how will this affect the main task that is not an ATMI task? Incr by 1 after this?
+    next_id %= max_num_task_groups; 
     tg->id = next_id;
     tg->ordered = ATMI_FALSE;
     return tg;                                                                             
@@ -1002,7 +1012,6 @@ void chpl_taskGroupFinalize(void *tg) {
     }
     else {
         // if I am not within a task (main task), simply sync
-        printf("Waiting for task group: %p\n", tg);
         atmi_task_group_sync((atmi_task_group_t *)tg);
     }
     //chpl_free(tg);
@@ -1048,8 +1057,8 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
         ATMI_LPARM_CPU(lparm, cpu_id);
         lparm->kernel_id = CPU_FUNCTION_IMPL;
         //lparm->synchronous = ATMI_TRUE;
+        lparm->groupable = ATMI_TRUE;
         if(task_group) { 
-            lparm->groupable = ATMI_TRUE;
             lparm->group = (atmi_task_group_t *)task_group;
         }
 
@@ -1080,7 +1089,6 @@ static inline void taskCallBody(chpl_fn_int_t fid, chpl_fn_name fname, chpl_fn_p
                                 c_sublocid_t subloc,  chpl_bool serial_state,
                                 int lineno, int32_t filename)
 {
-    //printf("Adding %d fn to task call body\n", fid);
     chpl_task_bundle_t *bundle = (chpl_task_bundle_t*) arg;
 
     bundle->serial_state       = serial_state;
@@ -1252,7 +1260,8 @@ uint32_t chpl_task_getMaxPar(void) {
     // will decide itself how much parallelism to create across and
     // within sublocales, if there are any.
     //
-    return (uint32_t) 8;//qthread_num_workers();
+    return qthread_num_workers();
+    //return (uint32_t) g_machine->devices_by_type[ATMI_DEVTYPE_CPU][0].core_count;
 }
 
 c_sublocid_t chpl_task_getNumSublocales(void)
@@ -1294,7 +1303,8 @@ int32_t chpl_task_getNumBlockedTasks(void)
 
 uint32_t chpl_task_getNumThreads(void)
 {
-    return (uint32_t) 8;//qthread_num_workers();
+    return qthread_num_workers();
+    //return (uint32_t) g_machine->devices_by_type[ATMI_DEVTYPE_CPU][0].core_count;
 }
 
 // Ew. Talk about excessive bookkeeping.
