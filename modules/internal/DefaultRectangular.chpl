@@ -1,4 +1,5 @@
 /*
+ * Copyright 2017 Advanced Micro Devices, Inc.OB
  * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
