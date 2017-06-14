@@ -259,10 +259,9 @@ void hsa_shutdown(void)
     int err = SUCCESS;
     hsa_status_t st;
 
-   chpl_free (gen_kernels.symbol_info);
-   hsa_executable_destroy(gen_kernels.executable);
-   hsa_code_object_destroy(gen_kernels.code_object);
-
+    chpl_free (gen_kernels.symbol_info);
+    hsa_executable_destroy(gen_kernels.executable);
+    hsa_code_object_destroy(gen_kernels.code_object);
 
 
     st = hsa_queue_destroy(hsa_device.command_queue);
