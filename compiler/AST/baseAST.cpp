@@ -17,18 +17,18 @@
  * limitations under the License.
  */
 
-#include <ostream>
-#include <sstream>
-#include <string>
-
 #include "baseAST.h"
 
 #include "astutil.h"
 #include "CForLoop.h"
 #include "CatchStmt.h"
+#include "DeferStmt.h"
+#include "driver.h"
 #include "expr.h"
+#include "ForallStmt.h"
 #include "ForLoop.h"
 #include "log.h"
+#include "ModuleSymbol.h"
 #include "ParamForLoop.h"
 #include "parser.h"
 #include "passes.h"
@@ -39,6 +39,10 @@
 #include "TryStmt.h"
 #include "type.h"
 #include "WhileStmt.h"
+
+#include <ostream>
+#include <sstream>
+#include <string>
 
 //
 // declare global vectors gSymExprs, gCallExprs, gFnSymbols, ...
@@ -77,8 +81,8 @@ void printStatistics(const char* pass) {
 
   foreach_ast(decl_counters);
 
-  int nStmt = nCondStmt + nBlockStmt + nGotoStmt + nUseStmt + nTryStmt;
-  int kStmt = kCondStmt + kBlockStmt + kGotoStmt + kUseStmt + kExternBlockStmt + kTryStmt + kForwardingStmt + kCatchStmt;
+  int nStmt = nBlockStmt + nCondStmt + nDeferStmt + nGotoStmt + nUseStmt + nExternBlockStmt + nForallStmt + nTryStmt + nForwardingStmt + nCatchStmt;
+  int kStmt = kBlockStmt + kCondStmt + kDeferStmt + kGotoStmt + kUseStmt + kExternBlockStmt + kForallStmt + kTryStmt + kForwardingStmt + kCatchStmt;
   int nExpr = nUnresolvedSymExpr + nSymExpr + nDefExpr + nCallExpr +
     nContextCallExpr + nForallExpr + nNamedExpr;
   int kExpr = kUnresolvedSymExpr + kSymExpr + kDefExpr + kCallExpr +
@@ -450,12 +454,20 @@ const char* BaseAST::astTagAsString() const {
       retval = "CondStmt";
       break;
 
+    case E_DeferStmt:
+      retval = "DeferStmt";
+      break;
+
     case E_GotoStmt:
       retval = "GotoStmt";
       break;
 
     case E_ForwardingStmt:
       retval = "ForwardingStmt";
+      break;
+
+    case E_ForallStmt:
+      retval = "ForallStmt";
       break;
 
     case E_ExternBlockStmt:
@@ -544,9 +556,6 @@ void BaseAST::printDocsDescription(const char *doc, std::ostream *file, unsigned
 
 
 astlocT currentAstLoc(0,NULL);
-
-Vec<ModuleSymbol*> userModules; // Contains user + main modules
-Vec<ModuleSymbol*> allModules;  // Contains all modules
 
 void registerModule(ModuleSymbol* mod) {
   switch (mod->modTag) {

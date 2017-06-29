@@ -76,19 +76,6 @@
    The ``<=>`` operator can be used to swap the contents of two arrays
    with the same shape.
 
-   The array alias operator ``=>``
-   -------------------------------
-
-   The ``=>`` operator can be used in a variable declaration to create
-   a new alias of an array. The new variable will refer to the same
-   array elements as the aliased array.  In the following example,
-   the variable ``Inner`` refers to the inner 9 elements of ``A``.
-
-   .. code-block:: chapel
-
-     var A: [0..10] int;
-     var Inner => A[1..9];
-
    ================================================
    Set Operations on Associative Domains and Arrays
    ================================================
@@ -96,12 +83,12 @@
    Associative domains and arrays support a number of operators for
    set manipulations.  The supported set operators are:
 
-     =====  ====================
-     \+ \|    Union
-     &      Intersection
-     \-      Difference
-     ^      Symmetric Difference
-     =====  ====================
+     =======  ====================
+     \+ , \|  Union
+     &        Intersection
+     \-       Difference
+     ^        Symmetric Difference
+     =======  ====================
 
    Consider the following code where ``A`` and ``B`` are associative arrays:
 
@@ -112,7 +99,7 @@
    The result ``C`` is a new associative array backed by a new associative
    domain. The domains of ``A`` and ``B`` are not modified by ``op``.
 
-   There are also op= variants that store the result into the first operand.
+   There are also ``op=`` variants that store the result into the first operand.
 
    Consider the following code where ``A`` and ``B`` are associative arrays:
 
@@ -125,6 +112,46 @@
 
    For the ``+=`` and ``|=`` operators, the value from ``B`` will overwrite
    the existing value in ``A`` when indices overlap.
+
+   ==================================================
+   Parallel Safety with respect to Arrays and Domains
+   ==================================================
+
+   Users must take care when applying operations to arrays and domains
+   concurrently from distinct tasks.  For instance, if one task is
+   modifying the index set of a domain while another task is operating
+   on either the domain itself or an array declared over that domain,
+   this represents a race and could have arbitrary consequences
+   including incorrect results and program crashes.  While making
+   domains and arrays safe with respect to such concurrent operations
+   would be appealing, Chapel's current position is that such safety
+   guarantees would be prohibitively expensive.
+
+   Chapel arrays do support concurrent reads, writes, iterations, and
+   operations as long as their domains are not being modified
+   simultaneously.  Such operations are subject to Chapel's memory
+   consistency model like any other memory accesses.  Similarly, tasks
+   may make concurrent queries and iterations on a domain as long as
+   another task is not simultaneously modifying the domain's index
+   set.
+
+   By default, associative (and opaque) domains permit multiple tasks
+   to modify their index sets concurrently.  This adds some amount of
+   overhead to these operations.  If the user knows that all such
+   modifications will be done serially or in a parallel-safe context,
+   the overheads can be avoided by setting ``parSafe`` to ``false`` in
+   the domain's type declaration.  For example, the following
+   declaration creates an associative domain of strings where the
+   implementation will do nothing to ensure that simultaneous
+   modifications to the domain are parallel-safe:
+
+     .. code-block:: chapel
+
+       var D: domain(string, parSafe=false);
+
+   As with any other domain type, it is not safe to access an
+   associative array while its domain is changing, regardless of
+   whether ``parSafe`` is set to ``true`` or ``false``.
 
    ===========================================
    Functions and Methods on Arrays and Domains
@@ -631,7 +658,7 @@ module ChapelArray {
   }
 
   //
-  // Returns a domain with a rank equivalent to chpl__getActualArray(arr).rank.
+  // Return a domain with a rank equivalent to chpl__getActualArray(arr).rank.
   // This domain is no larger than the innermost array's domain. It represents
   // the 'active' indices that the top-level ArrayView works with. For example:
   //
@@ -647,7 +674,7 @@ module ChapelArray {
   }
 
   //
-  // Returns the innermost array class (e.g., a DefaultRectangular).
+  // Return the innermost array class (e.g., a DefaultRectangular).
   //
   // 'arr' can be a full-fledged array or a BaseArr-inheriting class
   //
@@ -658,8 +685,8 @@ module ChapelArray {
   }
 
   //
-  // Returns true if 'arr' is a DefaultRectangular array or is an ArrayView
-  // over a DefaultRetangular array.
+  // Return true if 'arr' is a DefaultRectangular array or is an ArrayView
+  // over a DefaultRectangular array.
   //
   // 'arr' can be a full-fledged array type or a class that inherits from
   // BaseArr
@@ -947,7 +974,7 @@ module ChapelArray {
     proc displayRepresentation() { _value.dsiDisplayRepresentation(); }
 
     /*
-       Returns an array of locales over which this distribution was declared.
+       Return an array of locales over which this distribution was declared.
     */
     proc targetLocales() {
       return _value.dsiTargetLocales();
@@ -1176,13 +1203,13 @@ module ChapelArray {
     }
 
     /*
-       Returns a tuple of ranges describing the bounds of a rectangular domain.
-       For a sparse domain, returns the bounds of the parent domain.
+       Return a tuple of ranges describing the bounds of a rectangular domain.
+       For a sparse domain, return the bounds of the parent domain.
      */
     proc dims() return _value.dsiDims();
 
     /*
-       Returns a range representing the boundary of this
+       Return a range representing the boundary of this
        domain in a particular dimension.
      */
     proc dim(d : int) return _value.dsiDim(d);
@@ -1195,8 +1222,8 @@ module ChapelArray {
       for i in _value.dimIter(d, ind) do yield i;
     }
 
-   /* Returns a tuple of ``idxType`` describing the size of each dimension.
-      For a sparse domain, returns the shape of the parent domain.*/
+   /* Return a tuple of ``idxType`` describing the size of each dimension.
+      For a sparse domain, return the shape of the parent domain.*/
     proc shape where isRectangularDom(this) || isSparseDom(this) {
       var s: rank*(dim(1).idxType);
       for (i, r) in zip(1..s.size, dims()) do
@@ -1369,7 +1396,7 @@ module ChapelArray {
       return ret;
     }
 
-    /* Returns true if this domain is a subset of ``super``. Otherwise
+    /* Return true if this domain is a subset of ``super``. Otherwise
        returns false. */
     proc isSubset(super : domain) {
       if !isAssociativeDom(this) {
@@ -1388,7 +1415,7 @@ module ChapelArray {
       return && reduce forall i in this do super.member(i);
     }
 
-    /* Returns true if this domain is a superset of ``sub``. Otherwise
+    /* Return true if this domain is a superset of ``sub``. Otherwise
        returns false. */
     proc isSuper(sub : domain) {
       if !isAssociativeDom(this) {
@@ -1434,7 +1461,7 @@ module ChapelArray {
     pragma "no doc"
     proc expand(off: _value.idxType ...rank) return expand(off);
 
-    /* Returns a new domain that is the current domain expanded by
+    /* Return a new domain that is the current domain expanded by
        ``off(d)`` in dimension ``d`` if ``off(d)`` is positive or
        contracted by ``off(d)`` in dimension ``d`` if ``off(d)``
        is negative. */
@@ -1450,7 +1477,7 @@ module ChapelArray {
       return _newDomain(dist.newRectangularDom(rank, _value.idxType, stridable, ranges));
     }
 
-    /* Returns a new domain that is the current domain expanded by
+    /* Return a new domain that is the current domain expanded by
        ``off`` in all dimensions if ``off`` is positive or contracted
        by ``off`` in all dimensions if ``off`` is negative. */
     proc expand(off: _value.idxType) where rank > 1 {
@@ -1475,7 +1502,7 @@ module ChapelArray {
     pragma "no doc"
     proc exterior(off: _value.idxType ...rank) return exterior(off);
 
-    /* Returns a new domain that is the exterior portion of the
+    /* Return a new domain that is the exterior portion of the
        current domain with ``off(d)`` indices for each dimension ``d``.
        If ``off(d)`` is negative, compute the exterior from the low
        bound of the dimension; if positive, compute the exterior
@@ -1487,7 +1514,7 @@ module ChapelArray {
       return _newDomain(dist.newRectangularDom(rank, _value.idxType, stridable, ranges));
     }
 
-    /* Returns a new domain that is the exterior portion of the
+    /* Return a new domain that is the exterior portion of the
        current domain with ``off`` indices for each dimension.
        If ``off`` is negative, compute the exterior from the low
        bound of the dimension; if positive, compute the exterior
@@ -1514,7 +1541,7 @@ module ChapelArray {
     pragma "no doc"
     proc interior(off: _value.idxType ...rank) return interior(off);
 
-    /* Returns a new domain that is the interior portion of the
+    /* Return a new domain that is the interior portion of the
        current domain with ``off(d)`` indices for each dimension
        ``d``. If ``off(d)`` is negative, compute the interior from
        the low bound of the dimension; if positive, compute the
@@ -1531,7 +1558,7 @@ module ChapelArray {
       return _newDomain(dist.newRectangularDom(rank, _value.idxType, stridable, ranges));
     }
 
-    /* Returns a new domain that is the interior portion of the
+    /* Return a new domain that is the interior portion of the
        current domain with ``off`` indices for each dimension.
        If ``off`` is negative, compute the interior from the low
        bound of the dimension; if positive, compute the interior
@@ -1565,7 +1592,7 @@ module ChapelArray {
     pragma "no doc"
     proc translate(off: ?t ...rank) return translate(off);
 
-    /* Returns a new domain that is the current domain translated by
+    /* Return a new domain that is the current domain translated by
        ``off(d)`` in each dimension ``d``. */
     proc translate(off) where isTuple(off) {
       if off.size != rank then
@@ -1576,7 +1603,7 @@ module ChapelArray {
       return _newDomain(dist.newRectangularDom(rank, _value.idxType, stridable, ranges));
      }
 
-    /* Returns a new domain that is the current domain translated by
+    /* Return a new domain that is the current domain translated by
        ``off`` in each dimension. */
      proc translate(off) where rank != 1 && !isTuple(off) {
        var offTup: rank*off.type;
@@ -1626,12 +1653,24 @@ module ChapelArray {
       return this((...r));
     }
 
-    pragma "no doc"
+    /*
+       Return a local view of the sub-array (slice) defined by the provided
+       range(s), halting if the slice contains elements that are not local.
+
+       Indexing into this local view is cheaper, because the indices are known
+       to be local.
+    */
     proc localSlice(r: range(?)... rank) {
       return _value.dsiLocalSlice(chpl__anyStridable(r), r);
     }
 
-    pragma "no doc"
+    /*
+       Return a local view of the sub-array (slice) defined by the provided
+       domain, halting if the slice contains elements that are not local.
+
+       Indexing into this local view is cheaper, because the indices are known
+       to be local.
+     */
     proc localSlice(d: domain) {
       return localSlice((...d.getIndices()));
     }
@@ -1693,7 +1732,7 @@ module ChapelArray {
     }
 
     /*
-       Returns an array of locales over which this domain has been distributed.
+       Return an array of locales over which this domain has been distributed.
     */
     proc targetLocales() {
       return _value.dsiTargetLocales();
@@ -2306,7 +2345,18 @@ module ChapelArray {
              "  Actual domain is: ", this.domain);
     }
 
-    pragma "no doc"
+    /*
+       Return an array view over a new domain, provided that the new
+       domain is of the same rank and size as the original.
+
+       For example:
+
+       .. code-block:: chapel
+
+          var A: [1..10] int;
+          var B = A.reindex(6..15);
+
+    */
     pragma "fn returns aliasing array"
     proc reindex(d: domain)
       where isRectangularDom(this.domain) && isRectangularDom(d)
@@ -2394,7 +2444,7 @@ module ChapelArray {
     proc displayRepresentation() { _value.dsiDisplayRepresentation(); }
 
     /*
-       Returns an array of locales over which this array has been distributed.
+       Return an array of locales over which this array has been distributed.
     */
     //
     // TODO: Is it really appropriate that the array should provide
@@ -2826,7 +2876,7 @@ module ChapelArray {
       return + reduce (this == val);
     }
 
-   /* Returns a tuple of integers describing the size of each dimension.
+   /* Return a tuple of integers describing the size of each dimension.
       For a sparse array, returns the shape of the parent domain.*/
     proc shape {
       return this.domain.shape;
@@ -3065,9 +3115,12 @@ module ChapelArray {
   }
 
   proc &=(ref a :domain, b: domain) where (a.type == b.type) && isAssociativeDom(a) {
+    var removeSet: domain(a.idxType);
     for e in a do
       if !b.member(e) then
-        a.remove(e);
+        removeSet += e;
+    for e in removeSet do
+      a.remove(e);
   }
 
   proc ^(a :domain, b: domain) where (a.type == b.type) && isAssociativeDom(a) {
@@ -3165,8 +3218,15 @@ module ChapelArray {
       }
       return false;
     }
+    proc oneNonRange() param {
+      for param dim in 1.. args.size {
+        if !isRange(args(dim)) then
+          return true;
+      }
+      return false;
+    }
 
-    return allValid() && oneRange();
+    return allValid() && oneRange() && oneNonRange();
     //return help(1);
   }
 
@@ -3611,7 +3671,7 @@ module ChapelArray {
       a <=> b;
   }
 
-  /* Returns a copy of the array ``A`` containing the same values but
+  /* Return a copy of the array ``A`` containing the same values but
      in the shape of the domain ``D``. The number of indices in the
      domain must equal the number of elements in the array. The
      elements of ``A`` are copied into the new array using the
@@ -3762,7 +3822,7 @@ module ChapelArray {
   //
   // Although it appears to be a copy constructor, it is in fact
   // an Array constructor.  It appears to me that this implementation
-  // it due to an artifact in the interaction between normalize and
+  // is due to an artifact in the interaction between normalize and
   // function resolution; the former inserts calls to initCopy() without
   // understanding the types involved.  This in turn leads to some
   // confusion for the compiler is resolved by the liberal use of

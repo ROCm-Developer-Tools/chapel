@@ -135,7 +135,6 @@ and distributes using block-cyclic distribution in the second dimension.
     for loc in MyLocales do on loc {
 
       // The ReplicatedDim specifier always accesses the local replicand.
-      // (This differs from how the ReplicatedDist distribution works.)
       //
       // Therefore, 'forall a in A' when executed on MyLocales[loc1,loc2]
       // visits only the replicands on MyLocales[loc1,0..N_2-1].
@@ -908,7 +907,7 @@ proc DimensionalArr.isAlias
   return this.dom != this.allocDom;
 
 
-//== creation
+//== creation and destruction
 
 // create a new array over this domain
 proc DimensionalDom.dsiBuildArray(type eltType)
@@ -929,6 +928,13 @@ proc DimensionalDom.dsiBuildArray(type eltType)
 
   assert(!result.isAlias);
   return result;
+}
+
+
+proc DimensionalDom.dsiDestroyDom() {
+  coforall desc in localDdescs do
+    on desc do
+      delete desc;
 }
 
 
@@ -1037,6 +1043,12 @@ proc DimensionalArr.dsiReallocate(d: domain) {
 
 proc DimensionalArr.dsiPostReallocate() {
   // nothing for now
+}
+
+proc DimensionalArr.dsiDestroyArr(isslice: bool) {
+  coforall desc in localAdescs do
+    on desc do
+      delete desc;
 }
 
 

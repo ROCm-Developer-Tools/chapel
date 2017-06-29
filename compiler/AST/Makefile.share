@@ -16,6 +16,7 @@
 # limitations under the License.
 
 AST_SRCS =                                          \
+           AggregateType.cpp                        \
            alist.cpp                                \
            astutil.cpp                              \
            baseAST.cpp                              \
@@ -23,15 +24,20 @@ AST_SRCS =                                          \
            build.cpp                                \
            CatchStmt.cpp                            \
            checkAST.cpp                             \
+           DeferStmt.cpp                            \
            dominator.cpp                            \
            expr.cpp                                 \
            iterator.cpp                             \
            foralls.cpp                              \
            flags.cpp                                \
+           ModuleSymbol.cpp                         \
+           PartialCopyData.cpp                      \
            primitive.cpp                            \
            stmt.cpp                                 \
            symbol.cpp                               \
            TryStmt.cpp                              \
+           UseStmt.cpp                              \
+           ForallStmt.cpp                           \
            type.cpp                                 \
            view.cpp                                 \
                                                     \
@@ -50,6 +56,8 @@ AST_SRCS =                                          \
            AstDump.cpp                              \
            AstDumpToHtml.cpp                        \
            AstDumpToNode.cpp                        \
+                                                    \
+           AstCount.cpp                             \
                                                     \
            AstPrintDocs.cpp                         \
                                                     \

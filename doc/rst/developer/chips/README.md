@@ -20,4 +20,6 @@ See the first CHIP for an overview.
 * [16 Optimizing Record and Array Copies in Chapel](16.rst)
 * [17 GPU Programming Features](17.rst)
 * [18 NUMA-Aware Array Storage](18.rst)
+* [19 Dynamically Loading Chapel Code](19.rst)
+* [20 Point of Instantiation and Private Scoping](20.rst)
 

@@ -34,10 +34,10 @@ proc main() {
   // to tasks.  At each depth, create the required trees, compute
   // their sums, and free them.
   //
-  forall depth in dynamic(depths, chunkSize=1) {
+  forall depth in dynamic(depths) {
     const iterations = 2**(maxDepth - depth + minDepth);
     var sum = 0;
-			
+
     for i in 1..iterations {
       const t = new Tree(depth);
       sum += t.sum();
