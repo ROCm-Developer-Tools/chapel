@@ -23,6 +23,7 @@
 #include "bb.h"
 #include "bitVec.h"
 #include "CForLoop.h"
+#include "driver.h"
 #include "expr.h"
 #include "ForLoop.h"
 #include "oldCollectors.h"
@@ -825,20 +826,22 @@ buildGetValue(IteratorInfo* ii, BlockStmt* singleLoop) {
   INT_ASSERT(my_this == ii->getValue->_this);
   map.put(advance_this, my_this);
 
-  VarSymbol* tmp         = newTemp(ii->getValue->retType);
-  getValueBody->insertAtTail(new DefExpr(tmp));
 
   if (singleLoop && singleLoop->isForLoop())
   {
     INT_FATAL(singleLoop, "Unexpected singleLoop iterator type");
   }
-  else
+  else if (ii->getValue->retType != dtVoid)
   {
+    VarSymbol* tmp = newTemp(ii->getValue->retType);
+    getValueBody->insertAtTail(new DefExpr(tmp));
     getValueBody->insertAtTail(new CallExpr(PRIM_MOVE, tmp,
                                             new CallExpr(PRIM_GET_MEMBER_VALUE,
                                                          my_this, ii->iclass->getField("value"))));
+    getValueBody->insertAtTail(new CallExpr(PRIM_RETURN, tmp));
+  } else {
+    getValueBody->insertAtTail(new CallExpr(PRIM_RETURN, gVoid));
   }
-  getValueBody->insertAtTail(new CallExpr(PRIM_RETURN, tmp));
 
   ii->getValue->body->replace(getValueBody);
 }
@@ -1020,11 +1023,6 @@ static void insertLocalsForRefs(Vec<Symbol*>& syms,
                                 FnSymbol*     fn,
                                 Vec<Symbol*>& yldSymSet)
 {
-  Map<Symbol*, Vec<SymExpr*>*> defMap;
-  Map<Symbol*, Vec<SymExpr*>*> useMap;
-
-  buildDefUseMaps(fn, defMap, useMap);
-
   // Walk the variables in this (iterator) function
   // which are not the return symbol nor argument, and are ref symbols.
   forv_Vec(Symbol, sym, syms) {
@@ -1032,16 +1030,25 @@ static void insertLocalsForRefs(Vec<Symbol*>& syms,
       continue;
 
     if (sym->type->symbol->hasFlag(FLAG_REF)) {
-      Vec<SymExpr*>* defs = defMap.get(sym);
-
-      if (defs == NULL || defs->n != 1) {
-        INT_FATAL(sym, "Expected sym to have exactly one definition");
+      CallExpr* move = NULL;
+      if (!sym->isDefined()) {
+        INT_FATAL(sym, "Expected sym to have at least one definition");
       }
 
-      // Do we need to consider PRIM_ASSIGN as well?
-      CallExpr* move = toCallExpr(defs->v[0]->parentExpr);
+      // Ignores reference actuals passed to reference formals
+      for_SymbolDefs(def, sym) {
+        CallExpr* parent = toCallExpr(def->parentExpr);
+        INT_ASSERT(parent);
+        if (parent->isPrimitive(PRIM_MOVE)) {
+          if (move == NULL) {
+            move = parent;
+          } else {
+            INT_FATAL(sym, "Expected sym to have exactly one move-definition");
+          }
+        }
+      }
 
-      INT_ASSERT(move->isPrimitive(PRIM_MOVE));
+      INT_ASSERT(move && move->isPrimitive(PRIM_MOVE));
 
       if (SymExpr* se = toSymExpr(move->get(2)))
       {
@@ -1055,7 +1062,7 @@ static void insertLocalsForRefs(Vec<Symbol*>& syms,
       else if (CallExpr* call = toCallExpr(move->get(2)))
       {
         // The RHS is a function call.
-        if (FnSymbol* fn = call->isResolved()) {
+        if (FnSymbol* fn = call->resolvedFunction()) {
           for_actuals(actual, call) {
             SymExpr* se = toSymExpr(actual);
 
@@ -1091,8 +1098,6 @@ static void insertLocalsForRefs(Vec<Symbol*>& syms,
       }
     }
   }
-
-  freeDefUseMaps(defMap, useMap);
 }
 
 
@@ -1147,8 +1152,11 @@ addAllLocalVariables(Vec<Symbol*>& syms, Vec<BaseAST*>& asts) {
   forv_Vec(BaseAST, ast, asts) {
     if (DefExpr* def = toDefExpr(ast))
       if (VarSymbol* var = toVarSymbol(def->sym))
-        if (!var->type->symbol->hasFlag(FLAG_REF) || var->hasFlag(FLAG_INDEX_VAR))
+        if (!var->type->symbol->hasFlag(FLAG_REF) ||
+             var->hasFlag(FLAG_INDEX_VAR) ||
+             var->hasFlag(FLAG_REF_VAR)) {
           syms.add(var);
+        }
   }
 }
 
@@ -1160,12 +1168,14 @@ noOtherCalls(FnSymbol* callee, CallExpr* theCall) {
       // TODO: This forv + filter casts a wide net.
       // Try to make the filter reject as many cases as possible
       // by first matching on the callee and then testing if call == theCall.
-      if (FnSymbol* rc = call->isResolved()) {
-        if (rc == callee)
+      if (FnSymbol* rc = call->resolvedFunction()) {
+        if (rc == callee) {
           return false;
+        }
       }
     }
   }
+
   return true;
 }
 
@@ -1257,10 +1267,10 @@ rebuildGetIterator(IteratorInfo* ii) {
 
   // Set the iterator class (state object) so that it
   // initially signals that more elements available.
-  getIterator->insertBeforeReturn(new CallExpr(PRIM_SET_MEMBER,
-                                               ret,
-                                               ii->iclass->getField("more"),
-                                               new_IntSymbol(1)));
+  getIterator->insertBeforeEpilogue(new CallExpr(PRIM_SET_MEMBER,
+                                                 ret,
+                                                 ii->iclass->getField("more"),
+                                                 new_IntSymbol(1)));
 
   // Enumerate the fields in the iterator record (argument).
   for_fields(field, ii->irecord) {
@@ -1269,13 +1279,13 @@ rebuildGetIterator(IteratorInfo* ii) {
     VarSymbol* fieldReadTmp  = newTemp(field->type);
     CallExpr*  fieldRead     = new CallExpr(PRIM_GET_MEMBER_VALUE, arg, field);
 
-    getIterator->insertBeforeReturn(new DefExpr(fieldReadTmp));
+    getIterator->insertBeforeEpilogue(new DefExpr(fieldReadTmp));
 
-    getIterator->insertBeforeReturn(new CallExpr(PRIM_MOVE,
+    getIterator->insertBeforeEpilogue(new CallExpr(PRIM_MOVE,
                                                  fieldReadTmp,
                                                  fieldRead));
 
-    getIterator->insertBeforeReturn(
+    getIterator->insertBeforeEpilogue(
                              new CallExpr(PRIM_SET_MEMBER,
                                           ret,
                                           ii->iclass->getField(field->name),

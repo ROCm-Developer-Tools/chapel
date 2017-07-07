@@ -22,11 +22,13 @@
 
 #include "checks.h"
 
+#include "docsDriver.h"
+#include "driver.h"
 #include "expr.h"
+#include "PartialCopyData.h"
 #include "passes.h"
 #include "primitive.h"
 #include "resolution.h"
-#include "docsDriver.h" // for fDocs
 #include "TryStmt.h"
 
 //
@@ -449,7 +451,7 @@ void check_afterEveryPass()
     verify();
     checkForDuplicateUses();
     checkFlagRelationships();
-    checkEmptyPartialCopyFnMap();
+    checkEmptyPartialCopyDataFnMap();
   }
 }
 
@@ -519,10 +521,11 @@ static void check_afterLowerErrorHandling()
 {
   if (fVerify)
   {
-    // check no more TryStmt
+    // check that TryStmt is not in the tree
     forv_Vec(TryStmt, stmt, gTryStmts)
     {
-      INT_FATAL(stmt, "TryStmt should no longer exist");
+      if (stmt->inTree())
+        INT_FATAL(stmt, "TryStmt should no longer be in the tree");
     }
 
     // TODO: check no more CatchStmt
@@ -530,7 +533,7 @@ static void check_afterLowerErrorHandling()
     // check no more PRIM_THROW
     forv_Vec(CallExpr, call, gCallExprs)
     {
-      if (call->isPrimitive(PRIM_THROW))
+      if (call->isPrimitive(PRIM_THROW) && call->inTree())
         INT_FATAL(call, "PRIM_THROW should no longer exist");
     }
   }
@@ -583,10 +586,12 @@ static void checkAggregateTypes()
 {
   for_alive_in_Vec(AggregateType, at, gAggregateTypes)
   {
-    if (! at->defaultInitializer && at->initializerStyle != DEFINES_INITIALIZER)
+    if (! at->defaultInitializer && at->initializerStyle == DEFINES_CONSTRUCTOR)
       INT_FATAL(at, "aggregate type did not define an initializer and has no default constructor");
-    if (! at->defaultTypeConstructor)
-      INT_FATAL(at, "aggregate type has no default type constructor");
+    if (! at->defaultTypeConstructor &&
+        at->initializerStyle != DEFINES_CONSTRUCTOR)
+      INT_FATAL(at, "aggregate type did not define an initializer and "
+                "has no default type constructor");
   }
 }
 
@@ -600,9 +605,13 @@ checkResolveRemovedPrims(void) {
     if (call->primitive) {
       switch(call->primitive->tag) {
         case PRIM_BLOCK_PARAM_LOOP:
+
         case PRIM_INIT:
+        case PRIM_INIT_FIELD:
+        case PRIM_INIT_VAR:
         case PRIM_NO_INIT:
         case PRIM_TYPE_INIT:
+
         case PRIM_LOGICAL_FOLDER:
         case PRIM_TYPEOF:
         case PRIM_TYPE_TO_STRING:
@@ -687,12 +696,16 @@ static void
 checkAutoCopyMap()
 {
   Vec<Type*> keys;
-  autoCopyMap.get_keys(keys);
+  getAutoCopyTypeKeys(keys);
   forv_Vec(Type, key, keys)
   {
-    FnSymbol* fn = autoCopyMap.get(key);
-    Type* baseType = fn->getFormal(1)->getValType();
-    INT_ASSERT(baseType == key);
+    if (hasAutoCopyForType(key)) {
+      FnSymbol* fn = getAutoCopyForType(key);
+      if (fn->numFormals() > 0) {
+        Type* baseType = fn->getFormal(1)->getValType();
+        INT_ASSERT(baseType == key);
+      }
+    }
   }
 }
 
@@ -711,7 +724,7 @@ checkFormalActualBaseTypesMatch()
     if (! call->parentSymbol->hasFlag(FLAG_RESOLVED))
       continue;
 
-    if (FnSymbol* fn = call->isResolved())
+    if (FnSymbol* fn = call->resolvedFunction())
     {
       if (fn->hasFlag(FLAG_EXTERN))
         continue;
@@ -771,7 +784,7 @@ checkFormalActualTypesMatch()
 {
   for_alive_in_Vec(CallExpr, call, gCallExprs)
   {
-    if (FnSymbol* fn = call->isResolved())
+    if (FnSymbol* fn = call->resolvedFunction())
     {
       if (fn->hasFlag(FLAG_EXTERN))
         continue;

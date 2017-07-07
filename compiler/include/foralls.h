@@ -22,6 +22,8 @@
 
 //// foralls.h, foralls.cpp - support for forall loops ////
 
+#include "expr.h"
+
 //
 // TFITag: a task or forall intent
 //
@@ -39,6 +41,7 @@ const char* tfiTagDescrString(TFITag tfiTag);
 
 //
 // ForallIntents: with clause/forall intents
+// TODO: replace with LoopIntentVars / ForallStmt::intentVariables
 //
 class ForallIntents {
 public:

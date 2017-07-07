@@ -27,8 +27,10 @@
 class BaseAST;
 class Expr;
 class ModuleSymbol;
+class QualifiedType;
 class Symbol;
 class Type;
+
 
 class AstDumpToNode : public AstLogger
 {
@@ -81,7 +83,6 @@ public:
   virtual void     exitAggrType        (AggregateType*     node);
 
   virtual bool     enterEnumType       (EnumType*          node);
-  virtual void     exitEnumType        (EnumType*          node);
 
   virtual void     visitPrimType       (PrimitiveType*     node);
 
@@ -101,6 +102,7 @@ public:
   virtual void     visitVarSym         (VarSymbol*         node);
 
   virtual bool     enterCallExpr       (CallExpr*          node);
+
   virtual bool     enterContextCallExpr(ContextCallExpr*   node);
 
   virtual bool     enterDefExpr        (DefExpr*           node);
@@ -131,7 +133,10 @@ public:
   virtual void     visitEblockStmt     (ExternBlockStmt*   node);
 
   virtual bool     enterGotoStmt       (GotoStmt*          node);
-  virtual void     exitGotoStmt        (GotoStmt*          node);
+
+  virtual bool     enterTryStmt        (TryStmt*           node);
+
+  virtual bool     enterCatchStmt      (CatchStmt*         node);
 
 private:
                    AstDumpToNode();
@@ -142,9 +147,11 @@ private:
   void             ast_symbol(const char* tag, Symbol* sym, bool def);
   void             ast_symbol(Symbol* sym, bool def);
 
-  void             writeSymbol(Symbol* sym)                             const;
-  void             writeSymbolCompact(Symbol* sym)                      const;
-  int              writeType(Type* type, bool announce = true)          const;
+  void             writeSymbol(Symbol* sym)                              const;
+  void             writeSymbolCompact(Symbol* sym)                       const;
+
+  int              writeQual(QualifiedType type)                         const;
+  int              writeType(Type*         type, bool announce = true)   const;
 
   void             write(const char* text);
   void             write(bool spaceBefore, const char* text, bool spaceAfter);

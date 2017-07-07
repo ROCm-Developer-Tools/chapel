@@ -61,34 +61,29 @@ enum RetTag {
   RET_TYPE
 };
 
-const int INTENT_FLAG_IN    = 0x01;
-const int INTENT_FLAG_OUT   = 0x02;
-const int INTENT_FLAG_CONST = 0x04;
-const int INTENT_FLAG_REF   = 0x08;
-const int INTENT_FLAG_PARAM = 0x10;
-const int INTENT_FLAG_TYPE  = 0x20;
-const int INTENT_FLAG_BLANK = 0x40;
+const int INTENT_FLAG_IN          = 0x01;
+const int INTENT_FLAG_OUT         = 0x02;
+const int INTENT_FLAG_CONST       = 0x04;
+const int INTENT_FLAG_REF         = 0x08;
+const int INTENT_FLAG_PARAM       = 0x10;
+const int INTENT_FLAG_TYPE        = 0x20;
+const int INTENT_FLAG_BLANK       = 0x40;
+const int INTENT_FLAG_MAYBE_CONST = 0x80;
 
 // If this enum is modified, ArgSymbol::intentDescrString()
 // and intentDescrString(IntentTag) should also be updated to match
 enum IntentTag {
-  INTENT_IN        = INTENT_FLAG_IN,
-  INTENT_OUT       = INTENT_FLAG_OUT,
-  INTENT_INOUT     = INTENT_FLAG_IN    | INTENT_FLAG_OUT,
-  INTENT_CONST     = INTENT_FLAG_CONST,
-  INTENT_CONST_IN  = INTENT_FLAG_CONST | INTENT_FLAG_IN,
-  INTENT_REF       = INTENT_FLAG_REF,
-  INTENT_CONST_REF = INTENT_FLAG_CONST | INTENT_FLAG_REF,
-  INTENT_PARAM     = INTENT_FLAG_PARAM,
-  INTENT_TYPE      = INTENT_FLAG_TYPE,
-  INTENT_BLANK     = INTENT_FLAG_BLANK
-};
-
-// keep in sync with modTagDescrString()
-enum ModTag {
-  MOD_INTERNAL,  // an internal module that the user shouldn't know about
-  MOD_STANDARD,  // a standard module from the Chapel libraries
-  MOD_USER,      // a module found along the user's search path
+  INTENT_IN              = INTENT_FLAG_IN,
+  INTENT_OUT             = INTENT_FLAG_OUT,
+  INTENT_INOUT           = INTENT_FLAG_IN          | INTENT_FLAG_OUT,
+  INTENT_CONST           = INTENT_FLAG_CONST,
+  INTENT_CONST_IN        = INTENT_FLAG_CONST       | INTENT_FLAG_IN,
+  INTENT_REF             = INTENT_FLAG_REF,
+  INTENT_CONST_REF       = INTENT_FLAG_CONST       | INTENT_FLAG_REF,
+  INTENT_REF_MAYBE_CONST = INTENT_FLAG_MAYBE_CONST | INTENT_FLAG_REF,
+  INTENT_PARAM           = INTENT_FLAG_PARAM,
+  INTENT_TYPE            = INTENT_FLAG_TYPE,
+  INTENT_BLANK           = INTENT_FLAG_BLANK
 };
 
 typedef std::bitset<NUM_FLAGS> FlagSet;
@@ -116,8 +111,6 @@ public:
                           bool       internal = false)           = 0;
   virtual void       replaceChild(BaseAST* oldAst,
                                   BaseAST* newAst)               = 0;
-
-  virtual FnSymbol*  getFnSymbol();
 
   virtual bool       isConstant()                              const;
   virtual bool       isConstValWillNotChange()                 const;
@@ -148,6 +141,10 @@ public:
   Qualifier          qual;
   Type*              type;
   FlagSet            flags;
+  // Tuples can contain ref fields. In that event, a VarSymbol/ArgSymbol
+  // needs to be able to track whether the ref field is ref or
+  // const ref. It can depend on the variable for ref to arrays.
+  Qualifier*         fieldQualifiers;
 
   const char*        name;
   const char*        cname;    // Name of symbol for C code
@@ -155,11 +152,23 @@ public:
   DefExpr*           defPoint; // Point of definition
 
   // Managing the list of SymExprs that refer to this Symbol
+  // use for_SymbolSymExprs, for_SymbolDefs, for_SymbolUses
+  // to traverse these.
   void               addSymExpr(SymExpr* se);
   void               removeSymExpr(SymExpr* se);
   SymExpr*           firstSymExpr()                            const;
   SymExpr*           lastSymExpr()                             const;
-
+  // Get the number of Defs or Uses up to the maximum number
+  int                countDefs(int max=INT_MAX)                const;
+  int                countUses(int max=INT_MAX)                const;
+  // Does the Symbol have any Uses? same as countUses() > 0
+  // but may be faster.
+  bool               isUsed()                                  const;
+  bool               isDefined()                               const;
+  // Return the single use of this Symbol, or NULL if there are 0 or >= 2
+  SymExpr*           getSingleUse()                            const;
+  // Return the single def of this Symbol, or NULL if there are 0 or >= 2
+  SymExpr*           getSingleDef()                            const;
 protected:
                      Symbol(AstTag      astTag,
                             const char* init_name,
@@ -184,6 +193,14 @@ private:
        se;                                                              \
        se = _se_next,                                                   \
          _se_next = se ? se->symbolSymExprsNext : NULL)
+
+#define for_SymbolDefs(def, symbol)                                      \
+  for_SymbolSymExprs(def, symbol)                                        \
+    if ((isDefAndOrUse(def) & 1))
+
+#define for_SymbolUses(use, symbol)                                      \
+  for_SymbolSymExprs(use, symbol)                                        \
+    if ((isDefAndOrUse(use) & 2))
 
 
 bool isString(Symbol* symbol);
@@ -364,6 +381,10 @@ class TypeSymbol : public Symbol {
   virtual void    accept(AstVisitor* visitor);
   DECLARE_SYMBOL_COPY(TypeSymbol);
   void replaceChild(BaseAST* old_ast, BaseAST* new_ast);
+
+  void renameInstantiatedMulti(SymbolMap& subs, FnSymbol* fn);
+  void renameInstantiatedSingle(Symbol* sym);
+
   GenRet codegen();
   void codegenDef();
   void codegenPrototype();
@@ -372,128 +393,154 @@ class TypeSymbol : public Symbol {
   void codegenMetadata();
 
   const char* doc;
+
+ private:
+  void renameInstantiatedStart();
+  void renameInstantiatedIndividual(Symbol* sym);
+  void renameInstantiatedEnd();
 };
 
-/******************************** | *********************************
-*                                                                   *
-*                                                                   *
-********************************* | ********************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 class FnSymbol : public Symbol {
- public:
-  AList formals; // each formal is an ArgSymbol, but the
-                 // elements of this list are DefExprs
-  Type* retType; // The return type of the function.  This field is not
-                 // fully established until resolution, and could be NULL
-                 // before then.  Up to that point, return type information is
-                 // stored in the retExprType field.
-  BlockStmt* where;
-  BlockStmt* retExprType;
-  BlockStmt* body;
-  IntentTag thisTag;
-  RetTag retTag;
-  IteratorInfo* iteratorInfo; // Attached only to iterators, specifically to
-                              // original (user) iterators before lowering.
-  Symbol* _this;
-  Symbol* _outer;
-  FnSymbol *instantiatedFrom;
-  SymbolMap substitutions;
-  BlockStmt* instantiationPoint; // point of instantiation
-  std::vector<BasicBlock*>* basicBlocks;
-  Vec<CallExpr*>* calledBy;
-  const char* userString;
-  FnSymbol* valueFunction; // pointer to value function (created in
-                           // resolve and used in cullOverReferences)
-  int codegenUniqueNum;
-  const char *doc;
+public:
+  // each formal is an ArgSymbol, but the elements are DefExprs
+  AList                      formals;
+
+  // The return type of the function. This field is not fully established
+  // until function resolution, and could be NULL before then.  Up to that
+  // point, return type information is stored in the retExprType field.
+  Type*                      retType;
+
+  BlockStmt*                 where;
+  BlockStmt*                 retExprType;
+  BlockStmt*                 body;
+  IntentTag                  thisTag;
+  RetTag                     retTag;
+
+  // Attached original (user) iterators before lowering.
+  IteratorInfo*              iteratorInfo;
+
+  Symbol*                    _this;
+  Symbol*                    _outer;
+  FnSymbol*                  instantiatedFrom;
+  SymbolMap                  substitutions;
+  BlockStmt*                 instantiationPoint;
+  std::vector<BasicBlock*>*  basicBlocks;
+  Vec<CallExpr*>*            calledBy;
+  const char*                userString;
+
+  // pointer to value function (created in function resolution
+  // and used in cullOverReferences)
+  FnSymbol*                  valueFunction;
+
+  int                        codegenUniqueNum;
+  const char*                doc;
 
   // Used to store the return symbol during partial copying.
-  // Move to PartialCopyData?
-  Symbol* retSymbol;
+  Symbol*                    retSymbol;
 
   // Number of formals before tuple type constructor formals are added.
-  int numPreTupleFormals;
+  int                        numPreTupleFormals;
 
 #ifdef HAVE_LLVM
-  llvm::MDNode* llvmDISubprogram;
+  llvm::MDNode*              llvmDISubprogram;
 #else
-  void* llvmDISubprogram;
+  void*                      llvmDISubprogram;
 #endif
 
 
-                  FnSymbol(const char* initName);
-                 ~FnSymbol();
+                             FnSymbol(const char* initName);
+                            ~FnSymbol();
 
-  void            verify();
-  virtual void    accept(AstVisitor* visitor);
+  void                       verify();
+  virtual void               accept(AstVisitor* visitor);
 
   DECLARE_SYMBOL_COPY(FnSymbol);
 
-  FnSymbol*       copyInnerCore(SymbolMap* map);
-  FnSymbol*       getFnSymbol(void);
-  void            replaceChild(BaseAST* old_ast, BaseAST* new_ast);
+  FnSymbol*                  copyInnerCore(SymbolMap* map);
+  void                       replaceChild(BaseAST* oldAst, BaseAST* newAst);
 
-  FnSymbol*       partialCopy(SymbolMap* map);
-  void            finalizeCopy();
+  FnSymbol*                  partialCopy(SymbolMap* map);
+  void                       finalizeCopy();
 
   // Returns an LLVM type or a C-cast expression
-  GenRet          codegenFunctionType(bool forHeader);
-  GenRet          codegenCast(GenRet fnPtr);
+  GenRet                     codegenFunctionType(bool forHeader);
+  GenRet                     codegenCast(GenRet fnPtr);
 
-  GenRet          codegen();
-  void            codegenHeaderC();
-  void            codegenPrototype();
-  void            codegenDef();
+  GenRet                     codegen();
+  void                       codegenHeaderC();
+  void                       codegenPrototype();
+  void                       codegenDef();
 
-  void            printDef(FILE* outfile);
+  void                       printDef(FILE* outfile);
 
-  void            insertAtHead(Expr* ast);
-  void            insertAtHead(const char* format, ...);
+  void                       insertAtHead(Expr* ast);
+  void                       insertAtHead(const char* format, ...);
 
-  void            insertAtTail(Expr* ast);
-  void            insertAtTail(const char* format, ...);
+  void                       insertAtTail(Expr* ast);
+  void                       insertAtTail(const char* format, ...);
 
-  void            insertBeforeReturn(Expr* ast);
-  void            insertBeforeReturnAfterLabel(Expr* ast);
+  void                       insertFormalAtHead(BaseAST* ast);
+  void                       insertFormalAtTail(BaseAST* ast);
 
-  void            insertFormalAtHead(BaseAST* ast);
-  void            insertFormalAtTail(BaseAST* ast);
+  void                       insertBeforeEpilogue(Expr* ast);
 
-  Symbol*         getReturnSymbol();
-  Symbol*         replaceReturnSymbol(Symbol* newRetSymbol, Type* newRetType);
+  // insertIntoEpilogue adds an Expr before the final return,
+  // but after the epilogue label
+  void                       insertIntoEpilogue(Expr* ast);
 
-  int             numFormals()                                 const;
-  ArgSymbol*      getFormal(int i); // return ith formal
+  LabelSymbol*               getEpilogueLabel();
+  LabelSymbol*               getOrCreateEpilogueLabel();
 
-  void            collapseBlocks();
+  Symbol*                    getReturnSymbol();
+  Symbol*                    replaceReturnSymbol(Symbol* newRetSymbol,
+                                                 Type*   newRetType);
 
-  bool            tag_generic();
-  bool            isResolved()                                 const;
-  bool            isMethod()                                   const;
-  bool            isPrimaryMethod()                            const;
-  bool            isSecondaryMethod()                          const;
-  bool            isIterator()                                 const;
-  bool            returnsRefOrConstRef()                       const;
+  int                        numFormals()                                const;
+  ArgSymbol*                 getFormal(int i);
 
-  QualifiedType   getReturnQualType()                          const;
+  void                       collapseBlocks();
 
-  virtual void    printDocs(std::ostream *file, unsigned int tabs);
+  bool                       tagIfGeneric();
 
-  void            throwsErrorInit();
-  bool            throwsError()                                const;
+  bool                       isResolved()                                const;
+  bool                       isMethod()                                  const;
+  bool                       isPrimaryMethod()                           const;
+  bool                       isSecondaryMethod()                         const;
+  bool                       isIterator()                                const;
+  bool                       returnsRefOrConstRef()                      const;
+
+  QualifiedType              getReturnQualType()                         const;
+
+  virtual void               printDocs(std::ostream* file,
+                                       unsigned int  tabs);
+
+  void                       throwsErrorInit();
+  bool                       throwsError()                               const;
+
+  bool                       retExprDefinesNonVoid()                     const;
 
 private:
-  virtual std::string docsDirective();
-  bool                _throwsError;
+  virtual std::string        docsDirective();
+
+  int                        hasGenericFormals()                         const;
+
+  bool                       _throwsError;
 };
 
-/******************************** | *********************************
-*                                                                   *
-*                                                                   *
-********************************* | ********************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 class EnumSymbol : public Symbol {
- public:
+public:
                   EnumSymbol(const char* initName);
 
   virtual void    verify();
@@ -509,77 +556,22 @@ class EnumSymbol : public Symbol {
   Immediate*      getImmediate();
 };
 
-/******************************** | *********************************
-*                                                                   *
-*                                                                   *
-********************************* | ********************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
-struct ExternBlockInfo;
+#include "ModuleSymbol.h"
 
-class ModuleSymbol : public Symbol {
-public:
-                       ModuleSymbol(const char* iName,
-                                    ModTag      iModTag,
-                                    BlockStmt*  iBlock);
-
-                      ~ModuleSymbol();
-
-  // Interface to BaseAST
-  virtual void         verify();
-  virtual void         accept(AstVisitor* visitor);
-
-  DECLARE_SYMBOL_COPY(ModuleSymbol);
-
-  // Interface to Symbol
-  virtual void replaceChild(BaseAST* old_ast, BaseAST* new_ast);
-  virtual void codegenDef();
-
-  // New interface
-  Vec<AggregateType*>  getTopLevelClasses();
-  Vec<VarSymbol*>      getTopLevelConfigVars();
-  Vec<VarSymbol*>      getTopLevelVariables();
-  Vec<FnSymbol*>       getTopLevelFunctions(bool includeExterns);
-  Vec<ModuleSymbol*>   getTopLevelModules();
-
-  void                 addDefaultUses();
-  void                 moduleUseAdd(ModuleSymbol* module);
-  void                 moduleUseRemove(ModuleSymbol* module);
-
-  ModTag               modTag;
-
-  BlockStmt*           block;
-  FnSymbol*            initFn;
-
-  Vec<ModuleSymbol*>   modUseList;
-
-  const char*          filename;
-  const char*          doc;
-
-  // LLVM uses this for extern C blocks.
-#ifdef HAVE_LLVM
-  ExternBlockInfo*     extern_info;
-  llvm::MDNode* llvmDINameSpace;
-#else
-  void* extern_info;
-  void* llvmDINameSpace;
-#endif
-
-  void                 printDocs(std::ostream *file, unsigned int tabs, std::string parentName);
-  void                 printTableOfContents(std::ostream *file);
-  std::string          docsName();
-
-private:
-  void                 getTopLevelConfigOrVariables(Vec<VarSymbol *> *contain, Expr *expr, bool config);
-  bool                 hasTopLevelModule();
-};
-
-/******************************** | *********************************
-*                                                                   *
-*                                                                   *
-********************************* | ********************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 class LabelSymbol : public Symbol {
- public:
+public:
   GotoStmt* iterResumeGoto;
   LabelSymbol(const char* init_name);
   void verify();
@@ -589,10 +581,11 @@ class LabelSymbol : public Symbol {
   void codegenDef();
 };
 
-/******************************** | *********************************
-*                                                                   *
-*                                                                   *
-********************************* | ********************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 // Processes a char* to replace any escape sequences with the actual bytes
 std::string unescapeString(const char* const str, BaseAST* astForError);
@@ -636,6 +629,8 @@ VarSymbol *new_ImagSymbol(const char *n,
 VarSymbol *new_ComplexSymbol(const char *n, long double r, long double i,
                              IF1_complex_type size=COMPLEX_SIZE_128);
 
+VarSymbol *new_CommIDSymbol(int64_t b);
+
 VarSymbol *new_ImmediateSymbol(Immediate *imm);
 
 void createInitStringLiterals();
@@ -645,42 +640,29 @@ VarSymbol* newTemp(const char* name = NULL, Type* type = dtUnknown);
 VarSymbol* newTemp(Type* type);
 VarSymbol* newTemp(const char* name, QualifiedType qt);
 VarSymbol* newTemp(QualifiedType qt);
+VarSymbol* newTempConst(const char* name = NULL, Type* type = dtUnknown);
+VarSymbol* newTempConst(Type* type);
+VarSymbol* newTempConst(const char* name, QualifiedType qt);
+VarSymbol* newTempConst(QualifiedType qt);
+
+void       verifyInTree(BaseAST* ast, const char* msg);
 
 // for use in an English sentence
-const char* retTagDescrString(RetTag retTag);
-const char* modTagDescrString(ModTag modTag);
+const char* retTagDescrString(RetTag    retTag);
 const char* intentDescrString(IntentTag intent);
+
+// cache some popular strings
+extern const char* astrSdot;
+extern const char* astrSequals;
+extern const char* astr_cast;
+extern const char* astrDeinit;
+extern const char* astrTag;
+extern const char* astrThis;
+void initAstrConsts();
 
 // Return true if the arg must use a C pointer whether or not
 // pass-by-reference intents are used.
 bool argMustUseCPtr(Type* t);
-
-//
-// Used to pass information from partialCopy() to finalizeCopy().
-//
-class PartialCopyData {
- public:
-  // Used to keep track of symbol substitutions during partial copying.
-  SymbolMap partialCopyMap;
-  // Source of a partially copied function.
-  FnSymbol* partialCopySource;
-  // Vararg formal to be replaced with individual formals, or NULL.
-  ArgSymbol* varargOldFormal;
-  // Individual formals to replace varargOldFormal.
-  std::vector<ArgSymbol*> varargNewFormals;
-
-  PartialCopyData() : partialCopySource(NULL), varargOldFormal(NULL) { }
-  ~PartialCopyData() { partialCopyMap.clear(); varargNewFormals.clear(); }
-};
-
-PartialCopyData* getPartialCopyInfo(FnSymbol* fn);
-PartialCopyData& addPartialCopyInfo(FnSymbol* fn);
-void clearPartialCopyInfo(FnSymbol* fn);
-void clearPartialCopyFnMap();
-void checkEmptyPartialCopyFnMap();
-
-void substituteVarargTupleRefs(BlockStmt* ast, int numArgs, ArgSymbol* formal,
-                               std::vector<ArgSymbol*>& varargFormals);
 
 // Parser support.
 class ForallIntents;
@@ -689,18 +671,12 @@ void addTaskIntent(CallExpr* ti,        Expr* var, IntentTag intent, Expr* ri);
 
 extern bool localTempNames;
 
-extern HashMap<Immediate *, ImmHashFns, VarSymbol *> uniqueConstantsHash;
-extern HashMap<Immediate *, ImmHashFns, VarSymbol *> stringLiteralsHash;
+extern HashMap<Immediate*, ImmHashFns, VarSymbol*> uniqueConstantsHash;
+extern HashMap<Immediate*, ImmHashFns, VarSymbol*> stringLiteralsHash;
+
 extern StringChainHash uniqueStringHash;
 
-extern ModuleSymbol* rootModule;
-extern ModuleSymbol* theProgram;
-extern ModuleSymbol* mainModule;
-extern ModuleSymbol* baseModule;
-extern ModuleSymbol* stringLiteralModule;
-extern FnSymbol* initStringLiterals;
-extern ModuleSymbol* standardModule;
-extern ModuleSymbol* printModuleInitModule;
+extern FnSymbol *initStringLiterals;
 extern Symbol *gNil;
 extern Symbol *gUnknown;
 extern Symbol *gMethodToken;
@@ -721,17 +697,20 @@ extern VarSymbol *gFalse;
 extern VarSymbol *gTryToken; // try token for conditional function resolution
 extern VarSymbol *gBoundsChecking;
 extern VarSymbol *gCastChecking;
+extern VarSymbol *gDivZeroChecking;
 extern VarSymbol *gPrivatization;
 extern VarSymbol *gLocal;
 extern VarSymbol *gNodeID;
 extern VarSymbol *gModuleInitIndentLevel;
 extern FnSymbol *gPrintModuleInitFn;
+extern FnSymbol *gAddModuleFn;
 extern FnSymbol *gChplHereAlloc;
 extern FnSymbol *gChplHereFree;
 extern FnSymbol *gChplDoDirectExecuteOn;
 extern FnSymbol *gGenericTupleTypeCtor;
 extern FnSymbol *gGenericTupleInit;
 extern FnSymbol *gGenericTupleDestroy;
+extern FnSymbol *gChplDeleteError;
 
 // These global symbols point to generic functions that
 // will be instantiated.
@@ -750,18 +729,49 @@ extern std::vector<FnSymbol*> ftableVec;
 extern std::map<FnSymbol*,int> gpuKernelMap;
 extern std::vector<FnSymbol*> gpuKernelVec;
 #endif
-//
-// The virtualMethodTable maps types to their arrays of methods.  The
-// virtualMethodMap maps methods to their indexes into these arrays.
-// The virtualChildrenMap maps methods to all of the methods that
-// could be called when they are called.  The virtualRootsMap maps
-// methods to the root methods that it overrides.  Note that multiple
-// inheritance will require more virtual method tables, one for each
-// path up the class hierarchy to each class root.
-//
-extern Map<Type*,Vec<FnSymbol*>*> virtualMethodTable;
-extern Map<FnSymbol*,int> virtualMethodMap;
-extern Map<FnSymbol*,Vec<FnSymbol*>*> virtualChildrenMap;
-extern Map<FnSymbol*,Vec<FnSymbol*>*> virtualRootsMap;
+
+#define FUNC_NAME_MAX 256
+extern char llvmPrintIrName[FUNC_NAME_MAX+1];
+extern char llvmPrintIrStage[FUNC_NAME_MAX+1];
+
+namespace llvmStageNum {
+typedef enum {
+       // The first options here refer to high-level Chapel LLVM optimization
+       NOPRINT = 0,
+       NONE,
+       BASIC,
+       FULL,
+       // These options allow instrumenting the pass pipeline
+       // and match ExtensionPointTy in PassManagerBuilder
+       EarlyAsPossible,
+       ModuleOptimizerEarly,
+       LoopOptimizerEnd,
+       ScalarOptimizerLate,
+       OptimizerLast,
+       VectorizerStart,
+       EnabledOnOptLevel0,
+       Peephole,
+       // Updating these? Be sure to leave LAST as the last
+       // element and update llvmStageName to reflect this order.
+       LAST,
+     } llvmStageNum_t;
+}
+using llvmStageNum::llvmStageNum_t;
+
+//Names representations in LLVM IR and C generated code are
+//different from their names in AST. 'llvmPrintIrCName'
+//is place to keep name in LLVM IR and C version of
+//'llvmPrintIrName' variable.
+extern const char *llvmPrintIrCName;
+extern llvmStageNum_t llvmPrintIrStageNum;
+
+extern const char *llvmStageName[llvmStageNum::LAST];
+
+const char *llvmStageNameFromLlvmStageNum(llvmStageNum_t stageNum);
+llvmStageNum_t llvmStageNumFromLlvmStageName(const char* stageName);
+
+#ifdef HAVE_LLVM
+void printLlvmIr(llvm::Function *func, llvmStageNum_t numStage);
+#endif
 
 #endif

@@ -170,7 +170,7 @@ In Chapel, sending or receiving messages on a :record:`Socket` uses
 and the :chpl:mod:`Reflection` module to serialize primitive and user-defined
 data types whenever possible.  Currently, the ZMQ module serializes primitive
 numeric types, strings, and records composed of these types.  Strings are
-encoded as a length (as :type:`int`) followed by the character array
+encoded as a length (as `int`) followed by the character array
 (in bytes).
 
 Tasking-Layer Interaction
@@ -182,13 +182,13 @@ and may be cooperatively scheduled, a :record:`Socket` object should not be
 accessed concurrently by multiple Chapel tasks.
 
 The ZMQ module is designed to "play nicely" with the Chapel tasking layer.
-While the C-level call :proc:`zmq_send()` may be a blocking call (depending on
+While the C-level call ``zmq_send()`` may be a blocking call (depending on
 the socket type and flag arguments), it is desirable that a
 semantically-blocking call to :proc:`Socket.send()` allow other Chapel tasks
 to be scheduled on the OS thread as supported by the tasking layer.
-Internally, the ZMQ module uses non-blocking calls to :proc:`zmq_send()` and
-:proc:`zmq_recv()` to transfer data, and yields to the tasking layer via
-:proc:`chpl_task_yield()` when the call would otherwise block.
+Internally, the ZMQ module uses non-blocking calls to ``zmq_send()`` and
+``zmq_recv()`` to transfer data, and yields to the tasking layer via
+`chpl_task_yield()` when the call would otherwise block.
 
 Limitations and Future Work
 +++++++++++++++++++++++++++
@@ -219,6 +219,7 @@ module ZMQ {
   require "zmq.h", "-lzmq";
 
   use Reflection;
+  use ExplicitRefCount;
 
   private extern var errno: c_int;
 
@@ -398,7 +399,7 @@ module ZMQ {
   /*
     Query the ZMQ library version.
 
-    :returns: An :type:`(int,int,int)` tuple of the major, minor, and patch
+    :returns: An `(int,int,int)` tuple of the major, minor, and patch
         version of the ZMQ library.
    */
   proc version: (int,int,int) {
@@ -406,24 +407,6 @@ module ZMQ {
     zmq_version(c_ptrTo(major), c_ptrTo(minor), c_ptrTo(patch));
     return (major:int, minor:int, patch:int);
   }
-
-  pragma "no doc"
-  class RefCountBase {
-    var refcnt: atomic int;
-
-    proc incRefCount() {
-      refcnt.add(1);
-    }
-
-    proc decRefCount() {
-      return refcnt.fetchSub(1);
-    }
-
-    proc getRefCount() {
-      return refcnt.peek();
-    }
-
-  } // class RefCountBase
 
   pragma "no doc"
   class ContextClass: RefCountBase {
@@ -439,7 +422,7 @@ module ZMQ {
       }
     }
 
-    proc ~ContextClass() {
+    proc deinit() {
       on this.home {
         var ret = zmq_ctx_term(this.ctx):int;
         if ret == -1 {
@@ -467,7 +450,7 @@ module ZMQ {
     }
 
     pragma "no doc"
-    proc ~Context() {
+    proc deinit() {
       release();
     }
 
@@ -540,7 +523,7 @@ module ZMQ {
       }
     }
 
-    proc ~SocketClass() {
+    proc deinit() {
       on this.home {
         var ret = zmq_close(socket):int;
         if ret == -1 {
@@ -576,7 +559,7 @@ module ZMQ {
     }
 
     pragma "no doc"
-    proc ~Socket() {
+    proc deinit() {
       release();
     }
 
@@ -771,12 +754,12 @@ module ZMQ {
     }
 
     /*
-      Receive an object of type :type:`T` from a socket.
+      Receive an object of type `T` from a socket.
 
-      :arg T: The type of the object to be received. If :type:`T` is not
+      :arg T: The type of the object to be received. If `T` is not
           serializable by the ZMQ module, a compile-time error will be raised.
 
-      :returns: An object of type :type:`T`
+      :returns: An object of type `T`
      */
     proc recv(type T): T where !isZMQSerializable(T) {
       compilerError("Type \"", T:string, "\" is not serializable by ZMQ");
@@ -868,6 +851,7 @@ module ZMQ {
 
   pragma "no doc"
   proc =(ref lhs: Socket, rhs: Socket) {
+    if lhs.classRef == rhs.classRef then return;
     if lhs.classRef != nil then
       lhs.release();
     lhs.acquire(rhs.classRef);

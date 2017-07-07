@@ -42,6 +42,7 @@ class UnresolvedSymExpr;
 class UseStmt;
 class BlockStmt;
 class ForallIntents;
+class ForallStmt;
 class WhileDoStmt;
 class DoWhileStmt;
 class CForLoop;
@@ -50,7 +51,10 @@ class ParamForLoop;
 class ExternBlockStmt;
 class CondStmt;
 class GotoStmt;
+class ForwardingStmt;
+class DeferStmt;
 class TryStmt;
+class CatchStmt;
 
 class AstVisitor
 {
@@ -127,6 +131,8 @@ public:
   virtual void   exitBlockStmt       (BlockStmt*         node) = 0;
 
   virtual void   visitForallIntents  (ForallIntents*   clause) = 0;
+  virtual bool   enterForallStmt     (ForallStmt*        node) = 0;
+  virtual void   exitForallStmt      (ForallStmt*        node) = 0;
 
   virtual bool   enterWhileDoStmt    (WhileDoStmt*       node) = 0;
   virtual void   exitWhileDoStmt     (WhileDoStmt*       node) = 0;
@@ -146,13 +152,22 @@ public:
   virtual bool   enterCondStmt       (CondStmt*          node) = 0;
   virtual void   exitCondStmt        (CondStmt*          node) = 0;
 
+  virtual bool   enterForwardingStmt (ForwardingStmt*    node) = 0;
+  virtual void   exitForwardingStmt  (ForwardingStmt*    node) = 0;
+
   virtual void   visitEblockStmt     (ExternBlockStmt*   node) = 0;
 
   virtual bool   enterGotoStmt       (GotoStmt*          node) = 0;
   virtual void   exitGotoStmt        (GotoStmt*          node) = 0;
 
+  virtual bool   enterDeferStmt      (DeferStmt*         node) = 0;
+  virtual void   exitDeferStmt       (DeferStmt*         node) = 0;
+
   virtual bool   enterTryStmt        (TryStmt*           node) = 0;
   virtual void   exitTryStmt         (TryStmt*           node) = 0;
+
+  virtual bool   enterCatchStmt      (CatchStmt*         node) = 0;
+  virtual void   exitCatchStmt       (CatchStmt*         node) = 0;
 };
 
 #endif

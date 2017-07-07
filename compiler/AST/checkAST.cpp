@@ -109,6 +109,9 @@ void checkPrimitives()
 
       // These do not survive past resolution.
      case PRIM_INIT:
+     case PRIM_INIT_FIELD:
+     case PRIM_INIT_VAR:
+
      case PRIM_TYPE_TO_STRING:
      case PRIM_TO_LEADER:
      case PRIM_TO_FOLLOWER:
@@ -251,7 +254,6 @@ void checkPrimitives()
      case PRIM_CHPL_COMM_PUT_STRD:      //  may eventually add others (e.g.: non-blocking)
      case PRIM_ARRAY_ALLOC:
      case PRIM_ARRAY_FREE:
-     case PRIM_ARRAY_FREE_ELTS:
      case PRIM_ARRAY_GET:
      case PRIM_ARRAY_GET_VALUE:
      case PRIM_ARRAY_SHIFT_BASE_POINTER:

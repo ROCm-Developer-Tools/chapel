@@ -25,7 +25,11 @@ ifndef RUNTIME_ROOT
 RUNTIME_ROOT=$(CHPL_MAKE_HOME)/runtime/
 endif
 
+ifdef CHPL_MAKE_RUNTIME_INCL
+RUNTIME_INCLUDE_ROOT = $(CHPL_MAKE_RUNTIME_INCL)
+else
 RUNTIME_INCLUDE_ROOT = $(RUNTIME_ROOT)/include
+endif
 
 RUNTIME_DEFS += \
         -DCHPL_TASKS_MODEL_H=\"tasks-$(CHPL_MAKE_TASKS).h\" \
@@ -111,6 +115,7 @@ RUNTIME_DEFS += -DCHPL_RUNTIME_OBJDIR="\"$(RUNTIME_OBJDIR)\""
 HSA_MAKE_INCLUDE=$(RUNTIME_ROOT)/make/Makefile.runtime.gpu-hsa
 -include $(HSA_MAKE_INCLUDE)
 endif
+# Further includes for JEMALLOC are in Makefile.runtime.mem-jemalloc
 
 #
 # For use with pyChapel / library-mode.

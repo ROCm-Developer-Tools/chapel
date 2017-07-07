@@ -38,7 +38,7 @@ module MatrixMarket {
       return d.high;
   }
 
-  proc initMMInfo(const headerfields:[] string) {
+  proc initMMInfo(ref headerfields:[] string) {
     assert(headerfields(1) == "%%MatrixMarket", "Improperly formatted MatrixMarket file");
     assert(headerfields(2) == "matrix", "Improperly formatted MatrixMarket file");
 
@@ -156,7 +156,7 @@ module MatrixMarket {
       }
 
       proc close() { fout.close(); fd.close(); }
-      proc ~MMWriter() { this.close(); }
+      proc deinit() { this.close(); }
    }
 
 proc mmwrite(const fname:string, mat:[?Dmat] ?T) where mat.domain.rank == 2 {
@@ -202,7 +202,7 @@ class MMReader {
      var header:string;
      assert(fin.readline(header) == true, "MMReader I/O error!");
 
-     const headerfields = [ s in header.split(" ") ] s;
+     var headerfields = [ s in header.split(" ") ] s;
      this.finfo = initMMInfo(headerfields);
 
      // test for files that have a % beneath the matrix market format header
@@ -235,7 +235,7 @@ class MMReader {
       return (nrows, ncols);
    }
 
-   proc read_sparse_data(toret:[] ?T, spDom:domain) {
+   proc read_sparse_data(toret:[] ?T, ref spDom:domain) {
       param isSparse = isSparseDom(toret.domain);
       var done:bool = true;
       var tfmt :string;
@@ -278,7 +278,7 @@ class MMReader {
       }
    }
 
-   proc read_dense_data(toret:[] ?T, spDom:domain) {
+   proc read_dense_data(toret:[] ?T, ref spDom:domain) {
       param isSparse = isSparseDom(toret.domain);
       var tfmt :string;
 
@@ -339,10 +339,10 @@ class MMReader {
      if finfo.mm_types == MMTypes.Pattern { assert(eltype == int, "expected int, data in file is not int"); }
 
      if finfo.mm_coordfmt == MMCoordFormat.Array {
-       read_dense_data(toret, toret.domain);
+       read_dense_data(toret, Dtoret);
      }
      else if finfo.mm_coordfmt == MMCoordFormat.Coordinate {
-       read_sparse_data(toret, toret.domain);
+       read_sparse_data(toret, Dtoret);
      }
 
      return toret;
@@ -385,7 +385,7 @@ class MMReader {
       fd.close(); 
    }
 
-   proc ~MMReader() { this.close(); }
+   proc deinit() { this.close(); }
 }
 
 /* Read a dense Matrix Market file

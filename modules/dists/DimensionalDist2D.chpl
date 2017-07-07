@@ -135,7 +135,6 @@ and distributes using block-cyclic distribution in the second dimension.
     for loc in MyLocales do on loc {
 
       // The ReplicatedDim specifier always accesses the local replicand.
-      // (This differs from how the ReplicatedDist distribution works.)
       //
       // Therefore, 'forall a in A' when executed on MyLocales[loc1,loc2]
       // visits only the replicands on MyLocales[loc1,0..N_2-1].
@@ -339,6 +338,11 @@ class LocDimensionalDom {
 
   // subordinate 1-d local domain descriptors
   var doml1, doml2;
+
+  proc deinit() {
+    if isClass(doml2) then delete doml2;
+    if isClass(doml1) then delete doml1;
+  }
 }
 
 class DimensionalArr : BaseArr {
@@ -415,7 +419,7 @@ proc newDimensionalDist2D(
 ) {
   if targetLocales.rank != 1 then compilerError("newDimensionalDist2D() is provided only for 1D targetLocales arrays");
   const (nl1, nl2) = (di1.numLocales, di2.numLocales);
-  var reshapedLocales => reshape(targetLocales[0..#nl1*nl2],{0..#nl1,0..#nl2});
+  ref reshapedLocales = reshape(targetLocales[0..#nl1*nl2],{0..#nl1,0..#nl2});
 
   return new DimensionalDist2D(reshapedLocales, di1, di2, name, idxType,
    dataParTasksPerLocale, dataParIgnoreRunningTasks, dataParMinGranularity);
@@ -750,12 +754,13 @@ proc DimensionalDom.dsiSerialWrite(f): void {
 
 // create a new domain mapped with this distribution
 proc DimensionalDist2D.dsiNewRectangularDom(param rank: int,
-                                          type idxType,
-                                          param stridable: bool)
+                                            type idxType,
+                                            param stridable: bool,
+                                            inds)
 //  : DimensionalDom(rank, idxType, stridable, this.type, ...)
 {
   _traceddd(this, ".dsiNewRectangularDom ",
-           (rank, idxType:string, stridable));
+            (rank, idxType:string, stridable, inds));
   if rank != 2 then
     compilerError("DimensionalDist2D presently supports only 2 dimensions,",
                   " got ", rank:string, " dimensions");
@@ -794,6 +799,7 @@ proc DimensionalDist2D.dsiNewRectangularDom(param rank: int,
       locDdesc = new LocDimensionalDom(result.stoDomainT,
                        doml1 = dom1.dsiNewLocalDom1d(stoIndexT, locIds(1)),
                        doml2 = dom2.dsiNewLocalDom1d(stoIndexT, locIds(2)));
+  result.dsiSetIndices(inds);
   return result;
 }
 
@@ -847,68 +853,6 @@ proc DimensionalDom.dsiGetIndices(): rank * range(idxType,
                                                  stridable) {
   _traceddd(this, ".dsiGetIndices");
   return whole.dims();
-}
-
-// create a new domain mapped with this's distribution + initialize to 'ranges'
-//
-// dsiBuildRectangularDom   = dsiNewRectangularDom   + dsiSetIndices
-// dsiBuildRectangularDom1d = dsiNewRectangularDom1d + dsiSetIndices1d
-// dsiBuildLocalDom1d       = dsiNewLocalDom1d       + dsiSetLocalIndices1d
-//
-proc DimensionalDom.dsiBuildRectangularDom(param rank: int,
-                                           type idxType,
-                                           param stridable: bool,
-                                           ranges: rank * range(idxType,
-                                                 BoundedRangeType.bounded,
-                                                                stridable))
-{
-  _traceddd(this, ".dsiBuildRectangularDom ",
-           (rank, idxType:string, stridable), ranges);
-  if rank != 2 then
-    compilerError("DimensionalDist2D presently supports only 2 dimensions,",
-                  " got ", rank, " dimensions");
-
-  // todo: ideally, this will not be required;
-  // furthermore, DimensionalDist2D shouldn't be specific to idxType.
-  if idxType != this.idxType then
-    compilerError("The domain index type ", idxType:string,
-                  " does not match the index type ",this.idxType:string,
-                  " of the DimensionalDom used to create this domain");
-  if rank != this.rank then
-    compilerError("The rank of the domain (", rank,
-                  ") does not match the rank (", this.rank,
-                  ") of the DimensionalDom used to create this domain");
-
-  const dist = this.dist;
-
-  const dom1 = this.dom1.dsiBuildRectangularDom1d(dist.di1,
-                                                  stridable, ranges(1));
-  _passLocalLocIDsDom1d(dom1, dist.di1);
-
-  const dom2 = this.dom2.dsiBuildRectangularDom1d(dist.di2,
-                                                  stridable, ranges(2));
-  _passLocalLocIDsDom1d(dom2, dist.di2);
-
-  const result = new DimensionalDom(rank=rank, idxType=idxType,
-                                    stridable=stridable, dist=dist,
-                                    dom1 = dom1, dom2 = dom2,
-                                    whole = {(...ranges)});
-
-  // Not including 'targetLocales' in zippering for now -
-  // obtain the locale/locId from 'this' and its components instead.
-  // (Is that more efficient?)
-  coforall (oldLocDdesc, newLocDdesc, locIds)
-   in zip(this.localDdescs, result.localDdescs, this.targetIds) do
-    on oldLocDdesc {
-      var (doml1, myRange1) = oldLocDdesc.doml1.dsiBuildLocalDom1d(dom1, locIds(1));
-      var (doml2, myRange2) = oldLocDdesc.doml2.dsiBuildLocalDom1d(dom2, locIds(2));
-
-      newLocDdesc = new LocDimensionalDom(result.stoDomainT,
-                                          myStorageDom = {myRange1, myRange2},
-                                          doml1 = doml1, doml2 = doml2);
-    }
-
-  return result;
 }
 
 
@@ -968,7 +912,7 @@ proc DimensionalArr.isAlias
   return this.dom != this.allocDom;
 
 
-//== creation
+//== creation and destruction
 
 // create a new array over this domain
 proc DimensionalDom.dsiBuildArray(type eltType)
@@ -989,6 +933,16 @@ proc DimensionalDom.dsiBuildArray(type eltType)
 
   assert(!result.isAlias);
   return result;
+}
+
+
+proc DimensionalDom.dsiDestroyDom() {
+  coforall desc in localDdescs do
+    on desc do
+      delete desc;
+
+  if isClass(dom2) then delete dom2;
+  if isClass(dom1) then delete dom1;
 }
 
 
@@ -1061,32 +1015,7 @@ proc DimensionalArr.dsiSerialWrite(f): void {
 
 /// slicing, reindexing, rank change, reallocation //////////////////////////
 
-proc DimensionalArr.dsiSlice(sliceDef: DimensionalDom) {
-  _traceddd(this, ".dsiSlice of ", this.dom.whole, " with ", sliceDef.whole);
-
-//writeln("slicing DimensionalArr ", this.dom.dsiDims(), "  with DimensionalDom ", sliceDef.dsiDims());
-
-// started with dsiBuildArray, modified like ReplicatedArr.dsiSlice
-  const slicee = this;
-  if slicee.rank != sliceDef.rank then
-    compilerError("slicing with a different rank");
-
-  if sliceDef.type != slicee.allocDom.type then
-    compilerError("slicing a Dimensional array with a domain of a different type than the array's domain is currently not available");
-
-  const result = new DimensionalArr(eltType  = slicee.eltType,
-                                    dom      = sliceDef,
-                                    allocDom = slicee.allocDom);
-
-  // reuse the original array's local descriptors,
-  // ensuring sliceDef and slicee are over the same set of locales/targetIds
-  assert(sliceDef.localDdescs.domain == slicee.localAdescs.domain);
-  result.localAdescs = slicee.localAdescs;
-
-  assert(result.isAlias);
-  return result;
-}
-
+pragma "no copy return"
 proc DimensionalArr.dsiLocalSlice((sliceDim1, sliceDim2)) {
   const dom = this.dom;
   const dist = dom.dist;
@@ -1112,31 +1041,6 @@ proc DimensionalDist2D.dsiCreateReindexDist(newSpace, oldSpace) {
   return genericDsiCreateReindexDist(this, this.rank, newSpace, oldSpace);
 }
 
-proc DimensionalArr.dsiReindex(reindexDef: DimensionalDom) {
-  const reindexee = this;
-  if reindexee.dom == reindexDef then
-    return reindexee;
-
-  halt("DimensionalArr.dsiReindex: unexpected invocation on ",
-       this.type:string, "  and  ", reindexDef.type:string);
-}
-
-proc DimensionalArr.dsiReindex(reindexDef: WrapperRectDom) {
-  return genericDsiReindex(this, reindexDef);
-}
-
-proc DimensionalDist2D.dsiCreateRankChangeDist(param newRank: int, args) {
-  return genericDsiCreateRankChangeDist(this, newRank, args);
-}
-
-proc DimensionalArr.dsiRankChange(sliceDefDom: WrapperRectDom,
-                                  param newRank: int,
-                                  param newStridable: bool,
-                                  sliceDefIndsRanges) {
-  return genericDsiRankChange(this, sliceDefDom, newRank, newStridable,
-                              sliceDefIndsRanges);
-}
-
 */
 /* do not use the above comment for chpldoc */
 
@@ -1147,6 +1051,12 @@ proc DimensionalArr.dsiReallocate(d: domain) {
 
 proc DimensionalArr.dsiPostReallocate() {
   // nothing for now
+}
+
+proc DimensionalArr.dsiDestroyArr(isslice: bool) {
+  coforall desc in localAdescs do
+    on desc do
+      delete desc;
 }
 
 

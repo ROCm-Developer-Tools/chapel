@@ -1,6 +1,6 @@
 use StencilDist;
 
-config const n = 5;
+config const n = 10;
 
 proc main() {
   var Dom = {1..n,1..n};
@@ -14,7 +14,6 @@ proc main() {
   A.updateFluff();
 
   ref first = A[1,..];
-  writeln("Fluff = ", first._value.dom.dist.fluff);
   first = 0;
   A.updateFluff();
 

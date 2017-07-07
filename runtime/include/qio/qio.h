@@ -52,7 +52,6 @@ typedef enum {
   QIO_FDFLAG_READABLE = 2,
   QIO_FDFLAG_WRITEABLE = 4,
   QIO_FDFLAG_SEEKABLE = 8,
-  //QIO_FDFLAG_CLOSED = 16, // means channel/file was closed.
 } qio_fdflag_t;
 
 typedef uint32_t qio_hint_t;
@@ -209,7 +208,7 @@ typedef qio_fdflag_t fdflag_t;
 // make a re-entrant lock.
 typedef struct {
   chpl_sync_aux_t sv;
-  int64_t owner; // task ID of owner.
+  chpl_taskID_t owner; // task ID of owner.
   uint64_t count; // how many times owner has locked.
 } qio_lock_t;
 
@@ -498,6 +497,7 @@ typedef struct qio_file_s {
   void* file_info; // Holds the file information (as a user defined struct)
 
   qio_fdflag_t fdflags;
+  bool closed;
   qio_hint_t hints;
 
   int64_t initial_length;

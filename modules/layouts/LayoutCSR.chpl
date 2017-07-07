@@ -286,14 +286,50 @@ class CSRDom: BaseSparseDomImpl {
   proc bulkAdd_help(inds: [?indsDom] rank*idxType, dataSorted=false,
       isUnique=false){
 
+    bulkAdd_prepareInds(inds, dataSorted, isUnique);
+
+    if nnz == 0 {
+
+      const dupCount = if isUnique then 0 else _countDuplicates(inds);
+
+      nnz += inds.size-dupCount;
+      _bulkGrow();
+
+      var colIdxIdx = 1;
+      var currentRow = parentDom.dim(1).low;
+      var prevIdx = parentDom.low - (1,1);
+
+      for (i,j) in inds {
+        if !isUnique && (i,j) == prevIdx then continue;
+        else prevIdx = (i,j);
+
+        while i != currentRow {
+          currentRow += 1;
+          rowStart[currentRow+1] = rowStart[currentRow];
+        }
+        rowStart[i+1] += 1;
+        colIdx[colIdxIdx] = j;
+        colIdxIdx += 1;
+      }
+
+      // make sure rowStart[i]>rowStart[j] for i>j for possibly
+      // untouched part of rowStart
+      const rowStartHigh = rowStart[currentRow+1];
+      for r in currentRow+2..rowStart.domain.high {
+        rowStart[r] = rowStartHigh;
+      }
+
+      return colIdxIdx-1;
+    }
+
     const (actualInsertPts, actualAddCnt) =
-      __getActualInsertPts(this, inds, dataSorted, isUnique);
+      __getActualInsertPts(this, inds, isUnique);
 
     const oldnnz = nnz;
     nnz += actualAddCnt;
 
     //grow nnzDom if necessary
-    _bulkGrow(nnz);
+    _bulkGrow();
 
     //linearly fill the new colIdx from backwards
     var newIndIdx = indsDom.high; //index into new indices
@@ -437,7 +473,7 @@ class CSRArr: BaseSparseArrImpl {
   }
   // value version for POD types
   proc dsiAccess(ind: rank*idxType)
-  where !shouldReturnRvalueByConstRef(eltType) {
+  where shouldReturnRvalueByValue(eltType) {
     // make sure we're in the dense bounding box
     dom.boundsCheck(ind);
 

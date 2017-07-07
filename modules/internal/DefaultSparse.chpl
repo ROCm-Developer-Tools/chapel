@@ -20,6 +20,7 @@
 // DefaultSparse.chpl
 //
 module DefaultSparse {
+  use ChapelStandard;
   use RangeChunk only ;
 
   config param debugDefaultSparse = false;
@@ -238,14 +239,42 @@ module DefaultSparse {
     proc bulkAdd_help(inds: [?indsDom] index(rank, idxType), dataSorted=false,
         isUnique=false){
 
+      bulkAdd_prepareInds(inds, dataSorted, isUnique);
+
+      if nnz == 0 {
+
+        const dupCount = if isUnique then 0 else _countDuplicates(inds);
+
+        nnz += inds.size-dupCount;
+        _bulkGrow();
+
+        var indIdx = indices.domain.low;
+        var prevIdx = parentDom.low - 1;
+
+        if isUnique {
+          indices[indices.domain.low..#inds.size]=inds;
+          return inds.size;
+        }
+        else {
+          for i in inds {
+            if i == prevIdx then continue;
+            else prevIdx = i;
+
+            indices[indIdx] = i;
+            indIdx += 1;
+          }
+          return indIdx-1;
+        }
+      }
+
       const (actualInsertPts, actualAddCnt) =
-        __getActualInsertPts(this, inds, dataSorted, isUnique);
+        __getActualInsertPts(this, inds, isUnique);
 
       const oldnnz = nnz;
       nnz += actualAddCnt;
 
       //grow nnzDom if necessary
-      _bulkGrow(nnz);
+      _bulkGrow();
 
       //linearly fill the new colIdx from backwards
       var newIndIdx = indsDom.high; //index into new indices
@@ -370,7 +399,7 @@ module DefaultSparse {
     }
     // value version for POD types
     proc dsiAccess(ind: rank*idxType)
-    where !shouldReturnRvalueByConstRef(eltType) {
+    where shouldReturnRvalueByValue(eltType) {
       // make sure we're in the dense bounding box
       if boundsChecking then
         if !(dom.parentDom.member(ind)) then

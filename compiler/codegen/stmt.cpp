@@ -20,21 +20,19 @@
 #include "stmt.h"
 
 #include "astutil.h"
+#include "AstVisitor.h"
 #include "codegen.h"
+#include "driver.h"
 #include "expr.h"
 #include "files.h"
+#include "llvmDebug.h"
 #include "misc.h"
 #include "passes.h"
 #include "stlUtil.h"
 #include "stringutil.h"
 
-#include "codegen.h"
-#include "llvmDebug.h"
-
-#include "AstVisitor.h"
-
-#include <cstring>
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 void codegenStmt(Expr* stmt) {
@@ -311,6 +309,18 @@ GenRet GotoStmt::codegen() {
 
 #endif
   }
+  return ret;
+}
+
+/******************************** | *********************************
+*                                                                   *
+*                                                                   *
+********************************* | ********************************/
+
+GenRet ForwardingStmt::codegen() {
+  GenRet ret;
+  // Should be lowered in resolution
+  INT_FATAL(this, "ForwardingStmt codegen called");
   return ret;
 }
 

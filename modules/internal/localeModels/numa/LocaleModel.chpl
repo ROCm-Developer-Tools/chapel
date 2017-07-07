@@ -32,31 +32,49 @@ module LocaleModel {
   use LocaleModelHelpMem;
 
   //
+  // The task layer calls these to convert between full sublocales and
+  // execution sublocales.  Full sublocales may contain more information
+  // in some locale models, but not in this one.
+  //
+  export
+  proc chpl_localeModel_sublocToExecutionSubloc(full_subloc:chpl_sublocID_t)
+  {
+    return full_subloc;  // execution sublocale is same as full sublocale
+  }
+
+  export
+  proc chpl_localeModel_sublocMerge(full_subloc:chpl_sublocID_t,
+                                    execution_subloc:chpl_sublocID_t)
+  {
+    return execution_subloc;  // no info needed from full sublocale
+  }
+
+  //
   // The NUMA sublocale model
   //
   class NumaDomain : AbstractLocaleModel {
     const sid: chpl_sublocID_t;
-    const name: string;
+    const ndName: string; // note: locale provides `proc name`
 
     proc chpl_id() return (parent:LocaleModel)._node_id; // top-level node id
     proc chpl_localeid() {
       return chpl_buildLocaleID((parent:LocaleModel)._node_id:chpl_nodeID_t,
-                                sid); 
+                                sid);
     }
-    proc chpl_name() return name;
+    proc chpl_name() return ndName;
 
     proc NumaDomain() {
     }
 
     proc NumaDomain(_sid, _parent) {
       sid = _sid;
-      name = "ND"+sid;
+      ndName = "ND"+sid;
       parent = _parent;
     }
 
     proc writeThis(f) {
       parent.writeThis(f);
-      f <~> '.'+name;
+      f <~> '.'+ndName;
     }
 
     proc getChildCount(): int { return 0; }
@@ -113,6 +131,28 @@ module LocaleModel {
     }
     proc chpl_name() return local_name;
 
+    //
+    // Support for different types of memory:
+    // large, low latency, and high bandwidth
+    //
+    // The numa memory model currently assumes only one memory.
+    //
+    proc defaultMemory() : locale {
+      return this;
+    }
+
+    proc largeMemory() : locale {
+      return this;
+    }
+
+    proc lowLatencyMemory() : locale {
+      return this;
+    }
+
+    proc highBandwidthMemory() : locale {
+      return this;
+    }
+
 
     proc writeThis(f) {
       // Most classes will define it like this:
@@ -155,6 +195,11 @@ module LocaleModel {
       helpSetupLocaleNUMA(this, local_name, numSublocales);
     }
     //------------------------------------------------------------------------}
+
+    proc deinit() {
+      for loc in childLocales do
+        delete loc;
+    }
  }
 
   //
@@ -222,10 +267,15 @@ module LocaleModel {
     proc localeIDtoLocale(id : chpl_localeID_t) {
       const node = chpl_nodeFromLocaleID(id);
       const subloc = chpl_sublocFromLocaleID(id);
-      if (subloc == c_sublocid_none) || (subloc == c_sublocid_any) then
-        return (myLocales[node:int]):locale;
-      else
+      if chpl_isActualSublocID(subloc) then
         return (myLocales[node:int].getChild(subloc:int)):locale;
+      else
+        return (myLocales[node:int]):locale;
+    }
+
+    proc deinit() {
+      for loc in myLocales do
+        delete loc;
     }
   }
 }

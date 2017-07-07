@@ -130,6 +130,13 @@ void AstLogger::exitBlockStmt(BlockStmt* node) {
 void AstLogger::visitForallIntents(ForallIntents* clause) {
 }
 
+bool AstLogger::enterForallStmt(ForallStmt* node) {
+  return true;
+}
+
+void AstLogger::exitForallStmt(ForallStmt* node) {
+}
+
 bool AstLogger::enterWhileDoStmt(WhileDoStmt* node) {
   return true;
 }
@@ -182,12 +189,34 @@ bool AstLogger::enterGotoStmt(GotoStmt* node) {
 void AstLogger::exitGotoStmt(GotoStmt* node) {
 }
 
+bool AstLogger::enterForwardingStmt(ForwardingStmt* node) {
+  return true;
+}
+
+void AstLogger::exitForwardingStmt(ForwardingStmt* node) {
+}
+
+bool AstLogger::enterDeferStmt(DeferStmt* node) {
+  return true;
+}
+
+void AstLogger::exitDeferStmt(DeferStmt* node) {
+}
+
 bool AstLogger::enterTryStmt(TryStmt* node) {
   return true;
 }
 
 void AstLogger::exitTryStmt(TryStmt* node) {
 }
+
+bool AstLogger::enterCatchStmt(CatchStmt* node) {
+  return true;
+}
+
+void AstLogger::exitCatchStmt(CatchStmt* node) {
+}
+
 
 bool AstLogger::outputVector(FILE* mFP, std::vector<const char *> vec) {
   bool first = true;

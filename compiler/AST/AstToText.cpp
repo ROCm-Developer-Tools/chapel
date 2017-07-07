@@ -19,6 +19,7 @@
 
 #include "AstToText.h"
 
+#include "driver.h"
 #include "expr.h"
 #include "stmt.h"
 #include "symbol.h"
@@ -92,7 +93,7 @@ void AstToText::appendName(FnSymbol* fn)
   {
     appendThisIntent(fn);
 
-    if (strcmp(fn->name, "this") == 0)
+    if (fn->name == astrThis)
     {
       appendClassName(fn);
     }
@@ -306,6 +307,10 @@ void AstToText::appendFormalIntent(ArgSymbol* arg)
 
     case INTENT_CONST_REF:
       mText += "const ref ";
+      break;
+
+    case INTENT_REF_MAYBE_CONST:
+      mText += "const? ref ";
       break;
 
     case INTENT_PARAM:
@@ -862,11 +867,11 @@ void AstToText::appendExpr(CallExpr* expr, bool printingType)
         appendExpr(expr->get(1), printingType);
       }
 
-      else if (strcmp(fnName, "_cast")                        == 0)
+      else if (expr->isCast())
       {
-        appendExpr(expr->get(2), printingType);
+        appendExpr(expr->castFrom(), printingType);
         mText += ": ";
-        appendExpr(expr->get(1), printingType);
+        appendExpr(expr->castTo(), printingType);
       }
 
       else if (strcmp(fnName, "chpl__atomicType")             == 0)
@@ -1034,7 +1039,7 @@ void AstToText::appendExpr(CallExpr* expr, bool printingType)
         mText += "..";
       }
 
-      else if (strcmp(fnName, ".")                           == 0)
+      else if ((fnName != astrSdot)                          == 0)
       {
         SymExpr* symExpr1 = toSymExpr(expr->get(1));
         SymExpr* symExpr2 = toSymExpr(expr->get(2));
@@ -1045,7 +1050,7 @@ void AstToText::appendExpr(CallExpr* expr, bool printingType)
           {
             ArgSymbol* sym1 = toArgSymbol(symExpr1->symbol());
 
-            if (strcmp(sym1->name, "this") == 0)
+            if (sym1->name == astrThis)
             {
               appendExpr(symExpr2, printingType);
             }
@@ -1061,7 +1066,7 @@ void AstToText::appendExpr(CallExpr* expr, bool printingType)
           {
             VarSymbol* sym1 = toVarSymbol(symExpr1->symbol());
 
-            if (strcmp(sym1->name, "this") == 0)
+            if (sym1->name == astrThis)
             {
               appendExpr(symExpr2, printingType);
             }

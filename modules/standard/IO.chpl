@@ -1,15 +1,15 @@
 /*
  * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
- * 
+ *
  * The entirety of this work is licensed under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.
- * 
+ *
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -121,7 +121,7 @@ The default value of the :record:`iostyle` type is undefined.  However, the
 compiler-generated constructor is available.  It can be used to generate the
 default I/O style, with or without modifications. In addition, the function
 :proc:`defaultIOStyle` will return the default I/O style just as ``new
-iostyle()`` will. 
+iostyle()`` will.
 
 The I/O style for an I/O operation can be provided through an optional
 ``style=`` argument in a variety of places:
@@ -155,13 +155,9 @@ As an example for specifying an I/O style, the code below specifies the minimum 
 
 I/O facilities in Chapel also include several other ways to control I/O
 formatting. There is support for :ref:`formatted I/O <about-io-formatted-io>`
-with :proc:`channel.readf` and :proc:`channel.writef`.  It is possible to write
-data to strings (see "The write and writeln Methods on Strings" in the Chapel
-language specification) which can then be further modified or combined
-programmatically. Lastly, record or class implementations can provide custom
-functions implementing read or write operations for that type (see "The
-readThis, writeThis, and readWriteThis Methods" in the Chapel language
-specification).
+with :proc:`channel.readf` and :proc:`channel.writef`. Also note that record or
+class implementations can provide custom functions implementing read or write
+operations for that type (see :ref:`readThis-writeThis-readWriteThis`).
 
 .. _about-io-files:
 
@@ -289,14 +285,11 @@ that has been closed.
 It is an error to close a file when it has channels that
 have not been closed.
 
-In the future we plan to implement reference counting for files
-and channels. Each file and channel will be closed automatically
-when no references remain to it. For example, if only a local
-variable refers to a channel, the channel will be closed
-when that variable goes out of scope.
-
-The ability for the program to close a file or a channel
-explicitly will remain available.
+Files and channels are reference counted. Each file and channel is
+closed automatically when no references to it remain. For example, if
+a local variable is the only reference to a channel, the channel will
+be closed when that variable goes out of scope.  Programs may also
+close a file or channel explicitly.
 
 .. _about-io-style:
 
@@ -320,7 +313,7 @@ Error Handling
 
 Most I/O routines accept an optional `error=` argument. If that argument
 is used, instead of halting when an error is encountered, the function
-will return the error code. 
+will return the error code.
 
 These error codes are stored with the type :type:`SysBasic.syserr`. Success is
 represented by :proc:`SysBasic.ENOERR`. The error codes and their meaning
@@ -336,7 +329,7 @@ are described in :mod:`SysBasic`. Some of these error codes that are commonly us
    (e.g. reading 1000 into a `uint(8)`).
 
 An error code can be converted to a string using the function
-:proc:`Error.errorToString`.
+:proc:`~SysError.errorToString`.
 
 .. _about-io-ensuring-successful-io:
 
@@ -393,762 +386,6 @@ bytes objects from the beginning or end of a buffer.
 
 Buffers are used internally in each channel.
 
-
-.. _about-io-formatted-io:
-
-Formatted I/O
--------------
-
-See below for a :ref:`sample-based overview <about-io-formatted-io-overview>`
-of the format strings. Further below, we describes the format string syntax
-:ref:`in detail <about-io-formatted-io-in-detail>`. Finally, we demonstrate the
-functionality with :ref:`example function calls
-<about-io-formatted-io-examples>`.
-
-.. _about-io-formatted-io-overview:
-
-Overview of Format Strings
-++++++++++++++++++++++++++
-
-In a manner similar to C's 'printf' and 'scanf', the IO package includes
-:proc:`channel.writef` and :proc:`channel.readf` functions. These functions take
-in a format string and some arguments. The :proc:`string.format` method is also
-available and is loosely equivalent to C's 'sprintf'. For example, one might do:
-
-.. code-block:: chapel
-
-  writef("My favorite %s is %i\n", "number", 7);
-
-  var s:string = "My favorite %s is %i".format("number", 7);
-  writeln(s);
-
-  // prints:
-  // My favorite number is 7
-  // My favorite number is 7
-
-The following sections offer a tour through the conversions to illustrate the
-common cases. A more precise definition follows in the "Format String
-Syntax in Detail" section below.
-
-In this file, we use "integral" to refer to the Chapel types int or uint and
-"floating-point" to refer to real, imaginary, or complex, of any bit width.
-
-Formatted I/O for C Programmers
-+++++++++++++++++++++++++++++++
-
-This table is designed to help C programmers understand the equivalent
-Chapel format specifiers.
-
-========  ===========  ==========================================
-C         Chapel       Meaning
-========  ===========  ==========================================
-%i        %i           an integer in decimal
-%d        %i           an integer in decimal
-%u        %u           an unsigned integer in decimal
-%x        %xu          an unsigned integer in hexadecimal
-%g        %r           real number in exponential or decimal (if compact)
-%7.2g     %7.2r        real, 2 significant digits, padded to 7 columns
-%f        %dr          real number always in decimal
-%7.3f     %7.3dr       real, 3 digits after ``.``, padded to 7 columns
-%e        %er          real number always in exponential
-%7.3e     %7.3er       real, 3 digits after ``.``, padded to 7 columns
-%s        %s           a string without any quoting
-========  ===========  ==========================================
-
-Unlike in C, a value of the wrong type will be cast appropriately - so for
-example printing 2 (an ``int``)  with ``%.2dr`` will result in ``2.00``.  Note
-that ``%n`` and ``%t`` are equivalent to ``%r`` for real conversions and ``%i``
-for numeric conversions; so these are also equivalent to ``%i`` ``%d`` or
-``%g`` in C. Also note that Chapel format strings includes many capabilities
-not available with C formatted I/O routines - including quoted strings,
-binary numbers, complex numbers, and raw binary I/O.
-
-Generic Numeric Conversions
-+++++++++++++++++++++++++++
-
-``%{##.###}``
-  decimal number padded on the left with spaces to 2 digits before
-  the point, rounded to 3 after. Works with integral, real, imaginary,
-  or complex arguments.
-
-  In all cases, the output is padded on the left to the total length
-  of the conversion specifier (6 in this example).  The output
-  can be longer, when needed to accommodate the number.
-
-``%{##}``
-  integral value padded out to 2 digits. Also works with real, imaginary
-  or complex numbers by rounding them to integers. Numbers with more
-  digits will take up more space instead of being truncated.
-
-In both conversions above, an imaginary argument gets an 'i' afterwards
-and the entire expression is padded out to the width of ##### digits.
-For example:
-
-.. code-block:: chapel
-
-  writef("|${#####}|\n", 2.0i);
-       // outputs:
-       //   |   2i|
-
-  writef("|%{#####.#}|\n", 2.0i);
-       // outputs:
-       //   |   2.0i|
-
-Complex arguments are printed in the format a + bi, where each of a and b is
-rounded individually as if printed under that conversion on its own. Then, the
-formatted complex number is padded to the requested size. For example:
-
-.. code-block:: chapel
-
-  writef("|%{#########}|\n", 1.0+2.0i);
-       // outputs:
-       //   |   1 + 2i|
-
-  writef("|%{#########.#}|\n", 1.0+2.0i);
-       // outputs:
-       //   | 1.0 + 2.0i|
-
-See :ref:`about-io-formatted-pound-details` for more details
-on this conversion type.
-
-``%n`` 
-  a "number" - equivalent to one of %i, %u, %r, %m, or %z below,
-  depending on the type
-
-``%17n``
-  a number padded out to 17 columns
-
-``%.4n`` 
-  a number with 4 significant digits or a precision of 4
-
-Integral Conversions
-++++++++++++++++++++
-
-``%i`` or ``%di``
-  a signed integer in decimal, possibly negative
-  (note - when reading an ``%i``, ``-`` is allowed)
-``%u`` or ``%du``
-  an unsigned decimal integer
-  (note - when reading a ``%u``, ``-`` is not allowed)
-``%bi``
- a binary signed integer
-``%bu``
- a binary unsigned integer
-``%@bu``
- a binary unsigned integer prefixed with ``0b``
-``%oi``
- an octal signed integer
-``%ou``
- an octal unsigned integer
-``%@ou``
- an octal unsigned integer prefixed with ``0o``
-``%xu``
- a hexadecimal unsigned integer
-``%xi``
- a hexadecimal signed integer
-``%@xu``
- a hexadecimal unsigned integer prefixed with ``0x``
-``%Xu``
- a hexadecimal unsigned integer in uppercase
-``%@Xu``
- a hexadecimal unsigned integer prefixed with ``0X`` and uppercase
-``%17i``
- a decimal integer padded on the left with spaces to 17 columns
- (That is, it is right-justified in a 17-column field.
- Padding width is ignored when reading integers)
-``%*i``
- as with ``%17i`` but read the minimum width from the preceding argument
-``%017i``
- a decimal integer padded on the left with zeros to 17 columns
-``%-17i``
- a decimal integer left-justified (padded on the right) to 17 columns
-``%+i``
- a decimal integer showing ``+`` for positive numbers
-``% i``
- a decimal integer with a space for positive numbers
-``%|4i``
- output 4 raw, binary bytes of the passed integer in native endianness
-``%<4i``
- output 4 raw, binary bytes of the passed integer little endian
-``%>4i``
- output 4 raw, binary bytes of the passed integer big endian
-``%<8i``
- output 8 raw, binary bytes of the passed integer little endian
- (byte widths of 1, 2, 4, and 8 are supported for integral conversions)
-
-Real Conversions
-++++++++++++++++
-
-``%r``
- a real number with decimal or exponential notation, where
- exponential is chosen if the decimal version would be too long
-
-``%6r``
- as with ``%r`` but padded on the left to 6 columns (ie right-justified)
-``%-6r``
- as with ``%r`` but padded on the right to 6 columns (ie left-justified)
-``%.4r``
- as with ``%r`` but with 4 significant digits
-``%.*r``
- as with ``%.4r`` but with significant digits read from preceding argument
-``%6.4r``
- as with ``%r`` but padded on the left to 6 columns
- and with 4 significant digits
-``%*.*r``
- as with ``%6.4r`` but read minimum width and significant digits from
- preceding arguments
-
-``%dr``
- a real number in decimal notation, e.g. ``12.34``
-``%6dr`` 
- a decimal number padded on the left to 6 columns (right-justified)
-``%.4dr``
- a decimal number with 4 digits after the radix point
-``%6.4dr``
- a decimal number padded on the left to 6 columns and with 4 digits
- after the radix point
- (width and precision are ignored when reading numbers in readf)
-
-``%er``
- a real number in exponential notation, e.g. ``8.2e-23``
-``%Er``
- like %er but with the 'e' in uppercase, e.g. ``8.2E-23``
-``%.4er``
- exponential notation with 4 digits after the period, e.g. ``8.2000e-23``
-
-``%xer``
- hexadecimal number using p to mark exponent e.g. ``6c.3f7p-2a``
-
-``%|4r``
- emit 4 raw, binary bytes of the passed number in native endianness
-``%<8r``
- emit 8 raw, binary bytes of the passed number in little endian
-``%<4r``
- emit 4 raw, binary bytes of the passed number in little endian
- (``<`` ``|`` and ``>`` are supported for widths 4 or 8)
-
-Complex and Imaginary Conversions
-+++++++++++++++++++++++++++++++++
-
-``%m``
- an imaginary number, like a real with ``%r`` but ends with an ``i``
-
-``%z``
- print complex number with ``%r`` for each part in the format ``a + bi``
-``%@z``
- print complex number with ``%r`` for each part in the format ``(a,b)``
-``%6z``
- as with ``%z`` but pad the entire complex number out to 6 columns
-``%6.4z``
- print a and b 4 significant digits and pad the entire complex
- number out to 6 columns
-``%dz``
- print a and b with ``%dr``
-``%ez``
- print a and b with ``%er``
-
-``%|4m``
- same as ``%|4r``
-``%|8z``
- emit 8 raw, binary bytes of native-endian complex (a,b are each 4 bytes)
-``%<16z``
- emit 16 raw, binary bytes of little-endian complex (a,b each 8 bytes)
-
-String and Bytes Conversions
-++++++++++++++++++++++++++++
-
-``%s``
- a string. When reading, read until whitespace.
- Note that if you want to be able to read your string back in,
- you should use one of the quoted or encoded binary versions (see below),
- since generally with %s it's not clear where the string ends.
-``%c``
- a single Unicode character (argument should be a string or an integral
- storing the character code)
-``%17s``
-  * when writing - a string left padded (right justified) to 17 columns
-  * when reading - read up to 17 bytes or a whitespace, whichever comes
-    first, rounding down to whole characters
-``%-17s``
- * when writing - a string right padded (left justified) to 17 columns
-``%.17s``
- * when writing - a string truncated to 17 columns. When combined
-   with quoting strings, for example ``%.17"S``, the conversion
-   will print ... after a string if it was truncated. The
-   truncation includes leaving room for the quotes and -
-   if needed - the periods, so the shortest truncated
-   string is ``""...``  Generally, you won't be able to read
-   these back in.
- * when reading - read exactly 17 Unicode code points
-``%|17s``
- * when writing - emit string but cause runtime error if length
-   does not match
- * when reading - read exactly 17 bytes (error if we read < 17 bytes)
-``%|*s``
-  as with %17s but the length is specified in the argument before the string.
-``%"S``
- use double-quotes to delimit string
-``%'S``
- use single-quotes to delimit string
-``%cS``
- use any character (c) to delimit string
-``%{(S)}``
- quoted string, starting with ``(``, ending with ``)``, where the
- parens could be replaced by arbitrary characters
-``%*S``
- quoted string, the arg before the string to specifies quote character
-``%|0S``
- write a string null-terminated or read bytes until a null-terminator
-``%|*S``
- means read bytes until a terminator byte. The terminator byte is read
- from the argument before the string.
-``%|1S`` ``%|2S`` ``%|4S`` and ``%|8S``
-  work with encoded strings storing a length
-  and then the string data. The digit before ``S`` is
-  the number of bytes of length which is by default
-  stored native endian. ``<``, ``|``, ``>`` can be used
-  to specify the endianness of the length field,
-  for example ``%<8S`` is 8 bytes of little-endian length
-  and then string data.
-``%|vS``
- as with ``%|1S``-``%|8S`` but the string length is encoded using a
- variable-length byte scheme (which is always the same no matter what
- endianness). In this scheme, the high bit of each encoded length byte
- records whether or not there are more length bytes (and the remaining
- bits encode the length in a big-endian manner).
-
-``%|*vS`` or ``%|*0S``
- read an encoded string but limit it to a number of bytes
- read from the argument before the string; when writing
- cause a runtime error if the string is longer than the
- maximum.
-
-``%/a+/``
- where any regular expression can be used instead of ``a+``
- consume one or more 'a's when reading, gives an error when printing,
- and does not assign to any arguments
- (note - regular expression support is dependent on RE2 build;
- see :mod:`Regexp`)
-
-``%/(a+)/``
- consume one or more 'a's and then set the corresponding string
- argument to the read value
-
-``%17/a+/``
- match a regular expression up to 17 bytes
- (note that ``%.17/a+/``, which would mean to match 17 characters,
- is not supported).
-
-``%/*/``
- next argument contains the regular expression to match
-
-.. (comment) the above started a nested comment, so here we end it */
-
-General Conversions
-+++++++++++++++++++
-
-``%t``
- read or write the object according to its readThis/writeThis routine
-``%jt``
- read or write an object in JSON format using readThis/writeThis
-``%ht``
- read or write an object in Chapel syntax using readThis/writeThis
-``%|t``
- read or write an object in binary native-endian with readThis/writeThis
-``%<t``
- read or write an object little-endian in binary with readThis/writeThis
-``%>t``
- read or write an object big-endian in binary with readThis/writeThis
-
-Note About Whitespace
-+++++++++++++++++++++
-
-When reading, ``\n`` in a format string matches any zero or more space
-characters other than newline and then exactly one newline character. In
-contrast, ``" "`` matches at least one space character of any kind.
-
-When writing, whitespace is printed from the format string just like any
-other literal would be.
-
-Finally, space characters after a binary conversion will be ignored, so
-that a binary format string can appear more readable.
-
-.. _about-io-formatted-io-in-detail:
-
-Format String Syntax in Detail
-++++++++++++++++++++++++++++++
-
-Chapel's format strings are simpler than those in C in one way: it is no longer
-necessary to specify the types of the arguments in the format string. For
-example, in C the l in %ld is specifying the type of the argument for integer
-(decimal) conversion. That is not necessary in Chapel since the compiler is
-able to use type information from the call.
-
-Format strings in Chapel consist of:
-
- * conversion specifiers e.g. ``"%xi"`` (described below)
- * newline e.g. ``"\n"``
-
-   * when writing - prints a newline
-   * when reading - reads any amount of non-newline whitespace and then
-     exactly one newline. Causes the format string not to
-     match if it did not read a newline.
-
- * other whitespace e.g. ``" "``
-
-    * when writing - prints as the specified whitespace
-    * when reading - matches at least one character of whitespace, possibly
-      including newlines.
-
- * other text e.g. "test"
-
-    * when writing - prints the specified text
-    * when reading - matches the specified text
-
-.. _about-io-formatted-pound-details:
-
-# Specifiers
-++++++++++++
-
-All # specifiers must be enclosed in ``%{}`` syntax, for example ``%{#}`` is the
-shortest one, and ``%{#.#}`` is a more typical one. The integer portion of the
-number will be padded out to match the number of ``#`` s before the decimal
-point, and the number of ``#`` s after the decimal point indicate how many
-digits to print after the decimal point. In other words, display how many
-digits to use when printing a floating-point number by using the # symbol to
-stand for digits. The fractional portion of the number will be rounded
-appropriately and extra space will be made if the integer portion is too small:
-
-.. code-block:: chapel
-
-  writef("n:%{###.###}\n", 1.2349);
-       // outputs:
-       // n:  1.235
-
-This syntax also works for numbers without a decimal point by rounding them
-appropriately.
-
-A # specifier may start with a ``.``.
-
-.. code-block:: chapel
-
-  writef("%{.##}\n", 0.777);
-       // outputs:
-       //  0.78
-
-% Specifiers
-++++++++++++
-
-Specifiers starting with % offer quite a few options. First, some basic
-rules.
-
-``%%``
- means a literal ``%``
-``\n``
- means a literal newline
-``\\``
- means a single backslash
-``%{}``
- curly braces can wrap a ``%`` or ``#`` conversion specifier. That way, even
- odd specifiers can be interpreted unambiguously. Some of the more complex
- features require the use of the ``%{}`` syntax, but it's always 
- acceptable to use curly braces to make the format string clearer.
- Curly braces are required for # conversion specifiers.
-
-In general, a ``%`` specifier consists of either text or binary conversions:
-
-::
-
- %
- [optional endian flag (binary conversions only)]
- [optional flags]
- [optional field width or size in bytes]
- [optional . then precision]
- [optional base flag]
- [optional exponential type]
- [conversion type]
-
-Going through each section for text conversions:
-
-
-[optional flags]
-  ``@``
-   means "alternate form". It means to print out a base when not using
-   decimal (e.g. ``0xFFF`` or ``0b101011``); and it will format a complex
-   number with parens instead of as e.g. ``1.0+2.0i``
-  ``+``
-   means to show a plus sign when printing positive numbers 
-  ``0``
-   means to pad numeric conversions with 0 instead of space
-  ``" "``
-   (a space) leaves a blank before a positive number
-   (in order to help line up with negative numbers)
-  ``-``
-   left-justify the converted value instead of right-justifying.
-   Note, if both ``0`` and ``-`` are given, the effect is as if only ``-``
-   were given.
-  ``~``
-   when reading a record or class instance, skip over fields in the input not
-   present in the Chapel type. This flag currently only works in combination
-   with the JSON format.  This flag allows a Chapel program to describe only the
-   relevant fields in a record when the input might contain many more fields.
-  
-
-[optional field width]
-   When printing numeric or string values, the field width specifies the number
-   of *columns* that the conversion should use to display the value. It can be
-   ``*``, which means to read the field width from an integral argument before
-   the converted value.
-
-   For string conversions in readf (``%s`` ``%"`` ``%'`` ``%//``), the field
-   width specifies the maximum number of bytes to read. 
-
-   For numeric conversions in readf, the field width is ignored.
-   
-[optional . then precision]
-   When printing floating point values, the precision is used to control
-   the number of decimal digits to print.  For ``%r`` conversions, it
-   specifies the number of significant digits to print; for ``%dr`` or ``%er``
-   conversions, it specifies the number of digits following the decimal point.
-   It can also be ``*``, which means to read the precision from an integral
-   argument before the converted value.
-
-   For textual string conversions in writef, (``%s`` ``%"`` ``%'``), the
-   precision indicates the maximum number of columns to print - and the result
-   will be truncated if it does not fit. In readf for these textual string
-   conversions, the precision indicates the maximum number of characters
-   (e.g. Unicode code points) to input. 
-
-   The precision is silently ignored for integral conversions
-   (``%i``, ``%u``, etc) and for ``%//`` conversions.
-
-[optional base flag]
-   ``d``
-    means decimal (and not exponential for floating-point)
-   ``x``
-    means lower-case hexadecimal
-   ``X``
-    means upper-case hexadecimal 
-   ``o``
-    means octal
-   ``b``
-    means binary 
-   ``j``
-    means JSON-style strings, numbers, and structures
-   ``h``
-    means Chapel-style strings, numbers, and structures
-   ``'``
-    means single-quoted string (with \\ and \')
-   ``"``
-    means double-quoted string (with \\ and \")
-
-[optional exponential type]
-   ``e``
-    means floating-point conversion printing exponential ``-12.34e+56``
-   ``E``
-    means floating-point conversion printing uppercase
-    exponential ``-12.34E+56``
-
-[conversion type]
-   ``t``
-    means *type-based* or *thing* - uses writeThis/readThis but ignores
-    width and precision
-   ``n``
-    means type-based number, allowing width and precision
-   ``i``
-    means integral conversion
-   ``u``
-    means unsigned integral conversion
-   ``r``
-    means real conversion (e.g. ``12.23``)
-   ``m``
-    means imaginary conversion with an ``i`` after it (e.g. ``12.23i``)
-   ``z``
-    means complex conversion
-   ``s``
-    means string conversion
-   ``S``
-    means a quoted string conversion
-   ``{cS}``
-    means string conversion with quote char *c*
-   ``{*S}``
-    means string conversion with quote char in argument before the string
-   ``{xSy}``
-    means string conversion with left and right quote chars *x* and *y*
-   ``/.../``
-    means a regular expression (for reading only)
-   ``{/.../xyz}``
-    means regular expression with flags *xyz*
-   ``c``
-    means a Unicode character - either the first character in a string
-    or an integral character code 
- 
-For binary conversions: 
-
-[optional endian flag]
-   ``<``
-    means little-endian
-   ``>``
-    means big-endian
-   ``|``
-    means native-endian
-
-[optional size in bytes]
-   This is the number of bytes the format should read or write in this
-   conversion. For integral conversions (e.g. ``%|i``) it specifies the number
-   of bytes in the integer, and 1, 2, 4, and 8 are supported. For real and
-   imaginary conversions, 4 and 8 are supported. For complex conversions,
-   8 and 16 are supported. The size in bytes is *required* for binary
-   integral and floating-point conversions.
-
-   The size can be ``*``, which means that the number of bytes is read
-   from the argument before the conversion.
-
-   For strings, if a terminator or length field is specified, exactly this
-   number is the maximum size in bytes; if the terminator or length is not
-   specified, the string must be exactly that size (and if the argument is not
-   exactly that number of bytes it will cause an error even when writing).
-
-[conversion type]
-   ``t``
-    means *type-based* or *thing* - to read or write with readThis/writeThis
-   ``n``
-    means type-based number (size is not mandatory)
-   ``i``
-    means integral. Note that the size is mandatory for binary integral
-    conversions
-   ``u``
-    means unsigned integral. Note that the size is mandatory for binary
-    integral conversions
-   ``r``
-    means real. Note that the size is mandatory for binary real conversions
-   ``m``
-    works the same as ``r`` for binary conversions
-   ``z``
-    means complex. Note that the size is mandatory for binary complex
-    conversions
-   ``s``
-    * means string binary I/O
-    * ``%|17s`` means exactly 17 byte string
-   ``0S``/``1S``/``2S``/``4S``/``8S``
-    * mean encoded string binary I/O:
-    * ``%|0S`` means null-terminated string
-    * ``%{|S*}`` means  next-argument specifies string terminator byte
-    * ``%|1S`` means a one-byte length and then the string
-    * ``%|2S`` means a two-byte length and then the string
-    * ``%|4S`` means a four-byte length and then the string
-    * ``%|8S`` means an eight-byte length and then the string
-    * ``%|vS`` means a variable-byte-encoded length and then the string
-   ``c``
-    means a Unicode character - either the first character in a string
-    or an integral character code
-
-
-.. _about-io-formatted-io-examples:
-
-Formatted I/O Examples
-++++++++++++++++++++++
-
-.. code-block:: chapel
-
-  writef("%5i %5s %5r\n", 1, "test", 6.34);
-       // outputs:
-       //    1  test  6.34
-
-  writef("%2.4z\n", 43.291 + 279.112i);
-       // outputs:
-       // 43.29 + 279.1i
-
-  writef("%<4u", 0x11223344);
-       // outputs:
-       // (hexdump of the output)
-       // 4433 2211
-  writef("%>4u", 0x11223344);
-       // outputs:
-       // (hexdump of the output)
-       // 1122 3344
-  writef("%<4i %<4i", 2, 32);
-       // outputs:
-       // (hexdump of the output -- note that spaces after
-       //  a binary format specifier are ignored)
-       // 0200 0000 2000 0000
-
-
-  writef("%|0S\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 7465 7374 000a
-  writef("%|1S\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 0474 6573 740a
-  writef("%>2S\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 0004 7465 7374 0a
-  writef("%>4S\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 0000 0004 7465 7374 0a
-  writef("%>8S\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 0000 0000 0000 0004 7465 7374 0a
-  writef("%|vS\n", "test");
-       // outputs:
-       // (hexdump of the output)
-       // 04 7465 7374 0a
-
-  writef('%"S\n', "test \"\" \'\' !");
-       // outputs:
-       // "test \"\" '' !"
-  writef("%'S\n", "test \"\" \'\' !");
-       // outputs:
-       // 'test "" \'\' !'
-  writef("%{(S)}\n", "test ()", "(", ")");
-       // outputs:
-       // (test (\))
-
-
-  writef("%40s|\n", "test");
-  writef("%-40s|\n", "test");
-       // outputs:
-       //                                     test|
-       // test                                    |
-
-  writef("123456\n");
-  writef("%6.6'S\n", "a");
-  writef("%6.6'S\n", "abcdefg");
-  writef("%.3'S\n", "a");
-  writef("%.3'S\n", "abcd");
-       // outputs:
-       // 123456
-       //    'a'
-       // 'a'...
-       // 'a'
-       // ''...
-
-
-  var s:string;
-  var got = readf(" %c", s);
-  // if the input is " a", "\na", "  a", etc, s will contain "a"
-  // if the input is "b", got will be false and s will contain ""
-
-  var s:string;
-  var got = readf("\n%c", s);
-  // if the input is "\na", or " \na", s will contain "a"
-  // if the input is "b", got will be false and s will be ""
-
-  var got = readf("%/a+/");
-  // if the input is "a" or "aa" (and so on), got will return true
-  // if the input is "c" got will be false
-
-  var s:string;
-  var got = readf("%/a(b+)/", s);
-  // if the input is "c" got will be false and s will be ""
-  // if the input is "ab", got will be true and s will be "b"
-  // if the input is "abb", got will be true and s will be "bb"
-
 IO Functions and Types
 ----------------------
 
@@ -1200,7 +437,7 @@ module IO {
 */
 
 use SysBasic;
-use Error;
+use SysError;
 
 /*
 
@@ -1515,7 +752,7 @@ extern const QIO_STRING_FORMAT_TOEOF:uint(8);
 
 /*
 
-The :record:`iostyle` type represents I/O styles 
+The :record:`iostyle` type represents I/O styles
 defining how Chapel's basic types should be read or written.
 
 See :ref:`about-io-style`.
@@ -1523,7 +760,7 @@ See :ref:`about-io-style`.
 */
 extern record iostyle { // aka qio_style_t
   /* Perform binary I/O? 1 - yes, 0 - no.
-     This field is ignored for :type:`iokind` values other than ``dynamic``. 
+     This field is ignored for :type:`iokind` values other than ``dynamic``.
    */
   var binary:uint(8) = 0;
   // binary style choices
@@ -1532,7 +769,7 @@ extern record iostyle { // aka qio_style_t
      It should be set to a value in :type:`iokind`.
    */
   var byteorder:uint(8) = iokind.native:uint(8);
-  
+
   /*
      What string format should we use when writing strings
      in binary mode? See :type:`iostringstyle` for more information
@@ -1891,7 +1128,7 @@ pragma "no doc"
 extern proc qio_format_error_bad_regexp():syserr;
 private extern proc qio_format_error_write_regexp():syserr;
 
-/* 
+/*
    :returns: the default I/O style. See :record:`iostyle`
              and :ref:`about-io-styles`
 
@@ -1903,7 +1140,7 @@ proc defaultIOStyle():iostyle {
 }
 
 /* Get an I/O style indicating binary I/O in native byte order.
-   
+
    :arg str_style: see :type:`iostringstyle` - which format to use when reading
                    or writing strings. Defaults to variable-byte length.
    :returns: the requested :record:`iostyle`
@@ -1917,7 +1154,7 @@ proc iostyle.native(str_style:int(64)=stringStyleWithVariableLength()):iostyle {
 }
 
 /* Get an I/O style indicating binary I/O in big-endian byte order.
-   
+
    :arg str_style: see :type:`iostringstyle` - which format to use when reading
                    or writing strings. Defaults to variable-byte length.
    :returns: the requested :record:`iostyle`
@@ -1931,7 +1168,7 @@ proc iostyle.big(str_style:int(64)=stringStyleWithVariableLength()):iostyle {
 }
 
 /* Get an I/O style indicating binary I/O in little-endian byte order.
-   
+
    :arg str_style: see :type:`iostringstyle` - which format to use when reading
                    or writing strings. Defaults to variable-byte length.
    :returns: the requested :record:`iostyle`
@@ -1966,7 +1203,7 @@ proc iostyle.text(/* args coming later */):iostyle  {
 pragma "no doc"
 extern type fdflag_t = c_int;
 
-/* 
+/*
 
 A value of the :type:`iohints` type defines a set of hints about the I/O that
 the file or channel will perform.  These hints may be used by the
@@ -2070,7 +1307,7 @@ proc file.check() {
 }
 
 pragma "no doc"
-proc ref file.~file() {
+proc ref file.deinit() {
   on this.home {
     qio_file_release(_file_internal);
     this._file_internal = QIO_FILE_PTR_NULL;
@@ -2080,7 +1317,7 @@ proc ref file.~file() {
 /*
    We could support file locking and unlocking, but
    at the moment I don't see any use case in which
-   it would make sense. 
+   it would make sense.
 proc file.lock() {
   on this.home {
     seterr(nil, qio_file_lock(_file_internal));
@@ -2113,7 +1350,7 @@ proc file._style:iostyle {
 
    In order to free the resources allocated for a file, it
    must be closed using this method.
-  
+
    It is an error to perform any I/O operations on a file
    that has been closed.
    It is an error to close a file when it has channels that
@@ -2127,9 +1364,9 @@ proc file._style:iostyle {
    running out of storage space or power loss. See also
    :ref:`about-io-ensuring-successful-io`.
 
-   In the future, we hope to automatically close files when the file variable
-   goes out of scope and all channels using that file are closed. The ability
-   for a program to close a file will remain available.
+   Files are automatically closed when the file variable
+   goes out of scope and all channels using that file are closed. Programs
+   may also explicitly close a file using this method.
 
    :arg error: optional argument to capture an error code. If this argument
                is not provided and an error is encountered, this function
@@ -2227,7 +1464,7 @@ proc file.tryGetPath() : string {
   else return ret;
 }
 
-/* 
+/*
 
 Get the path to an open file. Halt if there is an error getting the path.
 
@@ -2448,7 +1685,7 @@ The system file descriptor will be closed when the Chapel file is closed.
   descriptors that do not support the ``seek`` functionality. For example, file
   descriptors that represent pipes or open socket connections have this
   property. In that case, the resulting file value should only be used with one
-  :record:`channel` at a time.  
+  :record:`channel` at a time.
   The I/O system will ignore the channel offsets when reading or writing
   to files backed by non-seekable file descriptors.
 
@@ -2678,6 +1915,16 @@ record channel {
   var home:locale;
   pragma "no doc"
   var _channel_internal:qio_channel_ptr_t = QIO_CHANNEL_PTR_NULL;
+
+  // The member variable _readWriteThisFromLocale is used to support
+  // writeThis needing to know where the I/O started. It is a member
+  // variable on channel so that calls to writeln etc within writeThis
+  // can preserve this information. Not used outside of
+  // calling writeThis/readThis. If _readWriteThisFromLocale != nil, then
+  // we are working on a channel created for running writeThis/readThis.
+  // Therefore further locking by the same task is not necessary.
+  pragma "no doc"
+  var _readWriteThisFromLocale:locale;
 }
 
 // TODO -- shouldn't have to write this this way!
@@ -2720,7 +1967,7 @@ proc channel.channel(param writing:bool, param kind:iokind, param locking:bool, 
 }
 
 pragma "no doc"
-proc ref channel.~channel() {
+proc ref channel.deinit() {
   on this.home {
     qio_channel_release(_channel_internal);
     this._channel_internal = QIO_CHANNEL_PTR_NULL;
@@ -2875,7 +2122,7 @@ proc channel._ch_ioerror(errstr:string, msg:string) {
 
 /*
    Acquire a channel's lock.
-   
+
    :arg error: optional argument to capture an error code. If this argument
                is not provided and an error is encountered, this function
                will halt with an error message.
@@ -2901,7 +2148,7 @@ inline proc channel.lock() {
 
 /*
    Release a channel's lock.
- */ 
+ */
 inline proc channel.unlock() {
   if locking {
     on this.home {
@@ -2931,11 +2178,11 @@ proc channel.offset():int(64) {
 
 /*
    Move a channel offset forward.
-   
+
    For a reading channel, this function will consume the next ``amount``
    bytes. If EOF is reached, the channel position may be left at the
    EOF.
-   
+
    For a writing channel, this function will write ``amount`` zeros - or some
    other data if it is stored in the channel's buffer, for example with
    :proc:`channel._mark` and :proc:`channel._revert`.
@@ -2944,7 +2191,7 @@ proc channel.offset():int(64) {
                is not provided and an error is encountered, this function
                will halt with an error message.
 
- */   
+ */
 proc channel.advance(amount:int(64), ref error:syserr) {
   on this.home {
     this.lock();
@@ -2964,7 +2211,7 @@ proc channel.advance(amount:int(64)) {
   }
 }
 
-// These begin with an _ to indicated that 
+// These begin with an _ to indicated that
 // you should have a lock before you use these... there is probably
 // a better name for them...
 
@@ -2985,13 +2232,13 @@ inline proc channel._offset():int(64) {
    *mark* a channel - that is, save the current offset of the channel on its
    *mark stack*. This function should only be called on a channel that is
    already locked with with :proc:`channel.lock`.
-   
+
    The *mark stack* stores several channel offsets. For any channel offset that
    is between the minimum and maximum value in the *mark stack*, I/O operations
    on the channel will keep that region of the file buffered in memory so that
    those operations can be un-done. As a result, it is possible to perform *I/O
    transactions* on a channel. The basic steps for an *I/O transaction* are:
-   
+
     * lock the channel with :proc:`channel.lock`
       (or work on an already-locked channel)
     * *mark* the current position with :proc:`channel._mark`
@@ -3003,7 +2250,7 @@ inline proc channel._offset():int(64) {
       calling :proc:`channel._revert`. Subsequent I/O operations will work
       as though nothing happened.
     * unlock the channel with :proc:`channel.unlock` if necessary
-   
+
   .. note::
 
     Note that it is possible to request an entire file be buffered in memory
@@ -3013,7 +2260,7 @@ inline proc channel._offset():int(64) {
 
   :returns: an error code, if an error was encountered.
 
- */ 
+ */
 // TODO - use the out error= style and otherwise halt on error, for consistency
 inline proc channel._mark():syserr {
   return qio_channel_mark(false, _channel_internal);
@@ -3075,6 +2322,33 @@ proc channel._set_style(style:iostyle) {
 
 /*
 
+   Return the locale on which an ongoing I/O was started with a channel.
+   This method will return nil unless it is called on a channel that is
+   the formal argument to a `readThis`, `writeThis`, or `readWriteThis` method.
+
+ */
+inline
+proc channel.readWriteThisFromLocale() {
+  return _readWriteThisFromLocale;
+}
+
+// Returns the original locale that the I/O started on
+// Uses readWriteThisFromLocale in order to propagate that
+// information across readThis/writeThis/readWriteThis calls.
+// If readWriteThisFromLocale returns nil, that means the channel
+// was not created to call readThis/writeThis/readWriteThis and
+// so the original locale of the I/O is `here`.
+pragma "no doc"
+inline
+proc channel.getLocaleOfIoRequest() {
+  var ret = this.readWriteThisFromLocale();
+  if ret == nil then
+    ret = here;
+  return ret;
+}
+
+/*
+
 Open a file at a particular path or URL and return a reading channel for it.
 This function is equivalent to calling :proc:`open` and then
 :proc:`file.reader` on the resulting file.
@@ -3089,7 +2363,7 @@ This function is equivalent to calling :proc:`open` and then
             to ``iokind.dynamic``, meaning that the associated
             :record:`iostyle` controls the formatting choices.
 :arg locking: compile-time argument to determine whether or not the
-              channel should use locking; sets the 
+              channel should use locking; sets the
               corresponding parameter of the :record:`channel` type.
               Defaults to true, but when safe, setting it to false
               can improve performance.
@@ -3097,7 +2371,7 @@ This function is equivalent to calling :proc:`open` and then
             channel should start reading. Defaults to 0.
 :arg end: zero-based byte offset indicating where in the file the
           channel should no longer be allowed to read. Defaults
-          to a ``max(int)`` - meaning no end point. 
+          to a ``max(int)`` - meaning no end point.
 :arg hints: optional argument to specify any hints to the I/O system about
             this file. See :type:`iohints`.
 :arg url: optional argument to specify a URL to open. See :mod:`Curl` and
@@ -3158,7 +2432,7 @@ This function is equivalent to calling :proc:`open` with ``iomode.cwr`` and then
            to ``iokind.dynamic``, meaning that the associated
            :record:`iostyle` controls the formatting choices.
 :arg locking: compile-time argument to determine whether or not the
-              channel should use locking; sets the 
+              channel should use locking; sets the
               corresponding parameter of the :record:`channel` type.
               Defaults to true, but when safe, setting it to false
               can improve performance.
@@ -3166,7 +2440,7 @@ This function is equivalent to calling :proc:`open` with ``iomode.cwr`` and then
             channel should start writing. Defaults to 0.
 :arg end: zero-based byte offset indicating where in the file the
           channel should no longer be allowed to write. Defaults
-          to a ``max(int)`` - meaning no end point. 
+          to a ``max(int)`` - meaning no end point.
 :arg hints: optional argument to specify any hints to the I/O system about
             this file. See :type:`iohints`.
 :arg url: optional argument to specify a URL to open. See :mod:`Curl` and
@@ -3229,7 +2503,7 @@ proc openwriter(path:string="", param kind=iokind.dynamic, param locking=true,
               to ``iokind.dynamic``, meaning that the associated
               :record:`iostyle` controls the formatting choices.
    :arg locking: compile-time argument to determine whether or not the
-                 channel should use locking; sets the 
+                 channel should use locking; sets the
                  corresponding parameter of the :record:`channel` type.
                  Defaults to true, but when safe, setting it to false
                  can improve performance.
@@ -3237,7 +2511,7 @@ proc openwriter(path:string="", param kind=iokind.dynamic, param locking=true,
                channel should start reading. Defaults to 0.
    :arg end: zero-based byte offset indicating where in the file the
              channel should no longer be allowed to read. Defaults
-             to a ``max(int)`` - meaning no end point. 
+             to a ``max(int)`` - meaning no end point.
    :arg hints: provide hints about the I/O that this channel will perform. See
                :type:`iohints`. The default value of :const:`IOHINT_NONE`
                will cause the channel to use the hints provided when opening
@@ -3245,7 +2519,7 @@ proc openwriter(path:string="", param kind=iokind.dynamic, param locking=true,
    :arg style: provide a :record:`iostyle` to use with this channel. The
                default value will be the :record:`iostyle` associated with
                this file.
-   
+
  */
 // It is the responsibility of the caller to release the returned channel
 // if the error code is nonzero.
@@ -3328,7 +2602,7 @@ proc file.lines(param locking:bool = true, start:int(64) = 0, end:int(64) = max(
               to ``iokind.dynamic``, meaning that the associated
               :record:`iostyle` controls the formatting choices.
    :arg locking: compile-time argument to determine whether or not the
-                 channel should use locking; sets the 
+                 channel should use locking; sets the
                  corresponding parameter of the :record:`channel` type.
                  Defaults to true, but when safe, setting it to false
                  can improve performance.
@@ -3336,7 +2610,7 @@ proc file.lines(param locking:bool = true, start:int(64) = 0, end:int(64) = max(
                channel should start writing. Defaults to 0.
    :arg end: zero-based byte offset indicating where in the file the
              channel should no longer be allowed to write. Defaults
-             to a ``max(int)`` - meaning no end point. 
+             to a ``max(int)`` - meaning no end point.
    :arg hints: provide hints about the I/O that this channel will perform. See
                :type:`iohints`. The default value of :const:`IOHINT_NONE`
                will cause the channel to use the hints provided when opening
@@ -3344,7 +2618,7 @@ proc file.lines(param locking:bool = true, start:int(64) = 0, end:int(64) = max(
    :arg style: provide a :record:`iostyle` to use with this channel. The
                default value will be the :record:`iostyle` associated with
                this file.
-   
+
  */
 // It is the responsibility of the caller to retain and release the returned
 // channel.
@@ -3362,7 +2636,7 @@ proc file.writer(out error:syserr, param kind=iokind.dynamic, param locking=true
 
 // documented in error= version
 pragma "no doc"
-proc file.writer(param kind=iokind.dynamic, param locking=true, start:int(64) = 0, end:int(64) = max(int(64)), hints:c_int = 0, style:iostyle = this._style): channel(true,kind,locking) 
+proc file.writer(param kind=iokind.dynamic, param locking=true, start:int(64) = 0, end:int(64) = max(int(64)), hints:c_int = 0, style:iostyle = this._style): channel(true,kind,locking)
 {
   var err:syserr = ENOERR;
   var ret = this.writer(err, kind, locking, start, end, hints, style);
@@ -3626,7 +2900,10 @@ private inline proc _write_binary_internal(_channel_internal:qio_channel_ptr_t, 
 
 // Channel must be locked, must be running on this.home
 // x is ref (vs out) because it might contain a literal string.
-private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t, param kind:iokind, ref x:?t):syserr where _isIoPrimitiveTypeOrNewline(t) {
+private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t,
+                                       param kind:iokind,
+                                       ref x:?t,
+                                       loc:locale):syserr where _isIoPrimitiveTypeOrNewline(t) {
   var e:syserr = ENOERR;
   if t == ioNewline {
     return qio_channel_skip_past_newline(false, _channel_internal, x.skipWhitespaceOnly);
@@ -3661,7 +2938,10 @@ private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t, para
 }
 
 // Channel must be locked, must be running on this.home
-private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t, param kind:iokind, x:?t):syserr where _isIoPrimitiveTypeOrNewline(t) {
+private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t,
+                                        param kind:iokind,
+                                        x:?t,
+                                        loc:locale):syserr where _isIoPrimitiveTypeOrNewline(t) {
   var e:syserr = ENOERR;
   if t == ioNewline {
     return qio_channel_write_newline(false, _channel_internal);
@@ -3689,15 +2969,19 @@ private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t, par
   return e;
 }
 
-private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t, param kind:iokind, ref x:?t):syserr {
-  
+private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t,
+                                       param kind:iokind,
+                                       ref x:?t,
+                                       loc:locale):syserr {
+
   // Create a new channel that borrows the pointer in the
   // existing channel so we can avoid locking (because we
   // already have the lock)
-
   var reader = new channel(writing=false, iokind.dynamic, locking=false,
                            home=here,
-                           _channel_internal=_channel_internal);
+                           _channel_internal=_channel_internal,
+                           _readWriteThisFromLocale=loc);
+
   var err:syserr = ENOERR;
 
   // Clear the channel error so we can use the error
@@ -3715,13 +2999,18 @@ private inline proc _read_one_internal(_channel_internal:qio_channel_ptr_t, para
   return err;
 }
 
-private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t, param kind:iokind, x:?t):syserr {
+pragma "suppress lvalue error"
+private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t,
+                                        param kind:iokind,
+                                        const x:?t,
+                                        loc:locale):syserr {
   // Create a new channel that borrows the pointer in the
   // existing channel so we can avoid locking (because we
   // already have the lock)
   var writer = new channel(writing=true, iokind.dynamic, locking=false,
                            home=here,
-                           _channel_internal=_channel_internal);
+                           _channel_internal=_channel_internal,
+                           _readWriteThisFromLocale=loc);
 
   var err:syserr = ENOERR;
 
@@ -3738,7 +3027,7 @@ private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t, par
     } else {
       iolit = new ioLiteral("nil");
     }
-    _write_one_internal(_channel_internal, iokind.dynamic, iolit);
+    _write_one_internal(_channel_internal, iokind.dynamic, iolit, loc);
   } else {
     x.writeThis(writer);
   }
@@ -3755,12 +3044,13 @@ private inline proc _write_one_internal(_channel_internal:qio_channel_ptr_t, par
 pragma "no doc"
 proc channel.readIt(ref x) {
   if writing then compilerError("read on write-only channel");
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var error:syserr;
     error = qio_channel_error(_channel_internal);
     if ! error {
-      error = _read_one_internal(_channel_internal, kind, x);
+      error = _read_one_internal(_channel_internal, kind, x, origLocale);
       _qio_channel_set_error_unlocked(_channel_internal, error);
     }
     this.unlock();
@@ -3770,12 +3060,13 @@ proc channel.readIt(ref x) {
 pragma "no doc"
 proc channel.writeIt(x) {
   if !writing then compilerError("write on read-only channel");
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var error:syserr;
     error = qio_channel_error(_channel_internal);
     if ! error {
-      error = _write_one_internal(_channel_internal, kind, x);
+      error = _write_one_internal(_channel_internal, kind, x, origLocale);
       _qio_channel_set_error_unlocked(_channel_internal, error);
     }
     this.unlock();
@@ -3957,15 +3248,16 @@ inline proc channel.read(ref args ...?k,
                   out error:syserr):bool {
   if writing then compilerError("read on write-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     for param i in 1..k {
       if !error {
         if args[i].locale == here {
-          error = _read_one_internal(_channel_internal, kind, args[i]);
+          error = _read_one_internal(_channel_internal, kind, args[i], origLocale);
         } else {
           var tmp:args[i].type;
-          error = _read_one_internal(_channel_internal, kind, tmp);
+          error = _read_one_internal(_channel_internal, kind, tmp, origLocale);
           args[i] = tmp;
         }
       }
@@ -4077,8 +3369,7 @@ proc stringify(args ...?k):string {
 
 private var _arg_to_proto_names = ("a", "b", "c", "d", "e", "f");
 
-private proc _args_to_proto(args ...?k,
-                    preArg:string) {
+private proc _args_to_proto(const args ...?k, preArg:string) {
   // FIX ME: lot of potential leaking going on here with string concat
   // But this is used for error handling so maybe we don't care.
   var err_args: string;
@@ -4108,7 +3399,7 @@ inline proc channel.read(ref args ...?k):bool {
   }
 }
 
-/* 
+/*
 
    Read values from a channel. The input will be consumed atomically - the
    channel lock will be held while reading all of the passed values.
@@ -4116,7 +3407,7 @@ inline proc channel.read(ref args ...?k):bool {
    :arg args: a list of arguments to read. Basic types are handled
               internally, but for other types this function will call
               value.readThis() with a ``Reader`` argument as described
-              in the specification.
+              in :ref:`readThis-writeThis-readWriteThis`.
    :arg style: optional argument to provide an :type:`iostyle` for this read.
                If this argument is not provided, use the current style
                associated with this channel.
@@ -4131,13 +3422,14 @@ proc channel.read(ref args ...?k,
                   out error:syserr):bool {
   if writing then compilerError("read on write-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var save_style = this._style();
     this._set_style(style);
     for param i in 1..k {
       if !error {
-        error = _read_one_internal(_channel_internal, kind, args[i]);
+        error = _read_one_internal(_channel_internal, kind, args[i], origLocale);
       }
     }
     this._set_style(save_style);
@@ -4230,6 +3522,7 @@ where arg.rank == 1 && isRectangularArr(arg)
 proc channel.readline(ref arg:string, out error:syserr):bool {
   if writing then compilerError("read on write-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var save_style = this._style();
@@ -4237,7 +3530,7 @@ proc channel.readline(ref arg:string, out error:syserr):bool {
     mystyle.string_format = QIO_STRING_FORMAT_TOEND;
     mystyle.string_end = 0x0a; // ascii newline.
     this._set_style(mystyle);
-    error = _read_one_internal(_channel_internal, iokind.dynamic, arg);
+    error = _read_one_internal(_channel_internal, iokind.dynamic, arg, origLocale);
     this._set_style(save_style);
     this.unlock();
   }
@@ -4289,7 +3582,7 @@ proc channel.readstring(ref str_out:string, len:int(64) = -1, out error:syserr):
     var binary:uint(8) = qio_channel_binary(_channel_internal);
     var byteorder:uint(8) = qio_channel_byteorder(_channel_internal);
 
-    if binary { 
+    if binary {
       error = qio_channel_read_string(false, byteorder,
                                       iostringstyle.data_toeof,
                                       this._channel_internal, tx,
@@ -4440,7 +3733,7 @@ proc channel.readln(ref args ...?k,
   return this.read((...args), nl, error=error);
 }
 
-/* 
+/*
 
    Read values from a channel and then consume any bytes until
    newline is reached. The input will be consumed atomically - the
@@ -4450,7 +3743,7 @@ proc channel.readln(ref args ...?k,
               with zero or more such arguments. Basic types are handled
               internally, but for other types this function will call
               value.readThis() with a ``Reader`` argument as described
-              in the specification.
+              in :ref:`readThis-writeThis-readWriteThis`.
    :arg style: optional argument to provide an :type:`iostyle` for this read.
                If this argument is not provided, use the current style
                associated with this channel.
@@ -4477,7 +3770,7 @@ proc channel.readln(ref args ...?k,
 /*
    Read a value of passed type.
    Halts if an error is encountered.
-  
+
    .. note::
 
      It is difficult to handle errors or to handle reaching the end of
@@ -4506,7 +3799,7 @@ proc channel.read(type t) {
 /*
    Read a value of passed type followed by a newline.
    Halts if an error is encountered.
-   
+
    .. note::
 
      It is difficult to handle errors or to handle reaching the end of
@@ -4529,7 +3822,7 @@ proc channel.readln(type t) {
    Read values of passed types followed by a newline
    and return a tuple containing the read values.
    Halts if an error is encountered.
-   
+
    :arg t: more than one type to read
    :returns: a tuple of the read values
  */
@@ -4544,7 +3837,7 @@ proc channel.readln(type t ...?numTypes) where numTypes > 1 {
 /*
    Read values of passed types and return a tuple containing the read values.
    Halts if an error is encountered.
-   
+
    :arg t: more than one type to read
    :returns: a tuple of the read values
  */
@@ -4557,14 +3850,15 @@ proc channel.read(type t ...?numTypes) where numTypes > 1 {
 
 // documented in style= error= version
 pragma "no doc"
-inline proc channel.write(args ...?k, out error:syserr):bool {
+inline proc channel.write(const args ...?k, out error:syserr):bool {
   if !writing then compilerError("write on read-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     for param i in 1..k {
       if !error {
-        error = _write_one_internal(_channel_internal, kind, args(i));
+        error = _write_one_internal(_channel_internal, kind, args(i), origLocale);
       }
     }
     this.unlock();
@@ -4574,7 +3868,7 @@ inline proc channel.write(args ...?k, out error:syserr):bool {
 
 // documented in style= error= version
 pragma "no doc"
-inline proc channel.write(args ...?k):bool {
+inline proc channel.write(const args ...?k):bool {
   var e:syserr = ENOERR;
   this.write((...args), error=e);
   if !e then return true;
@@ -4603,18 +3897,19 @@ inline proc channel.write(args ...?k):bool {
    :returns: `true` if the write succeeded
 
  */
-proc channel.write(args ...?k,
+proc channel.write(const args ...?k,
                    style:iostyle,
                    out error:syserr):bool {
   if !writing then compilerError("write on read-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var save_style = this._style();
     this._set_style(style);
     for param i in 1..k {
       if !error {
-        error = _write_one_internal(_channel_internal, iokind.dynamic, args(i));
+        error = _write_one_internal(_channel_internal, iokind.dynamic, args(i), origLocale);
       }
     }
     this._set_style(save_style);
@@ -4625,7 +3920,7 @@ proc channel.write(args ...?k,
 
 // documented in style= error= version
 pragma "no doc"
-proc channel.write(args ...?k,
+proc channel.write(const args ...?k,
                    style:iostyle):bool {
   var e:syserr = ENOERR;
   this.write((...args), style=style, error=e);
@@ -4652,25 +3947,25 @@ proc channel.writeln():bool {
 
 // documented in style= error= version
 pragma "no doc"
-proc channel.writeln(args ...?k, out error:syserr):bool {
+proc channel.writeln(const args ...?k, out error:syserr):bool {
   return this.write((...args), new ioNewline(), error=error);
 }
 
 // documented in style= error= version
 pragma "no doc"
-proc channel.writeln(args ...?k):bool {
+proc channel.writeln(const args ...?k):bool {
   return this.write((...args), new ioNewline());
 }
 
 // documented in style= error= version
 pragma "no doc"
-proc channel.writeln(args ...?k,
+proc channel.writeln(const args ...?k,
                      style:iostyle):bool {
   return this.write((...args), new ioNewline(), style=style);
 }
 
 
-/* 
+/*
 
    Write values to a channel followed by a newline.  The output will be
    produced atomically - the channel lock will be held while writing all of the
@@ -4689,7 +3984,7 @@ proc channel.writeln(args ...?k,
    :returns: `true` if the write succeeded
 
  */
-proc channel.writeln(args ...?k,
+proc channel.writeln(const args ...?k,
                      style:iostyle,
                      out error:syserr):bool {
   return this.write((...args), new ioNewline(), style=style, error=error);
@@ -4896,18 +4191,18 @@ proc channel.itemWriter(type ItemType, param kind:iokind=iokind.dynamic) {
 // And now, the toplevel items.
 
 /* standard input, otherwise known as file descriptor 0 */
-const stdin:channel(false, iokind.dynamic, true) = openfd(0).reader(); 
+const stdin:channel(false, iokind.dynamic, true) = openfd(0).reader();
 /* standard output, otherwise known as file descriptor 1 */
-const stdout:channel(true, iokind.dynamic, true) = openfp(chpl_cstdout()).writer(); 
+const stdout:channel(true, iokind.dynamic, true) = openfp(chpl_cstdout()).writer();
 /* standard error, otherwise known as file descriptor 2 */
-const stderr:channel(true, iokind.dynamic, true) = openfp(chpl_cstderr()).writer(); 
+const stderr:channel(true, iokind.dynamic, true) = openfp(chpl_cstderr()).writer();
 
 /* Equivalent to stdout.write. See :proc:`channel.write` */
-proc write(args ...?n) {
+proc write(const args ...?n) {
   stdout.write((...args));
 }
 /* Equivalent to stdout.writeln. See :proc:`channel.writeln` */
-proc writeln(args ...?n) {
+proc writeln(const args ...?n) {
   stdout.writeln((...args));
 }
 
@@ -4943,7 +4238,7 @@ proc read(type t ...?numTypes) {
 
 /* Delete a file. This function is likely to be replaced
    by :proc:`FileSystem.remove`.
- 
+
    :arg path: the path to the file to remove
    :arg error: optional argument to capture an error code. If this argument
                is not provided and an error is encountered, this function
@@ -4971,6 +4266,902 @@ proc unicodeSupported():bool {
   return qio_unicode_supported() > 0;
 }
 
+
+/************** Distributed File Systems ***************/
+
+private extern const FTYPE_NONE   : c_int;
+private extern const FTYPE_HDFS   : c_int;
+private extern const FTYPE_LUSTRE : c_int;
+private extern const FTYPE_CURL   : c_int;
+
+pragma "no doc"
+proc file.fstype():int {
+  var t:c_int;
+  var err:syserr = ENOERR;
+  on this.home {
+    err = qio_get_fs_type(this._file_internal, t);
+  }
+  if err then ioerror(err, "in file.fstype()");
+  return t:int;
+}
+
+/*
+   Returns (chunk start, chunk end) for the first chunk in the file
+   containing data in the region start..end-1. Note that the returned
+   chunk might not cover all of the region in question.
+
+   Returns (0,0) if no such value exists.
+
+   :arg start: the file offset (starting from 0) where the region begins
+   :arg end: the file offset just after the region
+   :returns: a tuple of (chunkStart, chunkEnd) so that the bytes
+             in chunkStart..chunkEnd-1 are stored in a manner that makes
+             reading that chunk at a time most efficient
+ */
+proc file.getchunk(start:int(64) = 0, end:int(64) = max(int(64))):(int(64),int(64)) {
+  var err:syserr = ENOERR;
+  var s = 0;
+  var e = 0;
+
+  on this.home {
+    var real_end = min(end, this.length());
+    var len:int(64);
+
+    err = qio_get_chunk(this._file_internal, len);
+    if err then ioerror(err, "in file.getchunk(start:int(64), end:int(64))");
+
+    if (len != 0 && (real_end > start)) {
+      // TAKZ - Note that we are only wanting to return an inclusive range -- i.e., we
+      // will only return a non-zero start and end [n,m], iff n and m are in [start, end].
+      for i in start..real_end by len {
+        // Our stripes are too large, so we can't give back a range within the given
+        // bounds
+        if i > end then
+          break;
+
+        if i >= start {
+          var new_start = i;
+          var new_end:int(64);
+          if (i / len + 1) * len >= real_end then
+            new_end = real_end;
+          // rounding
+          else new_end = (i / len + 1) * len;
+          if new_start == new_end {
+            break;
+          } else {
+            s = new_start;
+            e = new_end;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return (s, e);
+}
+
+/*
+
+   Returns the 'best' locale to run something working with the region
+   of the file in start..end-1.
+
+   This *must* return the same result when called from different locales.
+   Returns a domain of locales that are "best" for the given region. If no
+   locales are "best" we return a domain containing all locales.
+
+   :arg start: the file offset (starting from 0) where the region begins
+   :arg end: the file offset just after the region
+   :returns: a set of locales that are best for working with this region
+   :rtype: domain(locale)
+ */
+proc file.localesForRegion(start:int(64), end:int(64)) {
+
+  proc findloc(loc:string, locs:c_ptr(c_string), end:int) {
+    for i in 0..end-1 {
+      if (loc == locs[i]) then
+        return true;
+    }
+    return false;
+  }
+
+  var ret: domain(locale);
+  on this.home {
+    var err:syserr;
+    var locs: c_ptr(c_string);
+    var num_hosts:c_int;
+    err = qio_locales_for_region(this._file_internal, start, end, locs, num_hosts);
+    // looping over Locales enforces the ordering constraint on the locales.
+    for loc in Locales {
+      if (findloc(loc.name, locs, num_hosts:int)) then
+        ret += loc;
+    }
+
+    // We allocated memory in the runtime for this, so free it now
+    if num_hosts != 0 {
+      for i in 0..num_hosts-1 do
+        qio_free_string(locs[i]);
+      c_free(locs);
+    }
+
+    // We found no "good" locales. So any locale is just as good as the next
+    if ret.numIndices == 0 then
+      for loc in Locales do
+        ret += loc;
+  }
+  return ret;
+}
+
+
+/*
+
+
+Support for formatted input and output.
+
+
+.. _about-io-formatted-io:
+
+Formatted I/O
+-------------
+
+See below for a :ref:`sample-based overview <about-io-formatted-io-overview>`
+of the format strings. Further below, we describes the format string syntax
+:ref:`in detail <about-io-formatted-io-in-detail>`. Finally, we demonstrate the
+functionality with :ref:`example function calls
+<about-io-formatted-io-examples>`.
+
+.. _about-io-formatted-io-overview:
+
+Overview of Format Strings
+++++++++++++++++++++++++++
+
+In a manner similar to C's 'printf' and 'scanf', the IO package includes
+:proc:`channel.writef` and :proc:`channel.readf` functions. These functions take
+in a format string and some arguments. The :proc:`string.format` method is also
+available and is loosely equivalent to C's 'sprintf'. For example, one might do:
+
+.. code-block:: chapel
+
+  writef("My favorite %s is %i\n", "number", 7);
+
+  var s:string = "My favorite %s is %i".format("number", 7);
+  writeln(s);
+
+  // prints:
+  // My favorite number is 7
+  // My favorite number is 7
+
+The following sections offer a tour through the conversions to illustrate the
+common cases. A more precise definition follows in the "Format String
+Syntax in Detail" section below.
+
+In this file, we use "integral" to refer to the Chapel types int or uint and
+"floating-point" to refer to real, imaginary, or complex, of any bit width.
+
+Formatted I/O for C Programmers
++++++++++++++++++++++++++++++++
+
+This table is designed to help C programmers understand the equivalent
+Chapel format specifiers.
+
+========  ===========  ==========================================
+C         Chapel       Meaning
+========  ===========  ==========================================
+%i        %i           an integer in decimal
+%d        %i           an integer in decimal
+%u        %u           an unsigned integer in decimal
+%x        %xu          an unsigned integer in hexadecimal
+%g        %r           real number in exponential or decimal (if compact)
+%7.2g     %7.2r        real, 2 significant digits, padded to 7 columns
+%f        %dr          real number always in decimal
+%7.3f     %7.3dr       real, 3 digits after ``.``, padded to 7 columns
+%e        %er          real number always in exponential
+%7.3e     %7.3er       real, 3 digits after ``.``, padded to 7 columns
+%s        %s           a string without any quoting
+========  ===========  ==========================================
+
+Unlike in C, a value of the wrong type will be cast appropriately - so for
+example printing 2 (an ``int``)  with ``%.2dr`` will result in ``2.00``.  Note
+that ``%n`` and ``%t`` are equivalent to ``%r`` for real conversions and ``%i``
+for numeric conversions; so these are also equivalent to ``%i`` ``%d`` or
+``%g`` in C. Also note that Chapel format strings includes many capabilities
+not available with C formatted I/O routines - including quoted strings,
+binary numbers, complex numbers, and raw binary I/O.
+
+Generic Numeric Conversions
++++++++++++++++++++++++++++
+
+``%{##.###}``
+  decimal number padded on the left with spaces to 2 digits before
+  the point, rounded to 3 after. Works with integral, real, imaginary,
+  or complex arguments.
+
+  In all cases, the output is padded on the left to the total length
+  of the conversion specifier (6 in this example).  The output
+  can be longer, when needed to accommodate the number.
+
+``%{##}``
+  integral value padded out to 2 digits. Also works with real, imaginary
+  or complex numbers by rounding them to integers. Numbers with more
+  digits will take up more space instead of being truncated.
+
+In both conversions above, an imaginary argument gets an 'i' afterwards
+and the entire expression is padded out to the width of ##### digits.
+For example:
+
+.. code-block:: chapel
+
+  writef("|${#####}|\n", 2.0i);
+       // outputs:
+       //   |   2i|
+
+  writef("|%{#####.#}|\n", 2.0i);
+       // outputs:
+       //   |   2.0i|
+
+Complex arguments are printed in the format a + bi, where each of a and b is
+rounded individually as if printed under that conversion on its own. Then, the
+formatted complex number is padded to the requested size. For example:
+
+.. code-block:: chapel
+
+  writef("|%{#########}|\n", 1.0+2.0i);
+       // outputs:
+       //   |   1 + 2i|
+
+  writef("|%{#########.#}|\n", 1.0+2.0i);
+       // outputs:
+       //   | 1.0 + 2.0i|
+
+See :ref:`about-io-formatted-pound-details` for more details
+on this conversion type.
+
+``%n``
+  a "number" - equivalent to one of %i, %u, %r, %m, or %z below,
+  depending on the type
+
+``%17n``
+  a number padded out to 17 columns
+
+``%.4n``
+  a number with 4 significant digits or a precision of 4
+
+Integral Conversions
+++++++++++++++++++++
+
+``%i`` or ``%di``
+  a signed integer in decimal, possibly negative
+  (note - when reading an ``%i``, ``-`` is allowed)
+``%u`` or ``%du``
+  an unsigned decimal integer
+  (note - when reading a ``%u``, ``-`` is not allowed)
+``%bi``
+ a binary signed integer
+``%bu``
+ a binary unsigned integer
+``%@bu``
+ a binary unsigned integer prefixed with ``0b``
+``%oi``
+ an octal signed integer
+``%ou``
+ an octal unsigned integer
+``%@ou``
+ an octal unsigned integer prefixed with ``0o``
+``%xu``
+ a hexadecimal unsigned integer
+``%xi``
+ a hexadecimal signed integer
+``%@xu``
+ a hexadecimal unsigned integer prefixed with ``0x``
+``%Xu``
+ a hexadecimal unsigned integer in uppercase
+``%@Xu``
+ a hexadecimal unsigned integer prefixed with ``0X`` and uppercase
+``%17i``
+ a decimal integer padded on the left with spaces to 17 columns
+ (That is, it is right-justified in a 17-column field.
+ Padding width is ignored when reading integers)
+``%*i``
+ as with ``%17i`` but read the minimum width from the preceding argument
+``%017i``
+ a decimal integer padded on the left with zeros to 17 columns
+``%-17i``
+ a decimal integer left-justified (padded on the right) to 17 columns
+``%+i``
+ a decimal integer showing ``+`` for positive numbers
+``% i``
+ a decimal integer with a space for positive numbers
+``%|4i``
+ output 4 raw, binary bytes of the passed integer in native endianness
+``%<4i``
+ output 4 raw, binary bytes of the passed integer little endian
+``%>4i``
+ output 4 raw, binary bytes of the passed integer big endian
+``%<8i``
+ output 8 raw, binary bytes of the passed integer little endian
+ (byte widths of 1, 2, 4, and 8 are supported for integral conversions)
+
+Real Conversions
+++++++++++++++++
+
+``%r``
+ a real number with decimal or exponential notation, where
+ exponential is chosen if the decimal version would be too long
+
+``%6r``
+ as with ``%r`` but padded on the left to 6 columns (ie right-justified)
+``%-6r``
+ as with ``%r`` but padded on the right to 6 columns (ie left-justified)
+``%.4r``
+ as with ``%r`` but with 4 significant digits
+``%.*r``
+ as with ``%.4r`` but with significant digits read from preceding argument
+``%6.4r``
+ as with ``%r`` but padded on the left to 6 columns
+ and with 4 significant digits
+``%*.*r``
+ as with ``%6.4r`` but read minimum width and significant digits from
+ preceding arguments
+
+``%dr``
+ a real number in decimal notation, e.g. ``12.34``
+``%6dr``
+ a decimal number padded on the left to 6 columns (right-justified)
+``%.4dr``
+ a decimal number with 4 digits after the radix point
+``%6.4dr``
+ a decimal number padded on the left to 6 columns and with 4 digits
+ after the radix point
+ (width and precision are ignored when reading numbers in readf)
+
+``%er``
+ a real number in exponential notation, e.g. ``8.2e-23``
+``%Er``
+ like %er but with the 'e' in uppercase, e.g. ``8.2E-23``
+``%.4er``
+ exponential notation with 4 digits after the period, e.g. ``8.2000e-23``
+
+``%xer``
+ hexadecimal number using p to mark exponent e.g. ``6c.3f7p-2a``
+
+``%|4r``
+ emit 4 raw, binary bytes of the passed number in native endianness
+``%<8r``
+ emit 8 raw, binary bytes of the passed number in little endian
+``%<4r``
+ emit 4 raw, binary bytes of the passed number in little endian
+ (``<`` ``|`` and ``>`` are supported for widths 4 or 8)
+
+Complex and Imaginary Conversions
++++++++++++++++++++++++++++++++++
+
+``%m``
+ an imaginary number, like a real with ``%r`` but ends with an ``i``
+
+``%z``
+ print complex number with ``%r`` for each part in the format ``a + bi``
+``%@z``
+ print complex number with ``%r`` for each part in the format ``(a,b)``
+``%6z``
+ as with ``%z`` but pad the entire complex number out to 6 columns
+``%6.4z``
+ print a and b 4 significant digits and pad the entire complex
+ number out to 6 columns
+``%dz``
+ print a and b with ``%dr``
+``%ez``
+ print a and b with ``%er``
+
+``%|4m``
+ same as ``%|4r``
+``%|8z``
+ emit 8 raw, binary bytes of native-endian complex (a,b are each 4 bytes)
+``%<16z``
+ emit 16 raw, binary bytes of little-endian complex (a,b each 8 bytes)
+
+String and Bytes Conversions
+++++++++++++++++++++++++++++
+
+``%s``
+ a string. When reading, read until whitespace.
+ Note that if you want to be able to read your string back in,
+ you should use one of the quoted or encoded binary versions (see below),
+ since generally with %s it's not clear where the string ends.
+``%c``
+ a single Unicode character (argument should be a string or an integral
+ storing the character code)
+``%17s``
+  * when writing - a string left padded (right justified) to 17 columns
+  * when reading - read up to 17 bytes or a whitespace, whichever comes
+    first, rounding down to whole characters
+``%-17s``
+ * when writing - a string right padded (left justified) to 17 columns
+``%.17s``
+ * when writing - a string truncated to 17 columns. When combined
+   with quoting strings, for example ``%.17"S``, the conversion
+   will print ... after a string if it was truncated. The
+   truncation includes leaving room for the quotes and -
+   if needed - the periods, so the shortest truncated
+   string is ``""...``  Generally, you won't be able to read
+   these back in.
+ * when reading - read exactly 17 Unicode code points
+``%|17s``
+ * when writing - emit string but cause runtime error if length
+   does not match
+ * when reading - read exactly 17 bytes (error if we read < 17 bytes)
+``%|*s``
+  as with %17s but the length is specified in the argument before the string.
+``%"S``
+ use double-quotes to delimit string
+``%'S``
+ use single-quotes to delimit string
+``%cS``
+ use any character (c) to delimit string
+``%{(S)}``
+ quoted string, starting with ``(``, ending with ``)``, where the
+ parens could be replaced by arbitrary characters
+``%*S``
+ quoted string, the arg before the string to specifies quote character
+``%|0S``
+ write a string null-terminated or read bytes until a null-terminator
+``%|*S``
+ means read bytes until a terminator byte. The terminator byte is read
+ from the argument before the string.
+``%|1S`` ``%|2S`` ``%|4S`` and ``%|8S``
+  work with encoded strings storing a length
+  and then the string data. The digit before ``S`` is
+  the number of bytes of length which is by default
+  stored native endian. ``<``, ``|``, ``>`` can be used
+  to specify the endianness of the length field,
+  for example ``%<8S`` is 8 bytes of little-endian length
+  and then string data.
+``%|vS``
+ as with ``%|1S``-``%|8S`` but the string length is encoded using a
+ variable-length byte scheme (which is always the same no matter what
+ endianness). In this scheme, the high bit of each encoded length byte
+ records whether or not there are more length bytes (and the remaining
+ bits encode the length in a big-endian manner).
+
+``%|*vS`` or ``%|*0S``
+ read an encoded string but limit it to a number of bytes
+ read from the argument before the string; when writing
+ cause a runtime error if the string is longer than the
+ maximum.
+
+``%/a+/``
+ where any regular expression can be used instead of ``a+``
+ consume one or more 'a's when reading, gives an error when printing,
+ and does not assign to any arguments
+ (note - regular expression support is dependent on RE2 build;
+ see :mod:`Regexp`)
+
+``%/(a+)/``
+ consume one or more 'a's and then set the corresponding string
+ argument to the read value
+
+``%17/a+/``
+ match a regular expression up to 17 bytes
+ (note that ``%.17/a+/``, which would mean to match 17 characters,
+ is not supported).
+
+``%/*/``
+ next argument contains the regular expression to match
+
+.. (comment) the above started a nested comment, so here we end it */
+
+General Conversions
++++++++++++++++++++
+
+``%t``
+ read or write the object according to its readThis/writeThis routine
+``%jt``
+ read or write an object in JSON format using readThis/writeThis
+``%ht``
+ read or write an object in Chapel syntax using readThis/writeThis
+``%|t``
+ read or write an object in binary native-endian with readThis/writeThis
+``%<t``
+ read or write an object little-endian in binary with readThis/writeThis
+``%>t``
+ read or write an object big-endian in binary with readThis/writeThis
+
+Note About Whitespace
++++++++++++++++++++++
+
+When reading, ``\n`` in a format string matches any zero or more space
+characters other than newline and then exactly one newline character. In
+contrast, ``" "`` matches at least one space character of any kind.
+
+When writing, whitespace is printed from the format string just like any
+other literal would be.
+
+Finally, space characters after a binary conversion will be ignored, so
+that a binary format string can appear more readable.
+
+.. _about-io-formatted-io-in-detail:
+
+Format String Syntax in Detail
+++++++++++++++++++++++++++++++
+
+Chapel's format strings are simpler than those in C in one way: it is no longer
+necessary to specify the types of the arguments in the format string. For
+example, in C the l in %ld is specifying the type of the argument for integer
+(decimal) conversion. That is not necessary in Chapel since the compiler is
+able to use type information from the call.
+
+Format strings in Chapel consist of:
+
+ * conversion specifiers e.g. ``"%xi"`` (described below)
+ * newline e.g. ``"\n"``
+
+   * when writing - prints a newline
+   * when reading - reads any amount of non-newline whitespace and then
+     exactly one newline. Causes the format string not to
+     match if it did not read a newline.
+
+ * other whitespace e.g. ``" "``
+
+    * when writing - prints as the specified whitespace
+    * when reading - matches at least one character of whitespace, possibly
+      including newlines.
+
+ * other text e.g. "test"
+
+    * when writing - prints the specified text
+    * when reading - matches the specified text
+
+.. _about-io-formatted-pound-details:
+
+# Specifiers
+++++++++++++
+
+All # specifiers must be enclosed in ``%{}`` syntax, for example ``%{#}`` is the
+shortest one, and ``%{#.#}`` is a more typical one. The integer portion of the
+number will be padded out to match the number of ``#`` s before the decimal
+point, and the number of ``#`` s after the decimal point indicate how many
+digits to print after the decimal point. In other words, display how many
+digits to use when printing a floating-point number by using the # symbol to
+stand for digits. The fractional portion of the number will be rounded
+appropriately and extra space will be made if the integer portion is too small:
+
+.. code-block:: chapel
+
+  writef("n:%{###.###}\n", 1.2349);
+       // outputs:
+       // n:  1.235
+
+This syntax also works for numbers without a decimal point by rounding them
+appropriately.
+
+A # specifier may start with a ``.``.
+
+.. code-block:: chapel
+
+  writef("%{.##}\n", 0.777);
+       // outputs:
+       //  0.78
+
+% Specifiers
+++++++++++++
+
+Specifiers starting with % offer quite a few options. First, some basic
+rules.
+
+``%%``
+ means a literal ``%``
+``\n``
+ means a literal newline
+``\\``
+ means a single backslash
+``%{}``
+ curly braces can wrap a ``%`` or ``#`` conversion specifier. That way, even
+ odd specifiers can be interpreted unambiguously. Some of the more complex
+ features require the use of the ``%{}`` syntax, but it's always
+ acceptable to use curly braces to make the format string clearer.
+ Curly braces are required for # conversion specifiers.
+
+In general, a ``%`` specifier consists of either text or binary conversions:
+
+::
+
+ %
+ [optional endian flag (binary conversions only)]
+ [optional flags]
+ [optional field width or size in bytes]
+ [optional . then precision]
+ [optional base flag]
+ [optional exponential type]
+ [conversion type]
+
+Going through each section for text conversions:
+
+
+[optional flags]
+  ``@``
+   means "alternate form". It means to print out a base when not using
+   decimal (e.g. ``0xFFF`` or ``0b101011``); and it will format a complex
+   number with parens instead of as e.g. ``1.0+2.0i``
+  ``+``
+   means to show a plus sign when printing positive numbers
+  ``0``
+   means to pad numeric conversions with 0 instead of space
+  ``" "``
+   (a space) leaves a blank before a positive number
+   (in order to help line up with negative numbers)
+  ``-``
+   left-justify the converted value instead of right-justifying.
+   Note, if both ``0`` and ``-`` are given, the effect is as if only ``-``
+   were given.
+  ``~``
+   when reading a record or class instance, skip over fields in the input not
+   present in the Chapel type. This flag currently only works in combination
+   with the JSON format.  This flag allows a Chapel program to describe only the
+   relevant fields in a record when the input might contain many more fields.
+
+
+[optional field width]
+   When printing numeric or string values, the field width specifies the number
+   of *columns* that the conversion should use to display the value. It can be
+   ``*``, which means to read the field width from an integral argument before
+   the converted value.
+
+   For string conversions in readf (``%s`` ``%"`` ``%'`` ``%//``), the field
+   width specifies the maximum number of bytes to read.
+
+   For numeric conversions in readf, the field width is ignored.
+
+[optional . then precision]
+   When printing floating point values, the precision is used to control
+   the number of decimal digits to print.  For ``%r`` conversions, it
+   specifies the number of significant digits to print; for ``%dr`` or ``%er``
+   conversions, it specifies the number of digits following the decimal point.
+   It can also be ``*``, which means to read the precision from an integral
+   argument before the converted value.
+
+   For textual string conversions in writef, (``%s`` ``%"`` ``%'``), the
+   precision indicates the maximum number of columns to print - and the result
+   will be truncated if it does not fit. In readf for these textual string
+   conversions, the precision indicates the maximum number of characters
+   (e.g. Unicode code points) to input.
+
+   The precision is silently ignored for integral conversions
+   (``%i``, ``%u``, etc) and for ``%//`` conversions.
+
+[optional base flag]
+   ``d``
+    means decimal (and not exponential for floating-point)
+   ``x``
+    means lower-case hexadecimal
+   ``X``
+    means upper-case hexadecimal
+   ``o``
+    means octal
+   ``b``
+    means binary
+   ``j``
+    means JSON-style strings, numbers, and structures
+   ``h``
+    means Chapel-style strings, numbers, and structures
+   ``'``
+    means single-quoted string (with \\ and \')
+   ``"``
+    means double-quoted string (with \\ and \")
+
+[optional exponential type]
+   ``e``
+    means floating-point conversion printing exponential ``-12.34e+56``
+   ``E``
+    means floating-point conversion printing uppercase
+    exponential ``-12.34E+56``
+
+[conversion type]
+   ``t``
+    means *type-based* or *thing* - uses writeThis/readThis but ignores
+    width and precision
+   ``n``
+    means type-based number, allowing width and precision
+   ``i``
+    means integral conversion
+   ``u``
+    means unsigned integral conversion
+   ``r``
+    means real conversion (e.g. ``12.23``)
+   ``m``
+    means imaginary conversion with an ``i`` after it (e.g. ``12.23i``)
+   ``z``
+    means complex conversion
+   ``s``
+    means string conversion
+   ``S``
+    means a quoted string conversion
+   ``{cS}``
+    means string conversion with quote char *c*
+   ``{*S}``
+    means string conversion with quote char in argument before the string
+   ``{xSy}``
+    means string conversion with left and right quote chars *x* and *y*
+   ``/.../``
+    means a regular expression (for reading only)
+   ``{/.../xyz}``
+    means regular expression with flags *xyz*
+   ``c``
+    means a Unicode character - either the first character in a string
+    or an integral character code
+
+For binary conversions:
+
+[optional endian flag]
+   ``<``
+    means little-endian
+   ``>``
+    means big-endian
+   ``|``
+    means native-endian
+
+[optional size in bytes]
+   This is the number of bytes the format should read or write in this
+   conversion. For integral conversions (e.g. ``%|i``) it specifies the number
+   of bytes in the integer, and 1, 2, 4, and 8 are supported. For real and
+   imaginary conversions, 4 and 8 are supported. For complex conversions,
+   8 and 16 are supported. The size in bytes is *required* for binary
+   integral and floating-point conversions.
+
+   The size can be ``*``, which means that the number of bytes is read
+   from the argument before the conversion.
+
+   For strings, if a terminator or length field is specified, exactly this
+   number is the maximum size in bytes; if the terminator or length is not
+   specified, the string must be exactly that size (and if the argument is not
+   exactly that number of bytes it will cause an error even when writing).
+
+[conversion type]
+   ``t``
+    means *type-based* or *thing* - to read or write with readThis/writeThis
+   ``n``
+    means type-based number (size is not mandatory)
+   ``i``
+    means integral. Note that the size is mandatory for binary integral
+    conversions
+   ``u``
+    means unsigned integral. Note that the size is mandatory for binary
+    integral conversions
+   ``r``
+    means real. Note that the size is mandatory for binary real conversions
+   ``m``
+    works the same as ``r`` for binary conversions
+   ``z``
+    means complex. Note that the size is mandatory for binary complex
+    conversions
+   ``s``
+    * means string binary I/O
+    * ``%|17s`` means exactly 17 byte string
+   ``0S``/``1S``/``2S``/``4S``/``8S``
+    * mean encoded string binary I/O:
+    * ``%|0S`` means null-terminated string
+    * ``%{|S*}`` means  next-argument specifies string terminator byte
+    * ``%|1S`` means a one-byte length and then the string
+    * ``%|2S`` means a two-byte length and then the string
+    * ``%|4S`` means a four-byte length and then the string
+    * ``%|8S`` means an eight-byte length and then the string
+    * ``%|vS`` means a variable-byte-encoded length and then the string
+   ``c``
+    means a Unicode character - either the first character in a string
+    or an integral character code
+
+
+.. _about-io-formatted-io-examples:
+
+Formatted I/O Examples
+++++++++++++++++++++++
+
+.. code-block:: chapel
+
+  writef("%5i %5s %5r\n", 1, "test", 6.34);
+       // outputs:
+       //    1  test  6.34
+
+  writef("%2.4z\n", 43.291 + 279.112i);
+       // outputs:
+       // 43.29 + 279.1i
+
+  writef("%<4u", 0x11223344);
+       // outputs:
+       // (hexdump of the output)
+       // 4433 2211
+  writef("%>4u", 0x11223344);
+       // outputs:
+       // (hexdump of the output)
+       // 1122 3344
+  writef("%<4i %<4i", 2, 32);
+       // outputs:
+       // (hexdump of the output -- note that spaces after
+       //  a binary format specifier are ignored)
+       // 0200 0000 2000 0000
+
+
+  writef("%|0S\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 7465 7374 000a
+  writef("%|1S\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 0474 6573 740a
+  writef("%>2S\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 0004 7465 7374 0a
+  writef("%>4S\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 0000 0004 7465 7374 0a
+  writef("%>8S\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 0000 0000 0000 0004 7465 7374 0a
+  writef("%|vS\n", "test");
+       // outputs:
+       // (hexdump of the output)
+       // 04 7465 7374 0a
+
+  writef('%"S\n', "test \"\" \'\' !");
+       // outputs:
+       // "test \"\" '' !"
+  writef("%'S\n", "test \"\" \'\' !");
+       // outputs:
+       // 'test "" \'\' !'
+  writef("%{(S)}\n", "test ()", "(", ")");
+       // outputs:
+       // (test (\))
+
+
+  writef("%40s|\n", "test");
+  writef("%-40s|\n", "test");
+       // outputs:
+       //                                     test|
+       // test                                    |
+
+  writef("123456\n");
+  writef("%6.6'S\n", "a");
+  writef("%6.6'S\n", "abcdefg");
+  writef("%.3'S\n", "a");
+  writef("%.3'S\n", "abcd");
+       // outputs:
+       // 123456
+       //    'a'
+       // 'a'...
+       // 'a'
+       // ''...
+
+
+  var s:string;
+  var got = readf(" %c", s);
+  // if the input is " a", "\na", "  a", etc, s will contain "a"
+  // if the input is "b", got will be false and s will contain ""
+
+  var s:string;
+  var got = readf("\n%c", s);
+  // if the input is "\na", or " \na", s will contain "a"
+  // if the input is "b", got will be false and s will be ""
+
+  var got = readf("%/a+/");
+  // if the input is "a" or "aa" (and so on), got will return true
+  // if the input is "c" got will be false
+
+  var s:string;
+  var got = readf("%/a(b+)/", s);
+  // if the input is "c" got will be false and s will be ""
+  // if the input is "ab", got will be true and s will be "b"
+  // if the input is "abb", got will be true and s will be "bb"
+
+FormattedIO Functions and Types
+-------------------------------
+
+ */
+module FormattedIO {
+
+//use SysBasic;
+//use SysError;
+//use IO;
 
 // ---------------------------------------------------------------
 // ---------------------------------------------------------------
@@ -5277,9 +5468,9 @@ class _channel_regexp_info {
     hasRegexp = false;
     matchedRegexp = false;
     releaseRegexp = false;
-    if matches then _ddata_free(matches);
+    if matches then _ddata_free(matches, ncaptures+1);
     for i in 0..#ncaptures do capArr[i] = "";
-    if capArr then _ddata_free(capArr);
+    if capArr then _ddata_free(capArr, ncaptures);
   }
   proc allocate_captures() {
     ncaptures = qio_regexp_get_ncaptures(theRegexp);
@@ -5287,7 +5478,7 @@ class _channel_regexp_info {
     capArr = _ddata_allocate(string, ncaptures);
     capturei = 0;
   }
-  proc ~_channel_regexp_info() {
+  proc deinit() {
     clear();
   }
 }
@@ -5452,7 +5643,7 @@ proc channel._format_reader(
                conv.preArg2 != QIO_CONV_UNK ||
                conv.preArg3 != QIO_CONV_UNK
             {
-              // We need to consume args as part of matching this regexp. 
+              // We need to consume args as part of matching this regexp.
               gotConv = true;
               break;
             } else {
@@ -5818,9 +6009,10 @@ proc channel._read_complex(width:uint(32), out t:complex, i:int)
                is not provided and an error is encountered, this function
                will halt with an error message.
  */
-proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
+proc channel.writef(fmtStr:string, const args ...?k, out error:syserr):bool {
   if !writing then compilerError("writef on read-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var fmt = fmtStr.localize().c_str();
@@ -5873,7 +6065,7 @@ proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
               if argType(i) == QIO_CONV_ARG_TYPE_BINARY_SIGNED then
                 error = _write_signed(style.max_width_bytes, t, i);
               else
-                error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+                error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
             }
           } when QIO_CONV_ARG_TYPE_UNSIGNED, QIO_CONV_ARG_TYPE_BINARY_UNSIGNED {
             var (t,ok) = _toUnsigned(args(i));
@@ -5884,7 +6076,7 @@ proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
               if argType(i) == QIO_CONV_ARG_TYPE_BINARY_UNSIGNED then
                 error = _write_unsigned(style.max_width_bytes, t, i);
               else
-                error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+                error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
             }
           } when QIO_CONV_ARG_TYPE_REAL, QIO_CONV_ARG_TYPE_BINARY_REAL {
             var (t,ok) = _toReal(args(i));
@@ -5895,7 +6087,7 @@ proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
               if argType(i) == QIO_CONV_ARG_TYPE_BINARY_REAL then
                 error = _write_real(style.max_width_bytes, t, i);
               else
-                error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+                error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
             }
           } when QIO_CONV_ARG_TYPE_IMAG, QIO_CONV_ARG_TYPE_BINARY_IMAG {
             var (t,ok) = _toImag(args(i));
@@ -5906,7 +6098,7 @@ proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
               if argType(i) == QIO_CONV_ARG_TYPE_BINARY_IMAG then
                 error = _write_real(style.max_width_bytes, t:real, i);
               else
-                error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+                error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
             }
           } when QIO_CONV_ARG_TYPE_COMPLEX, QIO_CONV_ARG_TYPE_BINARY_COMPLEX {
             var (t,ok) = _toComplex(args(i));
@@ -5916,33 +6108,33 @@ proc channel.writef(fmtStr:string, args ...?k, out error:syserr):bool {
             } else {
               if argType(i) == QIO_CONV_ARG_TYPE_BINARY_COMPLEX then
                 error = _write_complex(style.max_width_bytes, t, i);
-              else error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+              else error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
             }
           } when QIO_CONV_ARG_TYPE_NUMERIC {
             var (t,ok) = _toNumeric(args(i));
             if ! ok {
               error = qio_format_error_arg_mismatch(i);
               if _format_debug then stdout.writeln("DEBUG AZO11");
-            } else error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+            } else error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
           } when QIO_CONV_ARG_TYPE_CHAR {
             var (t,ok) = _toChar(args(i));
             if ! ok {
               error = qio_format_error_arg_mismatch(i);
               if _format_debug then stdout.writeln("DEBUG AZN");
-            } else error = _write_one_internal(_channel_internal, iokind.dynamic, new ioChar(t));
+            } else error = _write_one_internal(_channel_internal, iokind.dynamic, new ioChar(t), origLocale);
           } when QIO_CONV_ARG_TYPE_STRING {
             var (t,ok) = _toString(args(i));
             if ! ok {
               error = qio_format_error_arg_mismatch(i);
               if _format_debug then stdout.writeln("DEBUG AZO");
-            } else error = _write_one_internal(_channel_internal, iokind.dynamic, t);
+            } else error = _write_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
           } when QIO_CONV_ARG_TYPE_REGEXP {
             // It's not so clear what to do when printing
             // a regexp. So we just don't handle it.
             error = qio_format_error_write_regexp();
             if _format_debug then stdout.writeln("DEBUG AZP");
           } when QIO_CONV_ARG_TYPE_REPR {
-            error = _write_one_internal(_channel_internal, iokind.dynamic, args(i));
+            error = _write_one_internal(_channel_internal, iokind.dynamic, args(i), origLocale);
           } otherwise {
             // Unhandled argument type!
             halt("readf/writef internal error ", argType(i));
@@ -6036,6 +6228,7 @@ proc channel.writef(fmtStr:string, out error:syserr):bool {
 proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
   if writing then compilerError("readf on write-only channel");
   error = ENOERR;
+  const origLocale = this.getLocaleOfIoRequest();
   on this.home {
     this.lock();
     var fmt = fmtStr.localize().c_str();
@@ -6099,7 +6292,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 if argType(i) == QIO_CONV_ARG_TYPE_BINARY_SIGNED then
                   error = _read_signed(style.max_width_bytes, ti, i);
                 else
-                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             }
@@ -6113,7 +6306,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 if argType(i) == QIO_CONV_ARG_TYPE_BINARY_UNSIGNED then
                   error = _read_unsigned(style.max_width_bytes, ti, i);
                 else
-                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             } when QIO_CONV_ARG_TYPE_REAL, QIO_CONV_ARG_TYPE_BINARY_REAL {
@@ -6126,7 +6319,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 if argType(i) == QIO_CONV_ARG_TYPE_BINARY_REAL then
                   error = _read_real(style.max_width_bytes, ti, i);
                 else
-                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             } when QIO_CONV_ARG_TYPE_IMAG, QIO_CONV_ARG_TYPE_BINARY_IMAG {
@@ -6141,7 +6334,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                   error = _read_real(style.max_width_bytes, tr, i);
                   ti = tr:imag;
                 } else
-                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             } when QIO_CONV_ARG_TYPE_COMPLEX, QIO_CONV_ARG_TYPE_BINARY_COMPLEX {
@@ -6154,7 +6347,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 if argType(i) == QIO_CONV_ARG_TYPE_BINARY_COMPLEX then
                  error = _read_complex(style.max_width_bytes, ti, i);
                 else
-                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                  error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             } when QIO_CONV_ARG_TYPE_NUMERIC {
@@ -6164,7 +6357,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 if _format_debug then stdout.writeln("DEBUG AXB1");
               } else {
                 var ti = t;
-                error = _read_one_internal(_channel_internal, iokind.dynamic, ti);
+                error = _read_one_internal(_channel_internal, iokind.dynamic, ti, origLocale);
                 if ! error then error = _setIfPrimitive(args(i),ti,i);
               }
             } when QIO_CONV_ARG_TYPE_CHAR {
@@ -6173,7 +6366,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
               if ! ok {
                 error = qio_format_error_arg_mismatch(i);
                 if _format_debug then stdout.writeln("DEBUG AXE");
-              } else error = _read_one_internal(_channel_internal, iokind.dynamic, chr);
+              } else error = _read_one_internal(_channel_internal, iokind.dynamic, chr, origLocale);
               if ! error then _setIfChar(args(i),chr.ch);
             } when QIO_CONV_ARG_TYPE_STRING {
               var (t,ok) = _toString(args(i));
@@ -6181,7 +6374,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 error = qio_format_error_arg_mismatch(i);
                 if _format_debug then stdout.writeln("DEBUG AXF");
               }
-              else error = _read_one_internal(_channel_internal, iokind.dynamic, t);
+              else error = _read_one_internal(_channel_internal, iokind.dynamic, t, origLocale);
               if ! error then error = _setIfPrimitive(args(i),t,i);
             } when QIO_CONV_ARG_TYPE_REGEXP {
               var (t,ok) = _toRegexp(args(i));
@@ -6209,7 +6402,7 @@ proc channel.readf(fmtStr:string, ref args ...?k, out error:syserr):bool {
                 }
               }
             } when QIO_CONV_ARG_TYPE_REPR {
-              error = _read_one_internal(_channel_internal, iokind.dynamic, args(i));
+              error = _read_one_internal(_channel_internal, iokind.dynamic, args(i), origLocale);
             } when QIO_CONV_SET_CAPTURE {
               if r == nil {
                 error = qio_format_error_bad_regexp();
@@ -6325,7 +6518,7 @@ proc channel.readf(fmtStr:string, out error:syserr):bool {
 
 // documented in string error= version
 pragma "no doc"
-proc channel.writef(fmt: string, args ...?k) {
+proc channel.writef(fmt: string, const args ...?k) {
   var e:syserr = ENOERR;
   this.writef(fmt, (...args), error=e);
   if !e then return true;
@@ -6375,7 +6568,7 @@ proc channel.readf(fmt:string) {
 }
 
 /* Call ``stdout.writef``; see :proc:`channel.writef`. */
-proc writef(fmt:string, args ...?k):bool {
+proc writef(fmt:string, const args ...?k):bool {
   return stdout.writef(fmt, (...args));
 }
 // documented in string version
@@ -6512,7 +6705,7 @@ proc channel._extractMatch(m:reMatch, ref arg:reMatch, ref error:syserr) {
   // If the argument is a match record, just return it.
   arg = m;
 }
- 
+
 pragma "no doc"
 proc channel._extractMatch(m:reMatch, ref arg:string, ref error:syserr) {
   var cur:int(64);
@@ -6546,14 +6739,14 @@ proc channel._extractMatch(m:reMatch, ref arg:string, ref error:syserr) {
                                 _channel_internal, ts, gotlen, len: ssize_t);
     s = new string(ts, length=gotlen, needToCopy=false);
   }
- 
+
   if ! error {
     arg = s;
   } else {
     arg = "";
   }
 }
- 
+
 pragma "no doc"
 proc channel._extractMatch(m:reMatch, ref arg:?t, ref error:syserr) where t != reMatch && t != string {
   // If there was no match, return the default value of the type
@@ -6565,7 +6758,7 @@ proc channel._extractMatch(m:reMatch, ref arg:?t, ref error:syserr) where t != r
   // Read into a string the appropriate region of the file.
   var s:string;
   _extractMatch(m, s, error);
- 
+
   if ! error {
     arg = s:arg.type;
   } else {
@@ -6581,7 +6774,7 @@ proc channel._extractMatch(m:reMatch, ref arg:?t, ref error:syserr) where t != r
     the captures are being returned. Will change the channel
     position to just after the match. Will not do anything
     if error is set.
-   
+
     :arg m: a :record:`Regexp.reMatch` storing a location that matched
     :arg arg: an argument to retrieve the match into. If it is not a string,
               the string match will be cast to arg.type.
@@ -6658,7 +6851,7 @@ proc channel.search(re:regexp, ref error:syserr):reMatch
         qio_channel_commit_unlocked(_channel_internal);
       }
     }
-    _ddata_free(matches);
+    _ddata_free(matches, nm);
     this.unlock();
   }
   return m;
@@ -6689,7 +6882,7 @@ proc channel.search(re:regexp):reMatch
     :arg error: optional argument to capture an error code. If this argument
                 is not provided and an error is encountered, this function
                 will halt with an error message.
-    :returns: the region of the channel that matched 
+    :returns: the region of the channel that matched
  */
 
 proc channel.search(re:regexp, ref captures ...?k, ref error:syserr):reMatch
@@ -6727,7 +6920,7 @@ proc channel.search(re:regexp, ref captures ...?k, ref error:syserr):reMatch
         qio_channel_commit_unlocked(_channel_internal);
       }
     }
-    _ddata_free(matches);
+    _ddata_free(matches, nm);
     this.unlock();
   }
   return m;
@@ -6778,7 +6971,7 @@ proc channel.match(re:regexp, ref error:syserr):reMatch
         qio_channel_revert_unlocked(_channel_internal);
       }
     }
-    _ddata_free(matches);
+    _ddata_free(matches, nm);
     this.unlock();
   }
   return m;
@@ -6799,7 +6992,7 @@ proc channel.match(re:regexp):reMatch
    If there was a match, leaves the channel position at
    the match. If there was no match, leaves the channel
    position where it was at the start of this call.
-   
+
    :arg re: a :record:`Regexp.regexp` record representing a compiled
              regular expression.
    :arg captures: an optional variable number of arguments in which to
@@ -6808,7 +7001,7 @@ proc channel.match(re:regexp):reMatch
    :arg error: optional argument to capture an error code. If this argument
                is not provided and an error is encountered, this function
                will halt with an error message.
-   :returns: the region of the channel that matched 
+   :returns: the region of the channel that matched
 
  */
 
@@ -6847,7 +7040,7 @@ proc channel.match(re:regexp, ref captures ...?k, ref error:syserr):reMatch
         qio_channel_revert_unlocked(_channel_internal);
       }
     }
-    _ddata_free(matches);
+    _ddata_free(matches, nm);
     this.unlock();
   }
   return m;
@@ -6937,7 +7130,7 @@ iter channel.matches(re:regexp, param captures=0, maxmatches:int = max(int))
           // Stay at the end of the searched region.
         }
       }
-      _ddata_free(matches);
+      _ddata_free(matches, nm);
       if error then go = false;
     }
     if ! error then yield ret;
@@ -6950,128 +7143,8 @@ iter channel.matches(re:regexp, param captures=0, maxmatches:int = max(int))
   if error then this._ch_ioerror(error, "in channel.matches");
 }
 
-/************** Distributed File Systems ***************/
+} /* end of FormattedIO module */
 
-private extern const FTYPE_NONE   : c_int;
-private extern const FTYPE_HDFS   : c_int;
-private extern const FTYPE_LUSTRE : c_int;
-private extern const FTYPE_CURL   : c_int;
+use FormattedIO;
 
-pragma "no doc"
-proc file.fstype():int {
-  var t:c_int;
-  var err:syserr = ENOERR;
-  on this.home {
-    err = qio_get_fs_type(this._file_internal, t);
-  }
-  if err then ioerror(err, "in file.fstype()");
-  return t:int;
-}
-
-/*
-   Returns (chunk start, chunk end) for the first chunk in the file
-   containing data in the region start..end-1. Note that the returned
-   chunk might not cover all of the region in question.
-
-   Returns (0,0) if no such value exists.
-
-   :arg start: the file offset (starting from 0) where the region begins
-   :arg end: the file offset just after the region
-   :returns: a tuple of (chunkStart, chunkEnd) so that the bytes
-             in chunkStart..chunkEnd-1 are stored in a manner that makes
-             reading that chunk at a time most efficient
- */
-proc file.getchunk(start:int(64) = 0, end:int(64) = max(int(64))):(int(64),int(64)) {
-  var err:syserr = ENOERR;
-  var s = 0;
-  var e = 0;
-
-  on this.home {
-    var real_end = min(end, this.length());
-    var len:int(64);
-
-    err = qio_get_chunk(this._file_internal, len);
-    if err then ioerror(err, "in file.getchunk(start:int(64), end:int(64))");
-
-    if (len != 0 && (real_end > start)) {
-      // TAKZ - Note that we are only wanting to return an inclusive range -- i.e., we
-      // will only return a non-zero start and end [n,m], iff n and m are in [start, end].
-      for i in start..real_end by len {
-        // Our stripes are too large, so we can't give back a range within the given
-        // bounds
-        if i > end then
-          break;
-
-        if i >= start {
-          var new_start = i;
-          var new_end:int(64);
-          if (i / len + 1) * len >= real_end then
-            new_end = real_end;
-          // rounding
-          else new_end = (i / len + 1) * len;
-          if new_start == new_end {
-            break;
-          } else {
-            s = new_start;
-            e = new_end;
-            break;
-          }
-        }
-      }
-    }
-  }
-  return (s, e);
-}
-
-/*
-
-   Returns the 'best' locale to run something working with the region
-   of the file in start..end-1.
-
-   This *must* return the same result when called from different locales.
-   Returns a domain of locales that are "best" for the given region. If no
-   locales are "best" we return a domain containing all locales.
-
-   :arg start: the file offset (starting from 0) where the region begins
-   :arg end: the file offset just after the region
-   :returns: a set of locales that are best for working with this region
-   :rtype: domain(locale)
- */
-proc file.localesForRegion(start:int(64), end:int(64)) {
-
-  proc findloc(loc:string, locs:c_ptr(c_string), end:int) {
-    for i in 0..end-1 {
-      if (loc == locs[i]) then 
-        return true;
-    }
-    return false;
-  }
-
-  var ret: domain(locale);
-  on this.home {
-    var err:syserr;
-    var locs: c_ptr(c_string);
-    var num_hosts:c_int;
-    err = qio_locales_for_region(this._file_internal, start, end, locs, num_hosts);
-    // looping over Locales enforces the ordering constraint on the locales.
-    for loc in Locales {
-      if (findloc(loc.name, locs, num_hosts:int)) then
-        ret += loc;
-    }
-
-    // We allocated memory in the runtime for this, so free it now
-    if num_hosts != 0 {
-      for i in 0..num_hosts-1 do
-        qio_free_string(locs[i]);
-      c_free(locs);
-    }
-
-    // We found no "good" locales. So any locale is just as good as the next
-    if ret.numIndices == 0 then 
-      for loc in Locales do 
-        ret += loc;
-  }
-  return ret;
-}
-
-} /* end of module */
+} /* end of IO module */

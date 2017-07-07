@@ -18,8 +18,12 @@
  */
 
 #include "astutil.h"
+
 #include "baseAST.h"
+#include "CatchStmt.h"
 #include "CForLoop.h"
+#include "DeferStmt.h"
+#include "ForallStmt.h"
 #include "ForLoop.h"
 #include "expr.h"
 #include "passes.h"
@@ -29,6 +33,7 @@
 #include "symbol.h"
 #include "TryStmt.h"
 #include "type.h"
+#include "virtualDispatch.h"
 #include "WhileStmt.h"
 
 #include "oldCollectors.h" // Deprecated. To be removed.
@@ -246,6 +251,15 @@ void collectSymbolSet(BaseAST* ast, Vec<Symbol*>& symSet) {
   AST_CHILDREN_CALL(ast, collectSymbolSet, symSet);
 }
 
+void collectSymbolSet(BaseAST* ast, std::set<Symbol*>& symSet) {
+  if (DefExpr* def = toDefExpr(ast)) {
+    if (isLcnSymbol(def->sym)) {
+      symSet.insert(def->sym);
+    }
+  }
+  AST_CHILDREN_CALL(ast, collectSymbolSet, symSet);
+}
+
 
 // builds the vectors for every variable/argument in 'fn' and looks
 // for uses and defs only in 'fn'
@@ -354,42 +368,73 @@ bool isRelationalOperator(CallExpr* call) {
 //
 // TODO this should be fixed to include PRIM_SET_MEMBER
 // See notes in iterator.cpp and/or loopInvariantCodeMotion.cpp
-// TODO this should also be fixed to include the PRIM_SVEC_SET_MEMBER
+// TODO this should also be fixed to include the PRIM_SET_SVEC_MEMBER
+//  an attempt to do so is in the commented-out sections below
+//  but would require also fixing a bug in copy-propagation
+//  with e.g. functions/deitz/nested/test_nested_var_iterator2.chpl
+//
 // which gets inserted from the returnStartTuplesByRefArgs pass
 // return & 1 is true if se is a def
 // return & 2 is true if se is a use
 //
+// Note that a DefExpr is where we hang the variable declaration, but after
+// normalize, a DefExpr itself does not set a variable, and so it does not
+// count as a Def.
 int isDefAndOrUse(SymExpr* se) {
   if (CallExpr* call = toCallExpr(se->parentExpr)) {
+
+    // Extract LHS and RHS of a setting primitive.
+
+//    Expr* dest = NULL;
+//    Expr* src = NULL;
+//    if (getSettingPrimitiveDstSrc(call, &dest, &src) && dest == se) {
+//      CallExpr* rhsCall = toCallExpr(src);
+
     if ((call->isPrimitive(PRIM_MOVE) || call->isPrimitive(PRIM_ASSIGN)) &&
         call->get(1) == se) {
-      CallExpr* rhsCall = toCallExpr(call->get(2));
+      CallExpr*     rhsCall = toCallExpr(call->get(2));
       QualifiedType lhsQual = se->symbol()->qualType();
+
       if ((lhsQual.isRef() || lhsQual.isWideRef()) &&
           !isReferenceType(lhsQual.type()) &&
           !(rhsCall && rhsCall->isPrimitive(PRIM_SET_REFERENCE))) {
         // Assigning to a reference variable counts as a 'use'
         // of the reference and a 'def' of its value
         return 3;
+
+//      } else if(call->isPrimitive(PRIM_SET_MEMBER) ||
+//                call->isPrimitive(PRIM_SET_SVEC_MEMBER)) {
+//        // since setting a field might not change the entire object,
+//        // but does change part of it, we consider it both a def
+//        // and a use.
+//        return 3;
       }
       return 1;
+
     } else if (isOpEqualPrim(call) && call->get(1) == se) {
       return 3;
-    } else if (FnSymbol* fn = call->isResolved()) {
+
+    } else if (FnSymbol* fn = call->resolvedFunction()) {
       ArgSymbol* arg = actual_to_formal(se);
+
       if (arg->intent == INTENT_REF ||
           arg->intent == INTENT_INOUT ||
-          (strcmp(fn->name, "=") == 0   &&
-           fn->getFormal(1)      == arg &&
-           isRecord(arg->type)) ||
-          isRecordWrappedType(arg->type)) { // pass by reference
+          (fn->name == astrSequals &&
+           fn->getFormal(1) == arg &&
+           isRecord(arg->type))) {
+
+          // special case for record-wrapped types originated in
+          // 02c29c689d55b18551d1771634311d48c2749d1c
+          //isRecordWrappedType(arg->type)) { // pass by reference
         return 3;
         // also use; do not "continue"
+
       } else if (arg->intent == INTENT_OUT) {
         return 1;
       }
     }
   }
+
   return 2;
 }
 
@@ -580,20 +625,27 @@ Expr* formal_to_actual(CallExpr* call, Symbol* arg) {
   return NULL;
 }
 
+bool givesType(Symbol* sym) {
+  if (isTypeSymbol(sym))
+    return true;
+
+  if (sym->hasFlag(FLAG_TYPE_VARIABLE))
+    return true;
+
+  if (FnSymbol* fn = toFnSymbol(sym))
+    if (fn->retTag == RET_TYPE)
+      return true;
+
+  return false;
+}
+
 
 bool isTypeExpr(Expr* expr)
 {
   if (SymExpr* sym = toSymExpr(expr))
   {
-    if (isTypeSymbol(sym->symbol()))
+    if (givesType(sym->symbol()))
       return true;
-
-    if (sym->symbol()->hasFlag(FLAG_TYPE_VARIABLE))
-      return true;
-
-    if (FnSymbol* fn = toFnSymbol(sym->symbol()))
-      if (fn->retTag == RET_TYPE)
-        return true;
   }
 
   if (CallExpr* call = toCallExpr(expr))
@@ -633,9 +685,11 @@ bool isTypeExpr(Expr* expr)
       }
     }
 
-    if (FnSymbol* fn = call->isResolved())
-      if (fn->retTag == RET_TYPE)
+    if (FnSymbol* fn = call->resolvedFunction()) {
+      if (fn->retTag == RET_TYPE) {
         return true;
+      }
+    }
   }
 
   return false;
@@ -724,13 +778,18 @@ visitVisibleFunctions(Vec<FnSymbol*>& fns, Vec<TypeSymbol*>& types)
       for (int j = 0; j < virtualMethodTable.v[i].value->n; j++)
         pruneVisit(virtualMethodTable.v[i].value->v[j], fns, types);
 
-  // Mark exported symbols as visible.
-  // All module initialization functions should be exported,
-  // but for now we treat them as a separate class. <hilde>
+  // Mark exported symbols and module init/deinit functions as visible.
   forv_Vec(FnSymbol, fn, gFnSymbols)
-    if (fn->hasFlag(FLAG_EXPORT) ||
-        fn->hasFlag(FLAG_MODULE_INIT))
+    if (fn->hasFlag(FLAG_EXPORT))
       pruneVisit(fn, fns, types);
+
+  pruneVisitFn(gAddModuleFn, fns, types);
+  forv_Vec(ModuleSymbol, mod, gModuleSymbols) {
+    if (mod->initFn)
+      pruneVisitFn(mod->initFn, fns, types);
+    if (mod->deinitFn)
+      pruneVisitFn(mod->deinitFn, fns, types);
+  }
 }
 
 
@@ -851,7 +910,14 @@ static void removeVoidMoves()
     if (se->symbol()->type != dtVoid)
       continue;
 
-    call->remove();
+    // the RHS of the move could be a function with side effects.
+    // So, if it is a call, just remove the move, but leave the call.
+    if (CallExpr* rhsCall = toCallExpr(call->get(2))) {
+      rhsCall->remove();
+      call->replace(rhsCall);
+    } else {
+      call->remove();
+    }
   }
 }
 
@@ -879,8 +945,7 @@ prune() {
 }
 
 
-// Done this way because the log letter and hence the pass name for
-// each pass must be unique.  See initLogFlags() in runpasses.cpp.
+// Done this way to make the pass name for each pass unique.
 void prune2() { prune(); } // Synonym for prune.
 
 /*
@@ -923,13 +988,15 @@ static void addToUsedFnSymbols(std::set<FnSymbol*>& fnSymbols,
 */
 void collectUsedFnSymbols(BaseAST* ast, std::set<FnSymbol*>& fnSymbols) {
   AST_CHILDREN_CALL(ast, collectUsedFnSymbols, fnSymbols);
-  //if there is a function call, get the FnSymbol associated with it
-  //and look through that FnSymbol for other function calls. Do not
-  //look through an already visited FnSymbol, or you'll have an infinite
-  //loop in the case of recursion.
+
+  // if there is a function call, get the FnSymbol associated with it
+  // and look through that FnSymbol for other function calls. Do not
+  // look through an already visited FnSymbol, or you'll have an infinite
+  // loop in the case of recursion.
   if (CallExpr* call = toCallExpr(ast)) {
-    if (FnSymbol* fn = call->isResolved()) {
+    if (FnSymbol* fn = call->resolvedFunction()) {
       addToUsedFnSymbols(fnSymbols, fn);
+
     } else if (call->isPrimitive(PRIM_FTABLE_CALL)) {
       //
       // TODO: We'd like a way to accurately find the set of functions that

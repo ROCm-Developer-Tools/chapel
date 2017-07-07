@@ -627,7 +627,7 @@ void chpl_task_addToTaskList(chpl_fn_int_t fid,
   task_pool_p curr_ptask = get_current_ptask();
   bool serial_state = curr_ptask->bundle.serial_state;
 
-  assert(subloc == 0 || subloc == c_sublocid_any);
+  assert(subloc == c_sublocid_any);
 
   if (serial_state) {
     (*chpl_ftable[fid])(arg);
@@ -818,6 +818,17 @@ chpl_taskID_t chpl_task_getId(void) {
   return get_current_ptask()->bundle.id;
 }
 
+chpl_bool chpl_task_idEquals(chpl_taskID_t id1, chpl_taskID_t id2) {
+  return id1 == id2;
+}
+
+char* chpl_task_idToString(char* buff, size_t size, chpl_taskID_t id) {
+  int ret = snprintf(buff, size, "%"PRIu64, id);
+  if(ret>0 && ret<size)
+    return buff;
+  else
+    return NULL;
+}
 
 void chpl_task_yield(void) {
   chpl_thread_yield();

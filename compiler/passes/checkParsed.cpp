@@ -21,19 +21,23 @@
 
 #include "passes.h"
 
-#include "stmt.h"
-#include "expr.h"
 #include "astutil.h"
-#include "stlUtil.h"
+#include "DeferStmt.h"
 #include "docsDriver.h"
+#include "expr.h"
+#include "stmt.h"
+#include "stlUtil.h"
+#include "stringutil.h"
 
 
 static void checkNamedArguments(CallExpr* call);
+static void checkExplicitDeinitCalls(CallExpr* call);
 static void checkPrivateDecls(DefExpr* def);
 static void checkParsedVar(VarSymbol* var);
 static void checkFunction(FnSymbol* fn);
 static void checkExportedNames();
 static void checkModule(ModuleSymbol* mod);
+static void setupForCheckExplicitDeinitCalls();
 
 void
 checkParsed() {
@@ -50,12 +54,15 @@ checkParsed() {
     return;
   }
 
+  setupForCheckExplicitDeinitCalls();
+
   forv_Vec(CallExpr, call, gCallExprs) {
     checkNamedArguments(call);
+    checkExplicitDeinitCalls(call);
   }
 
   forv_Vec(DefExpr, def, gDefExprs) {
-    if (toVarSymbol(def->sym))
+    if (toVarSymbol(def->sym)) {
       // The test for FLAG_TEMP allows compiler-generated (temporary) variables
       // to be declared without an explicit type or initializer expression.
       if ((!def->init || def->init->isNoInitExpr())
@@ -66,6 +73,25 @@ checkParsed() {
               USR_FATAL_CONT(def->sym,
                              "Variable '%s' is not initialized or has no type",
                              def->sym->name);
+    }
+
+    //
+    // This test checks to see if query domains (e.g., '[?D]') are
+    // used in places other than formal argument type specifiers.
+    //
+    if (!isFnSymbol(def->parentSymbol)) {
+      if (CallExpr* type = toCallExpr(def->exprType)) {
+        if (type->isNamed("chpl__buildArrayRuntimeType")) {
+          if (CallExpr* domainExpr = toCallExpr(type->get(1))) {
+            DefExpr* queryDomain = toDefExpr(domainExpr->get(1));
+            if (queryDomain) {
+              USR_FATAL_CONT(queryDomain,
+                             "Domain query expressions may currently only be used in formal argument types");
+            }
+          }
+        }
+      }
+    }
 
     checkPrivateDecls(def);
   }
@@ -83,6 +109,8 @@ checkParsed() {
   }
 
   checkExportedNames();
+
+  checkDefersAfterParsing();
 }
 
 
@@ -102,6 +130,36 @@ checkNamedArguments(CallExpr* call) {
 
       names.add(named->name);
     }
+  }
+}
+
+static VarSymbol*  deinitStrLiteral;
+
+static void setupForCheckExplicitDeinitCalls() {
+  SET_LINENO(rootModule); // for --minimal-modules
+  deinitStrLiteral = new_CStringSymbol("deinit");
+}
+
+//
+// Report error for the following cases:
+//
+// * non-method call e.g. deinit(args...)
+//     ==> CallExpr(UnresolvedSymExpr("deinit"), args...)
+//
+// * method call e.g. cc.deinit(args...)
+//     ==> CallExpr(UnresolvedSymExpr("."), CString("deinit"), args...)
+//
+static void checkExplicitDeinitCalls(CallExpr* call) {
+  if (UnresolvedSymExpr* target = toUnresolvedSymExpr(call->baseExpr)) {
+    if (target->unresolved == astrDeinit)
+      USR_FATAL_CONT(call, "direct calls to deinit() are not allowed");
+    else if (target->unresolved == astrSdot)
+      if (SymExpr* arg2 = toSymExpr(call->get(2)))
+        if (arg2->symbol() == deinitStrLiteral)
+          // OK to invoke explicitly from chpl__delete()
+          // which is our internal implementation of 'delete' statements.
+          if (strcmp(call->parentSymbol->name, "chpl__delete"))
+            USR_FATAL_CONT(call, "direct calls to deinit() are not allowed");
   }
 }
 
@@ -195,7 +253,7 @@ checkFunction(FnSymbol* fn) {
     if (fn->getFormal(1)->intent != INTENT_REF)
       USR_WARN(fn, "The left operand of '=' and '<op>=' should have 'ref' intent.");
 
-  if (!strcmp(fn->name, "this") && fn->hasFlag(FLAG_NO_PARENS))
+  if ((fn->name == astrThis) && fn->hasFlag(FLAG_NO_PARENS))
     USR_FATAL_CONT(fn, "method 'this' must have parentheses");
 
   if (!strcmp(fn->name, "these") && fn->hasFlag(FLAG_NO_PARENS))
@@ -204,6 +262,12 @@ checkFunction(FnSymbol* fn) {
   if (fn->thisTag != INTENT_BLANK && !fn->hasFlag(FLAG_METHOD)) {
     USR_FATAL_CONT(fn, "'this' intents can only be applied to methods");
   }
+
+#if 0 // Do not issue the warning yet.
+  if (fn->hasFlag(FLAG_DESTRUCTOR) && (fn->name[0] == '~')) {
+    USR_WARN(fn, "\"~classname\" naming of deinitializers is deprecated");
+  }
+#endif
 
   std::vector<CallExpr*> calls;
   collectMyCallExprs(fn, calls, fn);
@@ -216,14 +280,18 @@ checkFunction(FnSymbol* fn) {
       if (notInAFunction)
         USR_FATAL_CONT(call, "return statement is not in a function or iterator");
       else {
-        SymExpr* sym = toSymExpr(call->get(1));
-        if (sym && sym->symbol() == gVoid)
+        if (call->numActuals() == 0) {
           numVoidReturns++;
-        else {
-          if (isIterator)
-            USR_FATAL_CONT(call, "returning a value in an iterator");
-          else
-            numNonVoidReturns++;
+        } else {
+          SymExpr* sym = toSymExpr(call->get(1));
+          if (sym && sym->symbol() == gVoid)
+            numVoidReturns++;
+          else {
+            if (isIterator)
+              USR_FATAL_CONT(call, "returning a value in an iterator");
+            else
+              numNonVoidReturns++;
+          }
         }
       }
     }
@@ -239,8 +307,6 @@ checkFunction(FnSymbol* fn) {
 
   if (numVoidReturns != 0 && numNonVoidReturns != 0)
     USR_FATAL_CONT(fn, "Not all returns in this function return a value");
-  if (isIterator && numYields == 0)
-    USR_FATAL_CONT(fn, "iterator does not yield a value");
   if (!isIterator &&
       fn->returnsRefOrConstRef() &&
       numNonVoidReturns == 0) {
@@ -290,5 +356,3 @@ checkExportedNames()
     names.put(name, true);
   }
 }
-
-

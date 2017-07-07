@@ -178,6 +178,16 @@ void AstVisitorTraverse::visitForallIntents(ForallIntents* clause)
 
 }
 
+bool AstVisitorTraverse::enterForallStmt(ForallStmt* node)
+{
+  return true;
+}
+
+void AstVisitorTraverse::exitForallStmt(ForallStmt* node)
+{
+
+}
+
 bool AstVisitorTraverse::enterWhileDoStmt(WhileDoStmt* node)
 {
   return true;
@@ -253,6 +263,26 @@ void AstVisitorTraverse::exitGotoStmt(GotoStmt* node)
 
 }
 
+bool AstVisitorTraverse::enterForwardingStmt(ForwardingStmt* node)
+{
+  return true;
+}
+
+void AstVisitorTraverse::exitForwardingStmt(ForwardingStmt* node)
+{
+
+}
+
+bool AstVisitorTraverse::enterDeferStmt(DeferStmt* node)
+{
+  return true;
+}
+
+void AstVisitorTraverse::exitDeferStmt(DeferStmt* node)
+{
+
+}
+
 bool AstVisitorTraverse::enterTryStmt(TryStmt* node)
 {
   return true;
@@ -260,5 +290,13 @@ bool AstVisitorTraverse::enterTryStmt(TryStmt* node)
 
 void AstVisitorTraverse::exitTryStmt(TryStmt* node)
 {
+
+}
+
+bool AstVisitorTraverse::enterCatchStmt(CatchStmt* node) {
+  return true;
+}
+
+void AstVisitorTraverse::exitCatchStmt(CatchStmt* node) {
 
 }

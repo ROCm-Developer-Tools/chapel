@@ -18,13 +18,15 @@
  */
 
 #include "resolution.h"
+
 #include "astutil.h"
+#include "driver.h"
 #include "ForLoop.h"
 #include "passes.h"
+#include "resolveIntents.h"
 #include "stlUtil.h"
 #include "stringutil.h"
-#include "resolveIntents.h"
-
+#include "visibleFunctions.h"
 
 //
 //-----------------------------------------------------------------------------
@@ -230,7 +232,7 @@ static void createShadowVars(DefExpr* defChplIter, SymbolMap& uses,
       // See if we want to prune it.
       bool pruneit = false;
 
-      if (tiIntent == INTENT_REF) {
+      if (tiIntent == INTENT_REF || tiIntent == INTENT_REF_MAYBE_CONST) {
         // for efficiency
         pruneit = true;
 
@@ -881,7 +883,7 @@ void stashPristineCopyOfLeaderIter(FnSymbol* origLeader,
 // aka 'origIter', all it does is invoke _toLeader on its argument.
 // If so, do not do extendLeader() on it. Simply thread the extra args
 // from origToLeaderCall into that _toLeader call.
-//    
+//
 // BTW _iterator_for_loopexprNN is created in buildLeaderIteratorFn()
 // invoked from buildForallLoopExpr().
 //
@@ -940,13 +942,13 @@ static VarSymbol* localizeYieldForExtendLeader(Expr* origRetExpr, Expr* ref) {
   for (Expr* curr = ref->prev; curr; curr = curr->prev)
     if (CallExpr* call = toCallExpr(curr))
       if (call->isPrimitive(PRIM_MOVE) ||
-          call->isNamed("="))
+          call->isNamedAstr(astrSequals))
         if (SymExpr* dest = toSymExpr(call->get(1)))
           if (dest->symbol() == origRetSym) {
             VarSymbol* newOrigRet = newTemp("localRet", origRetSym->type);
             call->insertBefore(new DefExpr(newOrigRet));
             dest->setSymbol(newOrigRet);
-            if (call->isNamed("=")) {
+            if (call->isNamedAstr(astrSequals)) {
               // We are "initializing" localRet, not "assigning" to it.
               // An autoCopy of the r.h.s. will be inserted by a later pass.
               // David requests creating a new CallExpr instead of patching
@@ -1010,7 +1012,7 @@ void setupRedRefs(FnSymbol* fn, bool nested, Expr*& redRef1, Expr*& redRef2)
     // Be cute - add new stuff past the defs of 'ret' and 'origRet'.
     fn->body->body.head->next->insertAfter(redRef1);
   }
-  fn->insertBeforeReturn(redRef2);
+  fn->insertBeforeEpilogue(redRef2);
   if (nested) {
     // move redRef2 one up so it is just before _downEndCount()
     CallExpr* dc = toCallExpr(redRef2->prev);
@@ -1116,7 +1118,7 @@ static CallExpr* findCallToParallelIterator(ForLoop* forLoop) {
 
   // We have:
   //   move( call_tmp call( ITERATOR args... ) )
-  //   move( _iterator call( _getIterator call_tmp ) ) 
+  //   move( _iterator call( _getIterator call_tmp ) )
   // We need to see if args... contain a leader or standalone tag.
   // 'asgnToIter' is the second of the above moves. Find the first one.
   CallExpr* rhs1 = toCallExpr(asgnToIter->get(2));
@@ -1259,7 +1261,7 @@ static void propagateThroughYield(CallExpr* rcall,
         //
 
         // Detuple the value yielded by eflopi's parallel iterator
-        // 
+        //
         if (eflopiIdx == 1) {
           // do only once for this yield
           redirectToNewIOI(eflopiLoop);
@@ -1351,24 +1353,26 @@ static void propagateExtraLeaderArgs(CallExpr* call, VarSymbol* retSym,
                                      int numExtraArgs, Symbol* extraActuals[],
                                      bool reduceArgs[], bool nested)
 {
-  FnSymbol* fn = call->isResolved();
+  FnSymbol* fn = call->resolvedFunction();
+
   INT_ASSERT(fn); // callee's responsibility
+
   if (fn->hasFlag(FLAG_WRAPPER)) {
     // We are not handling void-returning wrappers at the moment.
     INT_ASSERT(!(fn->getReturnSymbol() == gVoid || fn->retType == dtVoid));
   }
 
-  Expr *redRef1 = NULL, *redRef2 = NULL;
+  Expr*   redRef1 = NULL, *redRef2 = NULL;
   Symbol* extraFormals[numExtraArgs];
   Symbol* shadowVars[numExtraArgs];
 
   for (int ix = 0; ix < numExtraArgs; ix++) {
-    Symbol*     eActual = extraActuals[ix];
-    bool        isReduce = nested ? reduceArgs[ix] :
-        // todo: eliminate potential false positives
-        // i.e. when there is a proper outer variable of a ReduceScanOp type
-        isReduceOp(eActual->type);
-    if (!nested) reduceArgs[ix] = isReduce;
+    Symbol* eActual  = extraActuals[ix];
+    bool    isReduce = nested ? reduceArgs[ix] : isReduceOp(eActual->type);
+
+    if (!nested) {
+      reduceArgs[ix] = isReduce;
+    }
 
     // Use named args to disambiguate from the already-existing iterator args,
     // just in case. This necessitates toNamedExpr() in handleCaptureArgs().
@@ -1378,10 +1382,13 @@ static void propagateExtraLeaderArgs(CallExpr* call, VarSymbol* retSym,
           strcmp(eActual->name, "_tuple_expand_tmp_") ?
             astrArg(ix, eActual->name) // uniquify arg name
             : astrArg(ix, "tet");
-  
+
     ArgSymbol*  eFormal = new ArgSymbol(INTENT_BLANK, eName, eActual->type);
+
     extraFormals[ix] = eFormal;
+
     call->insertAtTail(new NamedExpr(eName, new SymExpr(eActual)));
+
     fn->insertFormalAtTail(eFormal);
 
     // In leader outside any taskFn just use reduceParent.
@@ -1439,7 +1446,7 @@ static void propagateRecursively(FnSymbol* parentFn,
                                  bool nested,
                                  Expr*& redRef1,
                                  Expr*& redRef2)
-{                                 
+{
   std::vector<CallExpr*> rCalls;
   collectMyCallExprs(currentFn, rCalls, currentFn);
 
@@ -1558,19 +1565,21 @@ static void extendLeader(CallExpr* call, CallExpr* origToLeaderCall,
 }
 
 void implementForallIntents2(CallExpr* call, CallExpr* origToLeaderCall) {
-  FnSymbol* origLeader = call->isResolved();
+  FnSymbol* origLeader = call->resolvedFunction();
   INT_ASSERT(origLeader);  // caller responsibility
 
   if (origToLeaderCall->numActuals() <= 1) {
     // No variables to propagate => no extendLeader.
     // Ensure we have a pristine copy for the other case.
-    if (!pristineLeaderIterators.get(origLeader))
+    if (!pristineLeaderIterators.get(origLeader)) {
       stashPristineCopyOfLeaderIter(origLeader, /*ignore_isResolved:*/ false);
+    }
   } else {
-    if (!strncmp(origLeader->name, "_iterator_for_loopexpr", 22))
+    if (strncmp(origLeader->name, "_iterator_for_loopexpr", 22) == 0) {
       propagateExtraArgsForLoopIter(call, origToLeaderCall, origLeader);
-    else
+    } else {
       extendLeader(call, origToLeaderCall, origLeader);
+    }
   }
 }
 
@@ -1617,10 +1626,12 @@ static void unresolveWrapper(FnSymbol* wrapper) {
 // Handle the wrapper if applicable.
 void implementForallIntents2wrapper(CallExpr* call, CallExpr* eflopiHelper)
 {
-  FnSymbol* dest = call->isResolved();
+  FnSymbol* dest = call->resolvedFunction();
+
   if (!dest->hasFlag(FLAG_WRAPPER)) {
     // the simple case
     ifi2checkAssumptions(dest);
+
     implementForallIntents2(call, eflopiHelper);
 
   } else {
@@ -1644,8 +1655,10 @@ void implementForallIntents2wrapper(CallExpr* call, CallExpr* eflopiHelper)
     int savedNumArgsW = wCall->numActuals();
     int numExtraArgs  = eflopiHelper->numActuals()-1;
 
-    ifi2checkAssumptions(wCall->isResolved());
+    ifi2checkAssumptions(wCall->resolvedFunction());
+
     implementForallIntents2(wCall, eflopiHelper);
+
     INT_ASSERT(wCall->numActuals() == savedNumArgsW + numExtraArgs);
 
     // propagate the additions to the original call
@@ -1658,7 +1671,7 @@ void implementForallIntents2wrapper(CallExpr* call, CallExpr* eflopiHelper)
           goahead = true;
         continue;
       }
-      
+
       ArgSymbol* wFormal = formal->copy();
       // If these fail, figure out the intent. See also copyFormalForWrapper().
       INT_ASSERT(isClass(formal->type));
@@ -1681,7 +1694,8 @@ void implementForallIntents2wrapper(CallExpr* call, CallExpr* eflopiHelper)
     // So 'wDest' needs to be resolved again. To make that happen,
     // we un-resolve its relevant pieces.
     //
-    if (wDest->isResolved())
+    if (wDest->isResolved()) {
       unresolveWrapper(wDest);
+    }
   }
 }

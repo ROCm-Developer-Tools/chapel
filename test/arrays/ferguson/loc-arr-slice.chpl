@@ -12,28 +12,32 @@ proc badReturnSliceLocal() {
   return A[1..5];
 }
 
+proc badReturnSliceByRef(A: []) ref {
+  return A[A.domain.low..A.domain.high/2];
+}
+
 proc badReturnAliasLocal() {
   var A: [1..100] int;
-  var B => A;
+  ref B = A;
   return B;
 }
 
 proc badReturnAliasSliceLocal() {
   var A: [1..100] int;
-  var B => A[1..5];
+  ref B = A[1..5];
   return B;
 }
 
 proc badReturnAliasAliasLocal() {
   var A: [1..100] int;
-  var B => A;
-  var C => B;
+  ref B = A;
+  ref C = B;
   return C;
 }
 
 proc badReturnSliceSliceLocal() {
   var A: [1..100] int;
-  var B => A[1..5];
+  ref B = A[1..5];
   return B[1..2];
 }
 
@@ -51,3 +55,6 @@ var f = badReturnAliasAliasLocal();
 writeln(f);
 var g = badReturnSliceSliceLocal();
 writeln(g);
+
+var Data : [1..10] int;
+badReturnSliceByRef(Data);

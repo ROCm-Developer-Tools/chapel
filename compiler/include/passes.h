@@ -65,7 +65,6 @@ void makeBinary();
 void normalize();
 void optimizeOnClauses();
 void parallel();
-void parse();
 void processIteratorYields();
 void prune();
 void prune2();
@@ -115,6 +114,9 @@ void flattenNestedFunction(FnSymbol* nestedFunction);
 
 // callDestructors.cpp
 void insertReferenceTemps(CallExpr* call);
+
+// normalize.cpp
+void normalize(FnSymbol* fn);
 
 // parallel.cpp
 Type* getOrMakeRefTypeDuringCodegen(Type* type);

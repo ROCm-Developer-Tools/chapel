@@ -187,11 +187,6 @@ OPTIONS
     Enable [disable] live variable analysis, which is currently only used to
     optimize iterators that are not inlined.
 
-**--[no-]optimize-array-indexing**
-
-    Enable [disable] an optimization that removes an extra multiply in array
-    indexing when it's provably unnecessary. By default this is enabled.
-
 **--[no-]optimize-loop-iterators**
 
     Enable [disable] optimizations to aggressively optimize iterators that
@@ -257,6 +252,11 @@ OPTIONS
     Enable [disable] ability to skip default initialization through the
     keyword noinit
 
+**--[no-]infer-local-fields**
+
+    Enable [disable] analysis to infer local fields in classes and records
+    (experimental)
+
 *Run-time Semantic Check Options* 
 
 **--no-checks**
@@ -270,6 +270,16 @@ OPTIONS
 
     Enable [disable] run-time bounds checking, e.g. during slicing and array
     indexing.
+
+**--[no-]cast-checks**
+
+    Enable [disable] run-time checks in safeCast calls for casts that
+    wouldn't preserve the logical value being cast.
+
+**--[no-]div-by-zero-checks**
+
+    Enable [disable] run-time checks in integer division and modulus operations
+    to guard against dividing by zero.
 
 **--[no-]formal-domain-checks**
 
@@ -290,11 +300,6 @@ OPTIONS
 **--[no-]stack-checks**
 
     Enable [disable] run-time checking for stack overflow.
-
-**--[no-]cast-checks**
-
-    Enable [disable] run-time checks in safeCast calls for casts that
-    wouldn't preserve the logical value being cast.
 
 *C Code Generation Options* 
 
@@ -407,7 +412,7 @@ OPTIONS
 **--[no-]llvm**
 
     Use LLVM as the code generation target rather than C. See
-    $CHPL\_HOME/doc/technotes/llvm.rst for details.
+    $CHPL\_HOME/doc/rst/technotes/llvm.rst for details.
 
 **--[no-]llvm-wide-opt**
 
@@ -417,7 +422,35 @@ OPTIONS
     also supply **--fast** to enable wide pointer optimizations. This flag
     allows existing LLVM optimizations to work with wide pointers - for
     example, they might be able to hoist a 'get' out of a loop. See
-    $CHPL\_HOME/doc/technotes/llvm.rst for details.
+    $CHPL\_HOME/doc/rst/technotes/llvm.rst for details.
+
+**--llvm-print-ir <name>**
+    Print intermediate representation (IR) of function named <name>. 
+    Need to specify stage using  **--llvm-print-ir-stage** in order 
+    to be printed.
+
+**--llvm-print-ir-stage <stage>**
+    Picks stage from which to print LLVM IR of function defined in 
+    **--llvm-print-ir**. 
+    The chapel compiler runs many different optimization passes each of which
+    can change IR of functions. This option allows one to pick IR of function
+    from some stages of optimization.
+
+    There are 3 optimization stages: none, basic, full:
+
+    1. 'none' is stage before any optimization has occurred
+    2. 'basic' is stage where basic optimizations occurs.
+    3. 'full' is stage where all kinds of optimization occurs, these consist
+        of very big optimizations executed by chapel compiler on LLVM IR.
+
+    Note that sometimes function might not be printed, for example when
+    one optimization pass notes that function is unused and decides to remove
+    it.
+
+**--mllvm <option>**
+    Pass an option to the LLVM optimization and transformation passes.
+    This option can be specified multiple times.
+
 
 *Compilation Trace Options*
 
@@ -498,6 +531,10 @@ OPTIONS
     Overrides the default value of a configuration parameter in the code.
     For boolean configuration variables, the value can be omitted, causing
     the default value to be toggled.
+
+**--[no-]strict-errors**
+
+    Enable [disable] strict mode for error handling.
 
 **--[no-]task-tracking**
 
@@ -732,14 +769,13 @@ effect as passing that option once.
 BUGS
 ----
 
-See $CHPL\_HOME/STATUS for a list of known bugs and
-$CHPL\_HOME/doc/bugs.rst for instructions on reporting bugs.
+See $CHPL\_HOME/doc/rst/bugs.rst for instructions on reporting bugs.
 
 SEE ALSO
 --------
 
-$CHPL\_HOME/QUICKSTART.rst for more information on how to get started with
-Chapel.
+$CHPL\_HOME/doc/rst/usingchapel/QUICKSTART.rst for more information on how to
+get started with Chapel.
 
 AUTHORS
 -------

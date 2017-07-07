@@ -111,9 +111,9 @@ module SSCA2_driver
             var linear_index         : index (vertex_indices);
 
             var Rand_Gen = if REPRODUCIBLE_PROBLEMS then 
-                             new NPBRandomStream (seed = 3217900597)
+                             new NPBRandomStream (real, seed = 3217900597)
                            else
-                             new NPBRandomStream ();
+                             new NPBRandomStream (real);
 
             var V_s      = 0;
 
@@ -146,6 +146,8 @@ module SSCA2_driver
             approximate_betweenness_centrality ( G, BC_starting_vertices, 
                                                  Between_Cent, 
                                                  Sum_Min_Dist );
+
+            delete Rand_Gen;
           }
 
 	  // --------------------------------------------------

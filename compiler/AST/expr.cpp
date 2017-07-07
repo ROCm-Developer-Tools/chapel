@@ -29,6 +29,7 @@
 #include "AstVisitor.h"
 #include "ForLoop.h"
 #include "insertLineNumbers.h"
+#include "iterator.h"
 #include "misc.h"
 #include "passes.h"
 #include "stmt.h"
@@ -279,6 +280,16 @@ void Expr::verify() {
   }
 }
 
+void Expr::verify(AstTag expectedTag) {
+  if (astTag != expectedTag)
+    INT_FATAL(this, "bad astTag");
+  Expr::verify();
+}
+
+void Expr::verifyParent(const Expr* child) {
+  if (child && child->parentExpr != this)
+    INT_FATAL(this, "bad parent of a child node");
+}
 
 bool Expr::inTree() {
   if (parentSymbol)
@@ -415,7 +426,6 @@ void Expr::insertBefore(Expr* new_ast) {
   list->length++;
 }
 
-
 void Expr::insertAfter(Expr* new_ast) {
   if (new_ast->parentSymbol || new_ast->parentExpr)
     INT_FATAL(new_ast, "Argument is already in AST in Expr::insertAfter");
@@ -434,6 +444,26 @@ void Expr::insertAfter(Expr* new_ast) {
   if (parentSymbol)
     sibling_insert_help(this, new_ast);
   list->length++;
+}
+
+
+void Expr::insertBefore(AList exprs) {
+  Expr* curr = this;
+  for_alist_backward(prev, exprs) {
+    prev->remove();
+    curr->insertBefore(prev);
+    curr = prev;
+  }
+}
+
+
+void Expr::insertAfter(AList exprs) {
+  Expr* prev = this;
+  for_alist(curr, exprs) {
+    curr->remove();
+    prev->insertAfter(curr);
+    prev = curr;
+  }
 }
 
 
@@ -503,10 +533,7 @@ Expr* SymExpr::getFirstExpr() {
 }
 
 void SymExpr::verify() {
-  Expr::verify();
-
-  if (astTag != E_SymExpr)
-    INT_FATAL(this, "SymExpr::verify %12d: Bad astTag", id);
+  Expr::verify(E_SymExpr);
 
   if (var == NULL)
     INT_FATAL(this, "SymExpr::verify %12d: var is NULL", id);
@@ -628,9 +655,7 @@ Expr* UnresolvedSymExpr::getFirstExpr() {
 
 void
 UnresolvedSymExpr::verify() {
-  Expr::verify();
-  if (astTag != E_UnresolvedSymExpr)
-    INT_FATAL(this, "bad UnresolvedSymExpr::astTag");
+  Expr::verify(E_UnresolvedSymExpr);
   if (!unresolved)
     INT_FATAL(this, "UnresolvedSymExpr::unresolved is NULL");
 }
@@ -704,10 +729,7 @@ Expr* DefExpr::getFirstExpr() {
 }
 
 void DefExpr::verify() {
-  Expr::verify();
-  if (astTag != E_DefExpr) {
-    INT_FATAL(this, "Bad DefExpr::astTag");
-  }
+  Expr::verify(E_DefExpr);
   if (!sym) {
     INT_FATAL(this, "DefExpr has no sym");
   }
@@ -715,12 +737,10 @@ void DefExpr::verify() {
     INT_FATAL(this, "Bad FnSymbol::defPoint");
   if (toArgSymbol(sym) && (exprType || init))
     INT_FATAL(this, "Bad ArgSymbol::defPoint");
-  if (init && init->parentExpr != this)
-    INT_FATAL(this, "Bad DefExpr::init::parentExpr");
-  if (exprType && exprType->parentExpr != this)
-    INT_FATAL(this, "Bad DefExpr::exprType::parentExpr");
   if (sym->defPoint != this)
     INT_FATAL(this, "Bad DefExpr::sym->defPoint");
+  verifyParent(init);
+  verifyParent(exprType);
   verifyNotOnList(init);
   verifyNotOnList(exprType);
 }
@@ -962,11 +982,7 @@ Expr* CallExpr::getNextExpr(Expr* expr) {
 }
 
 void CallExpr::verify() {
-  Expr::verify();
-
-  if (astTag != E_CallExpr) {
-    INT_FATAL(this, "Bad CallExpr::astTag");
-  }
+  Expr::verify(E_CallExpr);
 
   if (! parentExpr)
     INT_FATAL(this, "Every CallExpr is expected to have a parentExpr");
@@ -974,8 +990,7 @@ void CallExpr::verify() {
   if (argList.parent != this)
     INT_FATAL(this, "Bad AList::parent in CallExpr");
 
-  if (baseExpr && baseExpr->parentExpr != this)
-    INT_FATAL(this, "Bad baseExpr::parent in CallExpr");
+  verifyParent(baseExpr);
 
   if (normalized && isPrimitive(PRIM_RETURN)) {
     FnSymbol* fn  = toFnSymbol(parentSymbol);
@@ -992,8 +1007,7 @@ void CallExpr::verify() {
   }
 
   for_actuals(actual, this) {
-    if (actual->parentExpr != this)
-      INT_FATAL(this, "Bad CallExpr::argList::parentExpr");
+    verifyParent(actual);
 
     if (isSymExpr(actual)                           &&
         toSymExpr(actual)->symbol() == gMethodToken &&
@@ -1070,7 +1084,7 @@ void CallExpr::replaceChild(Expr* oldAst, Expr* newAst) {
 
 
 void CallExpr::insertAtHead(BaseAST* ast) {
-  Expr *toInsert;
+  Expr* toInsert = NULL;
 
   if (Symbol* a = toSymbol(ast))
     toInsert = new SymExpr(a);
@@ -1084,7 +1098,7 @@ void CallExpr::insertAtHead(BaseAST* ast) {
 
 
 void CallExpr::insertAtTail(BaseAST* ast) {
-  Expr *toInsert;
+  Expr* toInsert = NULL;
 
   if (Symbol* a = toSymbol(ast))
     toInsert = new SymExpr(a);
@@ -1096,11 +1110,28 @@ void CallExpr::insertAtTail(BaseAST* ast) {
   parent_insert_help(this, toInsert);
 }
 
-// MDN 2016/01/29: This will become a predicate
-FnSymbol* CallExpr::isResolved() const {
-  return resolvedFunction();
+void CallExpr::setUnresolvedFunction(const char* name) {
+  // Currently a PRIM_OP
+  if (primitive != NULL) {
+    primitive = NULL;
+    baseExpr  = new UnresolvedSymExpr(astr(name));
+
+    parent_insert_help(this, baseExpr);
+
+  } else if (UnresolvedSymExpr* use = toUnresolvedSymExpr(baseExpr)) {
+    use->unresolved = astr(name);
+
+  } else if (SymExpr*           se  = toSymExpr(baseExpr)) {
+    se->replace(new UnresolvedSymExpr(name));
+
+  } else {
+    INT_ASSERT(false);
+  }
 }
 
+bool CallExpr::isResolved() const {
+  return (resolvedFunction() != NULL) ? true : false;
+}
 
 FnSymbol* CallExpr::resolvedFunction() const {
   FnSymbol* retval = NULL;
@@ -1144,6 +1175,24 @@ FnSymbol* CallExpr::resolvedFunction() const {
   return retval;
 }
 
+void CallExpr::setResolvedFunction(FnSymbol* fn) {
+  // Currently a PRIM_OP
+  if (primitive != NULL) {
+    primitive = NULL;
+    baseExpr  = new SymExpr(fn);
+
+    parent_insert_help(this, baseExpr);
+
+  } else if (isUnresolvedSymExpr(baseExpr) == true) {
+    baseExpr->replace(new SymExpr(fn));
+
+  } else if (SymExpr* se = toSymExpr(baseExpr)) {
+    se->setSymbol(fn);
+
+  } else {
+    INT_ASSERT(false);
+  }
+}
 
 FnSymbol* CallExpr::theFnSymbol() const {
   FnSymbol* retval = NULL;
@@ -1154,8 +1203,7 @@ FnSymbol* CallExpr::theFnSymbol() const {
   return retval;
 }
 
-
-bool CallExpr::isNamed(const char* name) {
+bool CallExpr::isNamed(const char* name) const {
   if (SymExpr* base = toSymExpr(baseExpr))
     if (strcmp(base->symbol()->name, name) == 0)
       return true;
@@ -1167,6 +1215,18 @@ bool CallExpr::isNamed(const char* name) {
   return false;
 }
 
+// 'name' must be canonicalized
+bool CallExpr::isNamedAstr(const char* name) const {
+  if (SymExpr* base = toSymExpr(baseExpr))
+    if (base->symbol()->name == name)
+      return true;
+
+  if (UnresolvedSymExpr* base = toUnresolvedSymExpr(baseExpr))
+    if (base->unresolved == name)
+      return true;
+
+  return false;
+}
 
 int CallExpr::numActuals() const {
   return argList.length;
@@ -1190,16 +1250,43 @@ FnSymbol* CallExpr::findFnSymbol(void) {
   return fn;
 }
 
+bool CallExpr::isCast(void) {
+  return isNamedAstr(astr_cast);
+}
+
+Expr* CallExpr::castFrom(void) {
+  INT_ASSERT(isCast());
+
+  return get(2);
+}
+
+Expr* CallExpr::castTo(void) {
+  INT_ASSERT(isCast());
+
+  return get(1);
+}
+
+CallExpr* createCast(BaseAST* src, BaseAST* toType)
+{
+  CallExpr* expr = new CallExpr(astr_cast, toType, src);
+  return expr;
+}
+
 
 QualifiedType CallExpr::qualType(void) {
-  if (primitive)
-    return primitive->returnInfo(this);
+  QualifiedType retval(NULL);
 
-  else if (isResolved())
-    return QualifiedType(isResolved()->retType);
+  if (primitive) {
+    retval = primitive->returnInfo(this);
 
-  else
-    return QualifiedType(dtUnknown);
+  } else if (isResolved()) {
+    retval = QualifiedType(resolvedFunction()->retType);
+
+  } else {
+    retval = QualifiedType(dtUnknown);
+  }
+
+  return retval;
 }
 
 void CallExpr::prettyPrint(std::ostream *o) {
@@ -1321,6 +1408,9 @@ bool CallExpr::isRefExternStarTuple(Symbol* formal, Expr* actual) const {
 
 ContextCallExpr::ContextCallExpr() :
   Expr(E_ContextCallExpr),
+  hasValue(false),
+  hasConstRef(false),
+  hasRef(false),
   options()
 {
   options.parent = this;
@@ -1331,6 +1421,9 @@ ContextCallExpr*
 ContextCallExpr::copyInner(SymbolMap* map) {
   ContextCallExpr* _this = 0;
   _this = new ContextCallExpr();
+  _this->hasValue = hasValue;
+  _this->hasConstRef = hasConstRef;
+  _this->hasRef = hasRef;
   for_alist(expr, options)
     _this->options.insertAtTail(COPY_INT(expr));
   return _this;
@@ -1347,22 +1440,18 @@ ContextCallExpr::replaceChild(Expr* old_ast, Expr* new_ast) {
 
 void
 ContextCallExpr::verify() {
-  Expr::verify();
-  if (astTag != E_ContextCallExpr)
-    INT_FATAL(this, "bad ContextCallExpr::astTag");
+  Expr::verify(E_ContextCallExpr);
   for_alist(expr, options) {
-    if (expr->parentExpr != this)
-      INT_FATAL(this, "Bad ContextCallExpr::options::parentExpr");
+    verifyParent(expr);
     if (isContextCallExpr(expr))
       INT_FATAL(this, "ContextCallExpr cannot contain a ContextCallExpr");
     if (!isCallExpr(expr))
       INT_FATAL(this, "ContextCallExpr must contain only CallExpr");
   }
-  // At present, a ContextCallExpr is only used to handle
-  // ref/not-ref return intent functions. So there should always
-  // be exactly 2 options.
-  if (options.length != 2)
-    INT_FATAL(this, "ContextCallExpr with > 2 options");
+  // ContextCallExpr handles ref/value/const ref, so there should
+  // be 2 or 3 options.
+  if (options.length < 2 || options.length > 3)
+    INT_FATAL(this, "ContextCallExpr with < 2 or > 3 options");
 }
 
 void ContextCallExpr::accept(AstVisitor* visitor) {
@@ -1401,27 +1490,61 @@ Expr* ContextCallExpr::getFirstExpr() {
 }
 
 
-void ContextCallExpr::setRefRValueOptions(CallExpr* refCall,
-                                          CallExpr* rvalueCall) {
-  // Storing the ref call after the value call allows a
-  // postorder traversal to skip the value call.
-  // The order is important also - the first is always the value.
+void ContextCallExpr::setRefValueConstRefOptions(CallExpr* refCall,
+                                                 CallExpr* valueCall,
+                                                 CallExpr* constRefCall) {
 
-  options.insertAtTail(rvalueCall);
-  parent_insert_help(this, rvalueCall);
-  options.insertAtTail(refCall);
-  parent_insert_help(this, refCall);
+  // always use order of value, const ref, ref
+  // ContextCallExpr::getCalls depends on this order
+  int n = 0;
+  if (valueCall != NULL) {
+    options.insertAtTail(valueCall);
+    parent_insert_help(this, valueCall);
+    hasValue = true;
+    n++;
+  }
+  if (constRefCall != NULL) {
+    options.insertAtTail(constRefCall);
+    parent_insert_help(this, constRefCall);
+    hasConstRef = true;
+    n++;
+  }
+  if (refCall != NULL) {
+    options.insertAtTail(refCall);
+    parent_insert_help(this, refCall);
+    hasRef = true;
+    n++;
+  }
+
+  // We shouldn't be making a ContextCallExpr with < 2 options
+  INT_ASSERT(n >= 2);
 }
 
-CallExpr* ContextCallExpr::getRefCall() {
-  // This used to check for the call with RET_REF, but
-  // the return tag might change during resolution. So
-  // instead we rely on them always being in order.
-  return toCallExpr(options.tail);
-}
+void  ContextCallExpr::getCalls(CallExpr*& refCall,
+                                CallExpr*& valueCall,
+                                CallExpr*& constRefCall) {
 
-CallExpr* ContextCallExpr::getRValueCall() {
-  return toCallExpr(options.head);
+  // always use order of value, const ref, ref
+
+  int n = 1;
+  if (hasValue) {
+    valueCall = toCallExpr(options.get(n));
+    n++;
+  } else {
+    valueCall = NULL;
+  }
+  if (hasConstRef) {
+    constRefCall = toCallExpr(options.get(n));
+    n++;
+  } else {
+    constRefCall = NULL;
+  }
+  if (hasRef) {
+    refCall = toCallExpr(options.get(n));
+    n++;
+  } else {
+    refCall = NULL;
+  }
 }
 
 /************************************ | *************************************
@@ -1471,9 +1594,7 @@ void ForallExpr::replaceChild(Expr* old_ast, Expr* new_ast) {
 
 void
 ForallExpr::verify() {
-  Expr::verify();
-  if (astTag != E_ForallExpr)
-    INT_FATAL(this, "bad ForallExpr::astTag");
+  Expr::verify(E_ForallExpr);
   INT_FATAL(this, "ForallExpr::verify() is not implemented");
 }
 
@@ -1498,7 +1619,7 @@ Expr* ForallExpr::getFirstExpr() {
 
 NamedExpr::NamedExpr(const char* init_name, Expr* init_actual) :
   Expr(E_NamedExpr),
-  name(init_name),
+  name(astr(init_name)),
   actual(init_actual)
 {
   gNamedExprs.add(this);
@@ -1514,12 +1635,8 @@ Expr* NamedExpr::getFirstExpr() {
 }
 
 void NamedExpr::verify() {
-  Expr::verify();
-  if (astTag != E_NamedExpr) {
-    INT_FATAL(this, "Bad NamedExpr::astTag");
-  }
-  if (actual && actual->parentExpr != this)
-    INT_FATAL(this, "Bad NamedExpr::actual::parentExpr");
+  Expr::verify(E_NamedExpr);
+  verifyParent(actual);
   verifyNotOnList(actual);
 }
 
@@ -1625,15 +1742,13 @@ get_string(Expr* e) {
 // given type.
 //
 // This function should be used *before* resolution
-CallExpr* callChplHereAlloc(Symbol *s, VarSymbol* md) {
-  CallExpr* sizeExpr;
-  VarSymbol* mdExpr;
+CallExpr* callChplHereAlloc(Type *type, VarSymbol* md) {
   INT_ASSERT(!resolved);
   // Since the type is not necessarily known, resolution will fix up
   // this sizeof() call to take the resolved type of s as an argument
-  sizeExpr = new CallExpr(PRIM_SIZEOF, new SymExpr(s));
-  mdExpr = (md != NULL) ? md : newMemDesc(s->name);
-  CallExpr* allocExpr = new CallExpr("chpl_here_alloc", sizeExpr, mdExpr);
+  CallExpr*  sizeExpr  = new CallExpr(PRIM_SIZEOF, new SymExpr(type->symbol));
+  VarSymbol* mdExpr    = (md != NULL) ? md : newMemDesc(type);
+  CallExpr*  allocExpr = new CallExpr("chpl_here_alloc", sizeExpr, mdExpr);
   // Again, as we don't know the type yet, we leave it to resolution
   // to put in the cast to the proper type
   return allocExpr;
@@ -1652,7 +1767,7 @@ void insertChplHereAlloc(Expr *call, bool insertAfter, Symbol *sym,
                                     new CallExpr(PRIM_SIZEOF,
                                                  (ct != NULL) ?
                                                  ct->symbol : t->symbol));
-  VarSymbol* mdExpr = (md != NULL) ? md : newMemDesc(t->symbol->name);
+  VarSymbol* mdExpr = (md != NULL) ? md : newMemDesc(t);
   Symbol *allocTmp = newTemp("chpl_here_alloc_tmp", dtCVoidPtr);
   CallExpr* allocExpr = new CallExpr(PRIM_MOVE, allocTmp,
                                      new CallExpr(gChplHereAlloc,

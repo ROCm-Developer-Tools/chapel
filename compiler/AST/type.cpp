@@ -21,39 +21,36 @@
 
 #include "type.h"
 
+#include "AggregateType.h"
 #include "AstToText.h"
 #include "astutil.h"
+#include "AstVisitor.h"
 #include "build.h"
 #include "docsDriver.h"
+#include "driver.h"
 #include "expr.h"
 #include "files.h"
 #include "intlimits.h"
 #include "ipe.h"
+#include "iterator.h"
 #include "misc.h"
 #include "passes.h"
+#include "stlUtil.h"
 #include "stringutil.h"
 #include "symbol.h"
 #include "vec.h"
 
-#include "iterator.h"
-
-#include "AstVisitor.h"
-
 static bool isDerivedType(Type* type, Flag flag);
 
-Type::Type(AstTag astTag, Symbol* init_defaultVal) :
-  BaseAST(astTag),
-
-  symbol(NULL),
-  refType(NULL),
-  hasGenericDefaults(false),
-  defaultValue(init_defaultVal),
-  defaultInitializer(NULL),
-  defaultTypeConstructor(NULL),
-  destructor(NULL),
-  isInternalType(false),
-  instantiatedFrom(NULL),
-  scalarPromotionType(NULL) {
+Type::Type(AstTag astTag, Symbol* iDefaultVal) : BaseAST(astTag) {
+  symbol              = NULL;
+  refType             = NULL;
+  hasGenericDefaults  = false;
+  defaultValue        = iDefaultVal;
+  destructor          = NULL;
+  isInternalType      = false;
+  instantiatedFrom    = NULL;
+  scalarPromotionType = NULL;
 }
 
 Type::~Type() {
@@ -63,10 +60,9 @@ Type::~Type() {
 void Type::verify() {
 }
 
-void Type::addSymbol(TypeSymbol* newsymbol) {
-  symbol = newsymbol;
+void Type::addSymbol(TypeSymbol* newSymbol) {
+  symbol = newSymbol;
 }
-
 
 bool Type::inTree() {
   if (symbol)
@@ -84,6 +80,11 @@ QualifiedType Type::qualType() {
 bool Type::isDefaultIntentConst() const {
   bool retval = true;
 
+  // MPF 2017-03-09
+  // It seems wrong to me that this returns true
+  // for dtUnknown. However some parts of the compiler
+  // currently rely on that behavior.
+
   if (symbol->hasFlag(FLAG_DEFAULT_INTENT_IS_REF) == true ||
       isReferenceType(this)                       == true ||
       isRecordWrappedType(this)                   == true)
@@ -97,6 +98,23 @@ Symbol* Type::getField(const char* name, bool fatal) {
   return NULL;
 }
 
+bool Type::hasDestructor() const {
+  return destructor != NULL;
+}
+
+FnSymbol* Type::getDestructor() const {
+  return destructor;
+}
+
+void Type::setDestructor(FnSymbol* fn) {
+  destructor = fn;
+}
+
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 PrimitiveType::PrimitiveType(Symbol *init, bool internalType) :
   Type(E_PrimitiveType, init)
@@ -130,7 +148,6 @@ PrimitiveType::copyInner(SymbolMap* map) {
 void PrimitiveType::replaceChild(BaseAST* old_ast, BaseAST* new_ast) {
   INT_FATAL(this, "Unexpected case in PrimitiveType::replaceChild");
 }
-
 
 
 void PrimitiveType::verify() {
@@ -484,391 +501,14 @@ std::string EnumType::docsDirective() {
 }
 
 
-AggregateType::AggregateType(AggregateTag initTag) :
-  Type(E_AggregateType, NULL),
-  aggregateTag(initTag),
-  initializerStyle(DEFINES_NONE_USE_DEFAULT),
-  fields(),
-  inherits(),
-  outer(NULL),
-  iteratorInfo(NULL),
-  doc(NULL)
-{
-  if (aggregateTag == AGGREGATE_CLASS) { // set defaultValue to nil to keep it
-                                 // from being constructed
-    defaultValue = gNil;
-  }
-  methods.clear();
-  fields.parent = this;
-  inherits.parent = this;
-  gAggregateTypes.add(this);
-}
 
 
-AggregateType::~AggregateType() {
-  // Delete references to this in iteratorInfo when destroyed.
-  if (iteratorInfo) {
-    if (iteratorInfo->iclass == this)
-      iteratorInfo->iclass = NULL;
-    if (iteratorInfo->irecord == this)
-      iteratorInfo->irecord = NULL;
-  }
-}
 
-
-void AggregateType::verify() {
-  Type::verify();
-  if (astTag != E_AggregateType) {
-    INT_FATAL(this, "Bad AggregateType::astTag");
-  }
-  if (aggregateTag != AGGREGATE_CLASS &&
-      aggregateTag != AGGREGATE_RECORD &&
-      aggregateTag != AGGREGATE_UNION)
-    INT_FATAL(this, "Bad AggregateType::aggregateTag");
-  if (fields.parent != this || inherits.parent != this)
-    INT_FATAL(this, "Bad AList::parent in AggregateType");
-  for_alist(expr, fields) {
-    if (expr->parentSymbol != symbol)
-      INT_FATAL(this, "Bad AggregateType::fields::parentSymbol");
-  }
-  for_alist(expr, inherits) {
-    if (expr->parentSymbol != symbol)
-      INT_FATAL(this, "Bad AggregateType::inherits::parentSymbol");
-  }
-}
-
-
-AggregateType*
-AggregateType::copyInner(SymbolMap* map) {
-  AggregateType* copy_type = new AggregateType(aggregateTag);
-  copy_type->outer = outer;
-  for_alist(expr, fields)
-    copy_type->fields.insertAtTail(COPY_INT(expr));
-  for_alist(expr, inherits)
-    copy_type->inherits.insertAtTail(COPY_INT(expr));
-  for_fields(field, copy_type) {
-    if (FnSymbol* fn = toFnSymbol(field))
-      copy_type->methods.add(fn);
-  }
-  return copy_type;
-}
-
-
-static void
-addDeclaration(AggregateType* ct, DefExpr* def, bool tail) {
-  if (def->sym->hasFlag(FLAG_REF_VAR)) {
-      USR_FATAL_CONT(def, "References cannot be members of classes or records yet.");
-  }
-  if (FnSymbol* fn = toFnSymbol(def->sym)) {
-    ct->methods.add(fn);
-    if (fn->_this) {
-      // get the name used in the type binding clause
-      // this is the way it comes from the parser (see fn_decl_stmt_inner)
-      ArgSymbol* thisArg = toArgSymbol(fn->_this);  INT_ASSERT(thisArg);
-      INT_ASSERT(thisArg->type == dtUnknown);
-      BlockStmt* bs = thisArg->typeExpr;  INT_ASSERT(bs && bs->length() == 1);
-      Expr* firstexpr = bs->body.first();  INT_ASSERT(firstexpr);
-      UnresolvedSymExpr* sym = toUnresolvedSymExpr(firstexpr); INT_ASSERT(sym);
-      const char* name = sym->unresolved;
-      // ... then report it to the user
-      USR_FATAL_CONT(fn->_this,
-         "Type binding clauses ('%s.' in this case) are not supported in "
-         "declarations within a class, record or union", name);
-    } else {
-      ArgSymbol* arg = new ArgSymbol(fn->thisTag, "this", ct);
-      fn->_this = arg;
-      if (fn->thisTag == INTENT_TYPE) {
-        setupTypeIntentArg(arg);
-      }
-      arg->addFlag(FLAG_ARG_THIS);
-      fn->insertFormalAtHead(new DefExpr(fn->_this));
-      fn->insertFormalAtHead(
-          new DefExpr(new ArgSymbol(INTENT_BLANK, "_mt", dtMethodToken)));
-      fn->addFlag(FLAG_METHOD);
-      fn->addFlag(FLAG_METHOD_PRIMARY);
-    }
-  }
-
-  if (VarSymbol* var = toVarSymbol(def->sym)) {
-    // Identify VarSymbol as class/record member.
-    var->makeField();
-  }
-
-  if (def->parentSymbol || def->list)
-    def->remove();
-
-  // Lydia note (Sept 2, 2016): Based on control flow, this adds even the
-  // function symbols we just handled into the fields alist for the type.
-  // Shouldn't placing them in ct->methods be sufficient?
-  if (tail)
-    ct->fields.insertAtTail(def);
-  else
-    ct->fields.insertAtHead(def);
-}
-
-
-void AggregateType::addDeclarations(Expr* expr, bool tail) {
-  if (DefExpr* def = toDefExpr(expr)) {
-    addDeclaration(this, def, tail);
-  } else if (BlockStmt* block = toBlockStmt(expr)) {
-    for_alist(expr, block->body) {
-      addDeclarations(expr, tail);
-    }
-  } else {
-    INT_FATAL(expr, "unexpected case");
-  }
-}
-
-
-void AggregateType::replaceChild(BaseAST* old_ast, BaseAST* new_ast) {
-  INT_FATAL(this, "Unexpected case in AggregateType::replaceChild");
-}
-
-
-void AggregateType::accept(AstVisitor* visitor) {
-  if (visitor->enterAggrType(this) == true) {
-
-    for_alist(next_ast, fields) {
-      next_ast->accept(visitor);
-    }
-
-    for_alist(next_ast, inherits) {
-      next_ast->accept(visitor);
-    }
-
-    visitor->exitAggrType(this);
-  }
-}
-
-
-int AggregateType::getFieldPosition(const char* name, bool fatal) {
-  Vec<Type*> next, current;
-  Vec<Type*>* next_p = &next, *current_p = &current;
-
-  current_p->set_add(this);
-
-  int fieldPos = 0;
-
-  while (current_p->n != 0) {
-    forv_Vec(Type, t, *current_p) {
-      if (AggregateType* ct = toAggregateType(t)) {
-        for_fields(sym, ct) {
-          if (!strcmp(sym->name, name)) {
-            return fieldPos;
-          }
-
-          fieldPos++;
-        }
-        forv_Vec(Type, parent, ct->dispatchParents) {
-          if (parent)
-            next_p->set_add(parent);
-        }
-      }
-    }
-    Vec<Type*>* temp = next_p;
-    next_p = current_p;
-    current_p = temp;
-    next_p->clear();
-  }
-
-  if (fatal) {
-    const char *className = "<no name>";
-    if (this->symbol) { // this is always true?
-      className = this->symbol->name;
-    }
-    // TODO: report as a user error in certain cases
-    INT_FATAL(this,
-              "no field '%s' in class '%s' in getField()",
-              name,
-              className);
-  }
-
-  return -1;
-}
-
-
-Symbol* AggregateType::getField(const char* name, bool fatal) {
-  Vec<Type*> next, current;
-  Vec<Type*>* next_p = &next, *current_p = &current;
-  current_p->set_add(this);
-  while (current_p->n != 0) {
-    forv_Vec(Type, t, *current_p) {
-      if (AggregateType* ct = toAggregateType(t)) {
-        for_fields(sym, ct) {
-          if (!strcmp(sym->name, name))
-            return sym;
-        }
-        forv_Vec(Type, parent, ct->dispatchParents) {
-          if (parent)
-            next_p->set_add(parent);
-        }
-      }
-    }
-    Vec<Type*>* temp = next_p;
-    next_p = current_p;
-    current_p = temp;
-    next_p->clear();
-  }
-  if (fatal) {
-    const char *className = "<no name>";
-    if (this->symbol) { // this is always true?
-      className = this->symbol->name;
-    }
-    // TODO: report as a user error in certain cases
-    INT_FATAL(this, "no field '%s' in class '%s' in getField()",
-              name, className);
-  }
-  return NULL;
-}
-
-
-Symbol* AggregateType::getField(int i) {
-  return toDefExpr(fields.get(i))->sym;
-}
-
-QualifiedType AggregateType::getFieldType(Expr* e) {
-  SymExpr* sym = NULL;
-  VarSymbol* var = NULL;
-
-  sym = toSymExpr(e);
-  if (sym)
-    var = toVarSymbol(sym->symbol());
-
-  const char* name = NULL;
-
-  // Special case: An integer field name is actually a tuple member index.
-  {
-    int64_t i;
-    if (get_int(sym, &i)) {
-      name = astr("x", istr(i));
-    }
-  }
-
-  // Typical case: field is identified by its name
-  if (var && var->immediate)
-    name = var->immediate->v_string;
-
-  // Special case: star tuples can have run-time integer field access
-  if (name == NULL && this->symbol->hasFlag(FLAG_STAR_TUPLE)) {
-    name = astr("x1"); // get the 1st field's type, since they're all the same
-  }
-
-  Symbol* fs = NULL;
-  for_fields(field, this) {
-    if (!strcmp(field->name, name)) {
-      fs = field;
-    }
-  }
-
-  if (fs) {
-    Qualifier qual = QUAL_VAL;
-    if (fs->type->symbol->hasFlag(FLAG_REF))
-      qual = QUAL_REF;
-    return QualifiedType(fs->type, qual);
-  }
-  else
-    return QualifiedType(NULL, QUAL_UNKNOWN);
-}
-
-
-void AggregateType::printDocs(std::ostream *file, unsigned int tabs) {
-  // TODO: Include unions... (thomasvandoren, 2015-02-25)
-  if (this->symbol->noDocGen() || this->isUnion()) {
-    return;
-  }
-
-  this->printTabs(file, tabs);
-  *file << this->docsDirective();
-  *file << this->symbol->name;
-  *file << this->docsSuperClass();
-  *file << std::endl;
-
-  // In rst mode, ensure there is an empty line between the class/record
-  // signature and its description or the next directive.
-  if (!fDocsTextOnly) {
-    *file << std::endl;
-  }
-
-  if (this->doc != NULL) {
-    this->printDocsDescription(this->doc, file, tabs + 1);
-    *file << std::endl;
-
-    // In rst mode, ensure there is an empty line between the class/record
-    // description and the next directive.
-    if (!fDocsTextOnly) {
-      *file << std::endl;
-    }
-  }
-}
-
-
-/*
- * Returns super class string for documentation. If super class exists, returns
- * ": <super class name>".
- */
-std::string AggregateType::docsSuperClass() {
-  if (this->inherits.length > 0) {
-    std::vector<std::string> superClassNames;
-
-    for_alist(expr, this->inherits) {
-      if (UnresolvedSymExpr* use = toUnresolvedSymExpr(expr)) {
-        superClassNames.push_back(use->unresolved);
-      } else {
-        INT_FATAL(expr, "Expected UnresolvedSymExpr for all members of inherits alist.");
-      }
-    }
-
-    if (superClassNames.empty()) {
-      return "";
-    }
-
-    // If there are super classes, join them into a single comma delimited
-    // string prefixed with a colon.
-    std::string superClasses = " : " + superClassNames.front();
-    for (unsigned int i = 1; i < superClassNames.size(); i++) {
-      superClasses += ", " + superClassNames.at(i);
-    }
-    return superClasses;
-  } else {
-    return "";
-  }
-}
-
-
-std::string AggregateType::docsDirective() {
-  if (fDocsTextOnly) {
-    if (this->isClass()) {
-      return "Class: ";
-    } else if (this->isRecord()) {
-      return "Record: ";
-    }
-  } else {
-    if (this->isClass()) {
-      return ".. class:: ";
-    } else if (this->isRecord()) {
-      return ".. record:: ";
-    }
-  }
-  return "";
-}
-
-
-void initRootModule() {
-  rootModule           = new ModuleSymbol("_root", MOD_INTERNAL, new BlockStmt());
-  rootModule->filename = astr("<internal>");
-}
-
-void initStringLiteralModule() {
-  stringLiteralModule = new ModuleSymbol("ChapelStringLiterals", MOD_INTERNAL, new BlockStmt());
-  stringLiteralModule->filename = astr("<internal>");
-  theProgram->block->insertAtTail(new DefExpr(stringLiteralModule));
-}
-
-/************************************ | *************************************
-*                                                                           *
-*                                                                           *
-*                                                                           *
-************************************* | ************************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 static PrimitiveType* createPrimitiveType(const char* name, const char* cname);
 static PrimitiveType* createInternalType (const char* name, const char* cname);
@@ -1122,15 +762,13 @@ static VarSymbol* createSymbol(PrimitiveType* primType, const char* name) {
   return retval;
 }
 
-/************************************ | *************************************
-*                                                                           *
-*                                                                           *
-*                                                                           *
-************************************* | ************************************/
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
 
 DefExpr* defineObjectClass() {
-  DefExpr* retval = 0;
-
   // The base object class looks like this:
   //
   //   class object {
@@ -1145,37 +783,33 @@ DefExpr* defineObjectClass() {
   //  throughout compilation, and it seemed to me that the it might result
   //  in possibly more special case code.
   //
-  dtObject = new AggregateType(AGGREGATE_CLASS);
-
-  retval   = buildClassDefExpr("object",
-                               NULL,
-                               dtObject,
-                               NULL,
-                               new BlockStmt(),
-                               FLAG_UNKNOWN,
-                               NULL);
+  DefExpr* retval = buildClassDefExpr("object",
+                                      NULL,
+                                      AGGREGATE_CLASS,
+                                      NULL,
+                                      new BlockStmt(),
+                                      FLAG_UNKNOWN,
+                                      NULL);
 
   retval->sym->addFlag(FLAG_OBJECT_CLASS);
-  retval->sym->addFlag(FLAG_GLOBAL_TYPE_SYMBOL); // Prevents removal in pruneResolvedTree().
+
+  // Prevents removal in pruneResolvedTree().
+  retval->sym->addFlag(FLAG_GLOBAL_TYPE_SYMBOL);
   retval->sym->addFlag(FLAG_NO_OBJECT);
+
+  dtObject = retval->sym->type;
 
   return retval;
 }
 
 void initChplProgram(DefExpr* objectDef) {
-  theProgram           = new ModuleSymbol("chpl__Program", MOD_INTERNAL, new BlockStmt());
+  theProgram           = new ModuleSymbol("chpl__Program",
+                                          MOD_INTERNAL,
+                                          new BlockStmt());
+
   theProgram->filename = astr("<internal>");
 
   theProgram->addFlag(FLAG_NO_CODEGEN);
-
-  UseStmt* base = new UseStmt(new UnresolvedSymExpr("ChapelBase"));
-  UseStmt* std  = new UseStmt(new UnresolvedSymExpr("ChapelStandard"));
-
-  theProgram->block->insertAtTail(base);
-
-  // it may be better to add the following use after parsing
-  // to simplify insertion of module guard sync var defs
-  theProgram->block->insertAtTail(std);
 
   theProgram->block->insertAtHead(objectDef);
 
@@ -1186,11 +820,13 @@ void initChplProgram(DefExpr* objectDef) {
 // matching 'value'. For use in initCompilerGlobals.
 static void setupBoolGlobal(VarSymbol* globalVar, bool value) {
   rootModule->block->insertAtTail(new DefExpr(globalVar));
+
   if (value) {
-    globalVar->immediate = new Immediate;
+     globalVar->immediate = new Immediate;
     *globalVar->immediate = *gTrue->immediate;
+
   } else {
-    globalVar->immediate = new Immediate;
+     globalVar->immediate = new Immediate;
     *globalVar->immediate = *gFalse->immediate;
   }
 }
@@ -1204,6 +840,10 @@ void initCompilerGlobals() {
   gCastChecking = new VarSymbol("castChecking", dtBool);
   gCastChecking->addFlag(FLAG_PARAM);
   setupBoolGlobal(gCastChecking, !fNoCastChecks);
+
+  gDivZeroChecking = new VarSymbol("chpl_checkDivByZero", dtBool);
+  gDivZeroChecking->addFlag(FLAG_PARAM);
+  setupBoolGlobal(gDivZeroChecking, !fNoDivZeroChecks);
 
   gPrivatization = new VarSymbol("_privatization", dtBool);
   gPrivatization->addFlag(FLAG_PARAM);
@@ -1344,6 +984,10 @@ bool isClass(Type* t) {
   return false;
 }
 
+bool isClassOrNil(Type* t) {
+  if (t == dtNil) return true;
+  return isClass(t);
+}
 
 bool isRecord(Type* t) {
   if (AggregateType* ct = toAggregateType(t))
@@ -1497,7 +1141,7 @@ bool isString(Type* type) {
 }
 
 //
-// NOAKES 2016/02/29
+// Noakes 2016/02/29
 //
 // To support the merge of the string-as-rec branch we defined a
 // function, isString(), which is only true of the record that was
@@ -1515,8 +1159,13 @@ bool isString(Type* type) {
 // In the longer term we plan to further broaden the cases that the new
 // logic can handle and reduce the exceptions that are filtered out here.
 //
-// MPF 2016-09-15
+//
+//
+// MPF    2016/09/15
 // This function now includes tuples, distributions, domains, and arrays.
+//
+// Noakes 2017/03/02
+// This function now includes range and atomics
 //
 bool isUserDefinedRecord(Type* type) {
   bool retval = false;
@@ -1527,18 +1176,15 @@ bool isUserDefinedRecord(Type* type) {
 
     // Must be a record type
     if (aggr->aggregateTag != AGGREGATE_RECORD) {
-
-    // Not a range
-    } else if (sym->hasFlag(FLAG_RANGE)              == true) {
-
-    // Not an atomic type
-    } else if (sym->hasFlag(FLAG_ATOMIC_TYPE)        == true) {
+      retval = false;
 
     // Not a RUNTIME_type
     } else if (sym->hasFlag(FLAG_RUNTIME_TYPE_VALUE) == true) {
+      retval = false;
 
     // Not an iterator
     } else if (strncmp(name, "_ir_", 4)              ==    0) {
+      retval = false;
 
     } else {
       retval = true;
@@ -1636,3 +1282,192 @@ bool isPOD(Type* t)
   return false;
 }
 
+/************************************* | **************************************
+*                                                                             *
+*                                                                             *
+*                                                                             *
+************************************** | *************************************/
+
+bool isPrimitiveScalar(Type* type) {
+  bool retval = false;
+
+  if (type == dtBools[BOOL_SIZE_8]         ||
+      type == dtBools[BOOL_SIZE_16]        ||
+      type == dtBools[BOOL_SIZE_32]        ||
+      type == dtBools[BOOL_SIZE_64]        ||
+      type == dtBools[BOOL_SIZE_SYS]       ||
+
+      type == dtInt[INT_SIZE_8]            ||
+      type == dtInt[INT_SIZE_16]           ||
+      type == dtInt[INT_SIZE_32]           ||
+      type == dtInt[INT_SIZE_64]           ||
+
+      type == dtUInt[INT_SIZE_8]           ||
+      type == dtUInt[INT_SIZE_16]          ||
+      type == dtUInt[INT_SIZE_32]          ||
+      type == dtUInt[INT_SIZE_64]          ||
+
+      type == dtReal[FLOAT_SIZE_32]        ||
+      type == dtReal[FLOAT_SIZE_64]        ||
+
+      type == dtImag[FLOAT_SIZE_32]        ||
+      type == dtImag[FLOAT_SIZE_64]) {
+
+    retval = true;
+
+  } else {
+    retval = false;
+  }
+
+  return retval;
+}
+
+bool isNonGenericClass(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isClass()                    ==  true &&
+        at->isGeneric()                  == false &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}
+
+bool isNonGenericClassWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (isNonGenericClass(type) == true) {
+    if (AggregateType* at = toAggregateType(type)) {
+      if (at->initializerStyle == DEFINES_INITIALIZER) {
+        retval = true;
+      } else if (at->wantsDefaultInitializer()) {
+        retval = true;
+      }
+    }
+  }
+
+  return retval;
+}
+
+bool isGenericClass(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isClass()                    == true  &&
+        at->isGeneric()                  == true  &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}
+
+bool isGenericClassWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (isGenericClass(type) == true) {
+    if (AggregateType* at = toAggregateType(type)) {
+      if (at->initializerStyle == DEFINES_INITIALIZER) {
+        retval = true;
+      } else if (at->wantsDefaultInitializer()) {
+        retval = true;
+      }
+    }
+  }
+
+  return retval;
+}
+
+bool isClassWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isClass()                    == true  &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false &&
+        (at->initializerStyle == DEFINES_INITIALIZER ||
+         at->wantsDefaultInitializer())) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}
+
+bool isNonGenericRecord(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isRecord()                   == true  &&
+        at->isGeneric()                  == false &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}
+
+bool isNonGenericRecordWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (isNonGenericRecord(type) == true) {
+    if (AggregateType* at = toAggregateType(type)) {
+      if (at->initializerStyle == DEFINES_INITIALIZER) {
+        retval = true;
+      } else if (at->wantsDefaultInitializer()) {
+        retval = true;
+      }
+    }
+  }
+
+  return retval;
+}
+
+bool isGenericRecord(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isRecord()                   == true  &&
+        at->isGeneric()                  == true  &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}
+
+bool isGenericRecordWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (isGenericRecord(type) == true) {
+    if (AggregateType* at = toAggregateType(type)) {
+      if (at->initializerStyle == DEFINES_INITIALIZER) {
+        retval = true;
+      } else if (at->wantsDefaultInitializer()) {
+        retval = true;
+      }
+    }
+  }
+
+  return retval;
+}
+
+bool isRecordWithInitializers(Type* type) {
+  bool retval = false;
+
+  if (AggregateType* at = toAggregateType(type)) {
+    if (at->isRecord()                   == true  &&
+        at->symbol->hasFlag(FLAG_EXTERN) == false &&
+        (at->initializerStyle == DEFINES_INITIALIZER ||
+         at->wantsDefaultInitializer())) {
+      retval = true;
+    }
+  }
+
+  return retval;
+}

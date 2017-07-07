@@ -19,6 +19,8 @@
 
 /* A Chapel version of a C pointer. */
 module CPtr {
+  use ChapelStandard;
+
   /* A Chapel version of a C NULL pointer. */
   extern const c_nil:c_void_ptr;
 
@@ -42,7 +44,8 @@ module CPtr {
       if !x then do writeln("x is nil");
 
   */
-  //   Similar to _ddata from ChapelBase, but differs 
+
+  //   Similar to _ddata from ChapelBase, but differs
   //   from _ddata because it can never be wide.
   pragma "data class"
   pragma "no object"
@@ -223,8 +226,26 @@ module CPtr {
     :arg arr: the array for which we should retrieve a pointer
     :returns: a pointer to the array data
   */
-  inline proc c_ptrTo(arr: []) where isRectangularArr(arr) {
-    if !arr._value.oneDData then halt("error: c_ptrTo(multi_ddata array");
+  inline proc c_ptrTo(arr: []) where isRectangularArr(arr) && !chpl__isDROrDRView(arr) {
+    if !chpl__getActualArray(arr).oneDData then halt("error: c_ptrTo(multi_ddata array");
+    return c_pointer_return(arr[arr.domain.low]);
+  }
+
+  pragma "no doc"
+  inline proc c_ptrTo(arr: []) where chpl__isDROrDRView(arr) {
+    const val = arr._value;
+    if chpl__isArrayView(val) {
+      // BHARSH TODO: there *has* to be a cleaner way to do this sort of thing...
+      const cache = if val.shouldUseIndexCache() then
+                      val.indexCache
+                    else if val.isSliceArrayView() then
+                      val._getActualArray().dsiGetRAD().toSlice(val.dom)
+                    else
+                      val._getActualArray().dsiGetRAD(); // Should never get here
+      if !cache.oneDData then halt("error: c_ptrTo(multi_ddata array");
+    } else {
+      if !chpl__getActualArray(arr).oneDData then halt("error: c_ptrTo(multi_ddata array");
+    }
     return c_pointer_return(arr[arr.domain.low]);
   }
 

@@ -13,7 +13,8 @@ Benchmarks Games website.
     * Simulates meetings between color-changing Chameneos
 * [fannkuchredux.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=fannkuchredux&lang=chapel&id=1)
     * Performs many operations on small arrays
-* [fastaredux.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=fastaredux&lang=chapel&id=1)
+* [fasta.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=fasta&lang=chapel&id=1) |
+  [fasta.chpl #2](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=fasta&lang=chapel&id=2)
     * Generates and writes random DNA sequences
 * [knucleotide.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=knucleotide&lang=chapel&id=1)
     * Count the frequencies of specific nucleotide sequences
@@ -25,10 +26,13 @@ Benchmarks Games website.
     * A less readable, but much faster version of meteor.
 * [nbody.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=nbody&lang=chapel&id=1)
     * Performs an n-body simulation of the Jovian planets
-* [pidigits.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=pidigits&lang=chapel&id=1)
+* [pidigits.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=pidigits&lang=chapel&id=1) |
+  [pidigits.chpl #2](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=pidigits&lang=chapel&id=2)
     * Computes digits of pi using GMP, if available
 * [regexdna.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=regexdna&lang=chapel&id=1)
     * Performs DNA matching
+* [regexdna-redux.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=regexredux&lang=chapel&id=1)
+    * Performs DNA matching, modified version of the above
 * [revcomp.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=revcomp&lang=chapel&id=1)
     * Calculate the strand to bind with a given DNA strand
 * [spectralnorm.chpl](http://benchmarksgame.alioth.debian.org/u64q/program.php?test=spectralnorm&lang=chapel&id=1)

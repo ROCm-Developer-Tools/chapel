@@ -29,15 +29,16 @@
 // The rules are listed in depth-first order from stmt and expr
 //
 
-// NOAKES 2015/02/10 To be deprecated
 %code requires {
-  extern int  captureTokens;
-  extern char captureString[1024];
+  #include <string>
+  extern int         captureTokens;
+  extern std::string captureString;
 }
 
 %code {
+  #include <string>
   int         captureTokens;
-  char        captureString[1024];
+  std::string captureString;
 }
 
 // It would be better if Flex could generate these for itself
@@ -103,24 +104,25 @@
   // The lexer only uses pch.
   // The remaining types are for parser productions
   union  YYSTYPE {
-    const char*       pch;
+    const char*               pch;
 
-    Vec<const char*>* vpch;
-    RetTag            retTag;
-    bool              b;
-    IntentTag         pt;
-    Expr*             pexpr;
-    DefExpr*          pdefexpr;
-    CallExpr*         pcallexpr;
-    BlockStmt*        pblockstmt;
-    Type*             ptype;
-    EnumType*         penumtype;
-    FnSymbol*         pfnsymbol;
-    Flag              flag;
-    ProcIter          procIter;
-    FlagSet*          flagSet;
-    IntentExpr        pIntentExpr;
-    ForallIntents*    pForallIntents;
+    Vec<const char*>*         vpch;
+    RetTag                    retTag;
+    AggregateTag              aggrTag;
+    bool                      b;
+    IntentTag                 pt;
+    Expr*                     pexpr;
+    DefExpr*                  pdefexpr;
+    CallExpr*                 pcallexpr;
+    BlockStmt*                pblockstmt;
+    Type*                     ptype;
+    EnumType*                 penumtype;
+    FnSymbol*                 pfnsymbol;
+    Flag                      flag;
+    ProcIter                  procIter;
+    FlagSet*                  flagSet;
+    IntentExpr                pIntentExpr;
+    ForallIntents*            pForallIntents;
     std::vector<OnlyRename*>* ponlylist;
   };
 
@@ -194,6 +196,8 @@
 
 %code {
   #include "build.h"
+  #include "CatchStmt.h"
+  #include "DeferStmt.h"
   #include "DoWhileStmt.h"
   #include "driver.h"
   #include "flex-chapel.h"
@@ -284,10 +288,12 @@
 //
 // keywords (alphabetical)
 //
-%token TALIGN TAS TATOMIC TBEGIN TBREAK TBY
+%token TALIGN TAS TATOMIC TBEGIN TBREAK TBY TCATCH
 %token TCLASS TCOBEGIN TCOFORALL TCONFIG TCONST TCONTINUE
-%token TDELETE TDMAPPED TDO TDOMAIN TELSE TENUM TEXCEPT TEXPORT TEXTERN
-%token TFOR TFORALL TIF TIN TINDEX TINLINE TINOUT TITER
+%token TDEFER TDELETE TDMAPPED TDO TDOMAIN
+%token TELSE TENUM TEXCEPT TEXPORT TEXTERN
+%token TFOR TFORALL TFORWARDING
+%token TIF TIN TINDEX TINLINE TINOUT TITER
 %token TLABEL TLAMBDA TLET TLOCAL TMINUSMINUS TMODULE
 %token TNEW TNIL TNOINIT TON TONLY TOTHERWISE TOUT
 %token TPARAM TPLUSPLUS TPRAGMA TPRIMITIVE TPRIVATE TPROC TPUBLIC
@@ -348,7 +354,8 @@
 
 %type <pt> required_intent_tag opt_intent_tag opt_this_intent_tag
 
-%type <retTag> opt_ret_tag
+%type <retTag>  opt_ret_tag
+%type <aggrTag> class_tag
 
 %type <pch> ident fn_ident assignop_ident opt_ident
 %type <pch> opt_ident_or_string
@@ -376,10 +383,15 @@
 %type <pblockstmt> if_stmt loop_stmt
 %type <pblockstmt> select_stmt assignment_stmt class_level_stmt
 %type <pblockstmt> private_decl
+%type <pblockstmt> forwarding_stmt
 %type <pblockstmt> extern_block_stmt
 %type <pblockstmt> return_stmt
+%type <pblockstmt> defer_stmt
 %type <pblockstmt> try_stmt
 %type <pblockstmt> throw_stmt
+%type <pblockstmt> catch_stmt_ls
+%type <pexpr>      catch_stmt
+%type <pexpr>      catch_expr
 
 %type <pblockstmt> type_alias_decl_stmt type_alias_decl_stmt_inner fn_decl_stmt class_decl_stmt
 %type <pblockstmt> enum_decl_stmt
@@ -395,7 +407,6 @@
 %type <pcallexpr> array_type
 %type <pexpr> opt_type opt_formal_type formal_array_type opt_formal_array_elt_type lambda_decl_expr
 %type <pexpr> opt_reindex_expr
-%type <ptype> class_tag
 %type <penumtype> enum_ls
 
 %type <pcallexpr> zippered_iterator
@@ -457,6 +468,7 @@ stmt:
 | if_stmt
 | loop_stmt
 | select_stmt
+| defer_stmt
 | try_stmt
 | throw_stmt
 | return_stmt
@@ -479,9 +491,9 @@ stmt:
 
 module_decl_stmt:
   access_control TMODULE ident TLCBR TRCBR
-    { $$ = buildChapelStmt(new DefExpr(buildModule($3, new BlockStmt(), yyfilename, $1, @1.comment))); }
+    { $$ = buildChapelStmt(new DefExpr(buildModule($3, currentModuleType, new BlockStmt(), yyfilename, $1, @1.comment))); }
 | access_control TMODULE ident TLCBR stmt_ls TRCBR
-    { $$ = buildChapelStmt(new DefExpr(buildModule($3, $5, yyfilename, $1, @1.comment))); }
+    { $$ = buildChapelStmt(new DefExpr(buildModule($3, currentModuleType, $5, yyfilename, $1, @1.comment))); }
 ;
 
 access_control:
@@ -532,6 +544,7 @@ only_ls:
                                          cur->tag = OnlyRename::DOUBLE;
                                          cur->renamed = new std::pair<Expr*, Expr*>($3, $5);
                                          $1->push_back(cur); }
+;
 
 opt_only_ls:
   /* nothing */                        { $$ = new std::vector<OnlyRename*>();
@@ -600,7 +613,7 @@ do_stmt:
 ;
 
 return_stmt:
-  TRETURN TSEMI       { $$ = buildPrimitiveStmt(PRIM_RETURN, new SymExpr(gVoid)); }
+  TRETURN TSEMI       { $$ = buildPrimitiveStmt(PRIM_RETURN); }
 | TRETURN expr TSEMI  { $$ = buildPrimitiveStmt(PRIM_RETURN, $2); }
 ;
 
@@ -612,11 +625,19 @@ class_level_stmt:
 | enum_decl_stmt
 | type_alias_decl_stmt
 | class_decl_stmt
+| forwarding_stmt
 ;
 
 private_decl:
   fn_decl_stmt
 | var_decl_stmt
+;
+
+forwarding_stmt:
+  TFORWARDING expr TSEMI  { $$ = buildForwardingStmt($2); }
+| TFORWARDING expr TEXCEPT except_ls TSEMI  { $$ = buildForwardingStmt($2, $4, true); }
+| TFORWARDING expr TONLY opt_only_ls TSEMI  { $$ = buildForwardingStmt($2, $4, false); }
+| TFORWARDING var_decl_stmt { $$ = buildForwardingDeclStmt($2); }
 ;
 
 extern_block_stmt:
@@ -702,9 +723,32 @@ if_stmt:
 | TIF expr block_stmt TELSE stmt     { $$ = buildIfStmt($2, $3, $5); }
 ;
 
+defer_stmt:
+  TDEFER stmt             { $$ = DeferStmt::build($2); }
+
 try_stmt:
-  TTRY     stmt { $$ = TryStmt::build(false, $2); }
-| TTRYBANG stmt { $$ = TryStmt::build(true,  $2); }
+  TTRY     expr            TSEMI         { $$ = TryStmt::build(false, $2); }
+| TTRYBANG expr            TSEMI         { $$ = TryStmt::build(true,  $2); }
+| TTRY     assignment_stmt               { $$ = TryStmt::build(false, $2); }
+| TTRYBANG assignment_stmt               { $$ = TryStmt::build(true,  $2); }
+| TTRY     block_stmt      catch_stmt_ls { $$ = TryStmt::build(false, $2, $3); }
+| TTRYBANG block_stmt      catch_stmt_ls { $$ = TryStmt::build(true,  $2, $3); }
+;
+
+catch_stmt_ls:
+                           { $$ = buildChapelStmt(); }
+| catch_stmt_ls catch_stmt { $1->insertAtTail($2); }
+;
+
+catch_stmt:
+  TCATCH                    block_stmt { $$ = CatchStmt::build($2); }
+| TCATCH     catch_expr     block_stmt { $$ = CatchStmt::build($2, $3); }
+| TCATCH TLP catch_expr TRP block_stmt { $$ = CatchStmt::build($3, $5); }
+;
+
+catch_expr:
+  ident             { $$ = new DefExpr(new VarSymbol($1), NULL, new UnresolvedSymExpr("Error")); }
+| ident TCOLON expr { $$ = new DefExpr(new VarSymbol($1), NULL, $3);   }
 ;
 
 throw_stmt:
@@ -734,29 +778,39 @@ when_stmt:
 class_decl_stmt:
   class_tag ident opt_inherit TLCBR class_level_stmt_ls TRCBR
     {
-      $$ = buildChapelStmt(buildClassDefExpr($2, NULL, $1, $3, $5, FLAG_UNKNOWN,
+      $$ = buildChapelStmt(buildClassDefExpr($2,
+                                             NULL,
+                                             $1,
+                                             $3,
+                                             $5,
+                                             FLAG_UNKNOWN,
                                              @1.comment));
     }
 | TEXTERN opt_ident_or_string class_tag ident opt_inherit TLCBR class_level_stmt_ls TRCBR
     {
-      $$ = buildChapelStmt(buildClassDefExpr($4, $2, $3, $5, $7, FLAG_EXTERN,
+      $$ = buildChapelStmt(buildClassDefExpr($4,
+                                             $2,
+                                             $3,
+                                             $5,
+                                             $7,
+                                             FLAG_EXTERN,
                                              @3.comment));
     }
 ;
 
 class_tag:
   TCLASS   {
-             $$                     = new AggregateType(AGGREGATE_CLASS);
+             $$                     = AGGREGATE_CLASS;
              @$.comment             = context->latestComment;
              context->latestComment = NULL;
            }
 | TRECORD  {
-             $$                     = new AggregateType(AGGREGATE_RECORD);
+             $$                     = AGGREGATE_RECORD;
              @$.comment             = context->latestComment;
              context->latestComment = NULL;
            }
 | TUNION   {
-             $$                     = new AggregateType(AGGREGATE_UNION);
+             $$                     = AGGREGATE_UNION;
              @$.comment             = context->latestComment;
              context->latestComment = NULL;
            }
@@ -816,7 +870,7 @@ lambda_decl_expr:
   TLAMBDA
     {
       captureTokens = 1;
-      captureString[0] = '\0';
+      captureString.clear();
     }
     req_formal_ls
     {
@@ -873,13 +927,14 @@ linkage_spec:
                   @$.comment             = context->latestComment;
                   context->latestComment = NULL;
                 }
+;
 
 fn_decl_stmt:
   linkage_spec proc_or_iter
     {
       // Sets up to capture tokens while parsing the next grammar nonterminal.
       captureTokens = 1;
-      captureString[0] = '\0';
+      captureString.clear();
     }
   fn_decl_stmt_inner
     {
@@ -1026,6 +1081,8 @@ opt_this_intent_tag:
          { $$ = INTENT_BLANK; }
 | TPARAM { $$ = INTENT_PARAM; }
 | TREF   { $$ = INTENT_REF;   }
+| TCONST TREF   { $$ = INTENT_CONST_REF;   }
+| TCONST { $$ = INTENT_CONST;   }
 | TTYPE  { $$ = INTENT_TYPE;  }
 ;
 
@@ -1191,6 +1248,7 @@ var_decl_stmt_inner:
     {
       VarSymbol* var = new VarSymbol($1);
       var->addFlag(FLAG_ARRAY_ALIAS);
+      USR_WARN(var, "support for '=>' to alias arrays is deprecated as of chpl version 1.15.  Use a 'ref' declaration instead.");
       $$ = buildChapelStmt(new DefExpr(var, $4, $2));
     }
 | TLP tuple_var_decl_stmt_inner_ls TRP opt_type opt_init_expr
@@ -1338,7 +1396,6 @@ actual_ls:
 actual_expr:
   ident TASSIGN query_expr  { $$ = buildNamedActual($1, $3); }
 | ident TASSIGN expr        { $$ = buildNamedActual($1, $3); }
-| ident TALIAS expr         { $$ = buildNamedAliasActual($1, $3); }
 | query_expr                { $$ = $1; }
 | expr
 ;
@@ -1437,6 +1494,9 @@ for_expr:
 cond_expr:
   TIF expr TTHEN expr TELSE expr
     { $$ = new CallExpr(new DefExpr(buildIfExpr($2, $4, $6))); }
+/* MPF: it would be nice to match TIF expr TTHEN expr but
+  the obvious solution there leads to shift-reduce conflicts.
+ */
 ;
 
 nil_expr:
@@ -1530,7 +1590,7 @@ expr:
 | TLP TDOTDOTDOT expr TRP
     { $$ = new CallExpr(PRIM_TUPLE_EXPAND, $3); }
 | expr TCOLON expr
-    { $$ = new CallExpr("_cast", $3, $1); }
+    { $$ = createCast($1, $3); }
 | expr TDOTDOT expr
     { $$ = new CallExpr("chpl_build_bounded_range", $1, $3); }
 | expr TDOTDOT

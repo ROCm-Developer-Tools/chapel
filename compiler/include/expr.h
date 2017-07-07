@@ -42,6 +42,9 @@ public:
   virtual QualifiedType qualType();
   virtual void    verify();
 
+  void verify(AstTag expectedTag); // ensure tag is as expected, then verify()
+  void verifyParent(const Expr* child); // verify proper child->parentExpr
+
   // New interface
   virtual Expr*   copy(SymbolMap* map = NULL, bool internal = false)   = 0;
   virtual void    replaceChild(Expr* old_ast, Expr* new_ast)           = 0;
@@ -68,6 +71,9 @@ public:
   void            insertBefore(Expr* new_ast);
   void            insertAfter(Expr* new_ast);
   void            replace(Expr* new_ast);
+
+  void            insertBefore(AList exprs);
+  void            insertAfter(AList exprs);
 
   void            insertBefore(const char* format, ...);
   void            insertAfter(const char* format, ...);
@@ -253,21 +259,28 @@ public:
   // True if the callExpr has been emptied (aka dead)
   bool            isEmpty()                                              const;
 
+  bool            isCast();
+  Expr*           castFrom();
+  Expr*           castTo();
+
   bool            isPrimitive()                                          const;
   bool            isPrimitive(PrimitiveTag primitiveTag)                 const;
   bool            isPrimitive(const char*  primitiveName)                const;
 
-  FnSymbol*       isResolved()                                           const;
+  void            setUnresolvedFunction(const char* name);
+
+  bool            isResolved()                                           const;
   FnSymbol*       resolvedFunction()                                     const;
+  void            setResolvedFunction(FnSymbol* fn);
 
   FnSymbol*       theFnSymbol()                                          const;
 
-  bool            isNamed(const char*);
+  bool            isNamed(const char*)                                   const;
+  bool            isNamedAstr(const char*)                               const;
 
   int             numActuals()                                           const;
   Expr*           get(int index)                                         const;
   FnSymbol*       findFnSymbol();
-
 
 private:
   GenRet          codegenPrimitive();
@@ -293,12 +306,17 @@ private:
 // isCallExpr() will return true for a ContextCallExpr.
 class ContextCallExpr : public Expr {
  public:
-  // The options list always contains two CallExprs.
-  // The first is the value/const ref return intent
-  // and the second is the ref return intent version of a call.
+  // The options list always contains two or three CallExprs.
+  // These are always in this order:
+  //   value return
+  //   const-ref return
+  //   ref return
   // Storing the ref call after the value call allows a
   // postorder traversal to skip the value call.
-  // The order is important also - the first is always the value.
+
+  bool hasValue;
+  bool hasConstRef;
+  bool hasRef;
   AList options;
 
   ContextCallExpr();
@@ -316,9 +334,8 @@ class ContextCallExpr : public Expr {
 
   virtual Expr*   getFirstExpr();
 
-  void            setRefRValueOptions(CallExpr* refCall, CallExpr* rvalueCall);
-  CallExpr*       getRefCall();
-  CallExpr*       getRValueCall();
+  void            setRefValueConstRefOptions(CallExpr* refCall, CallExpr* valueCall, CallExpr* constRefCall);
+  void            getCalls(CallExpr*& refCall, CallExpr*& valueCall, CallExpr*& constRefCall);
 };
 
 
@@ -413,7 +430,7 @@ static inline bool isTaskFun(FnSymbol* fn) {
 
 static inline FnSymbol* resolvedToTaskFun(CallExpr* call) {
   INT_ASSERT(call);
-  if (FnSymbol* cfn = call->isResolved()) {
+  if (FnSymbol* cfn = call->resolvedFunction()) {
     if (isTaskFun(cfn))
       return cfn;
   }
@@ -440,7 +457,7 @@ bool get_uint(Expr *e, uint64_t *i); // false is failure
 bool get_string(Expr *e, const char **s); // false is failure
 const char* get_string(Expr* e); // fatal on failure
 
-CallExpr* callChplHereAlloc(Symbol *s, VarSymbol* md = NULL);
+CallExpr* callChplHereAlloc(Type* type, VarSymbol* md = NULL);
 void insertChplHereAlloc(Expr *call, bool insertAfter, Symbol *sym,
                          Type* t, VarSymbol* md = NULL);
 CallExpr* callChplHereFree(BaseAST* p);
@@ -456,6 +473,8 @@ CallExpr* callChplHereFree(BaseAST* p);
 
 Expr* getNextExpr(Expr* expr);
 
+CallExpr* createCast(BaseAST* src, BaseAST* toType);
+
 Expr* new_Expr(const char* format, ...);
 Expr* new_Expr(const char* format, va_list vl);
 
@@ -469,5 +488,6 @@ GenRet createTempVarWith(GenRet v);
 
 GenRet codegenDeref(GenRet toDeref);
 GenRet codegenLocalDeref(GenRet toDeref);
+GenRet codegenNullPointer();
 
 #endif

@@ -91,6 +91,8 @@ public:
   virtual void   exitBlockStmt       (BlockStmt*         node);
 
   virtual void   visitForallIntents  (ForallIntents*   clause);
+  virtual bool   enterForallStmt     (ForallStmt*        node);
+  virtual void   exitForallStmt      (ForallStmt*        node);
 
   virtual bool   enterWhileDoStmt    (WhileDoStmt*       node);
   virtual void   exitWhileDoStmt     (WhileDoStmt*       node);
@@ -115,8 +117,17 @@ public:
   virtual bool   enterGotoStmt       (GotoStmt*          node);
   virtual void   exitGotoStmt        (GotoStmt*          node);
 
+  virtual bool   enterForwardingStmt (ForwardingStmt*    node);
+  virtual void   exitForwardingStmt  (ForwardingStmt*    node);
+
+  virtual bool   enterDeferStmt      (DeferStmt*         node);
+  virtual void   exitDeferStmt       (DeferStmt*         node);
+
   virtual bool   enterTryStmt        (TryStmt*           node);
   virtual void   exitTryStmt         (TryStmt*           node);
+
+  virtual bool   enterCatchStmt      (CatchStmt*         node);
+  virtual void   exitCatchStmt       (CatchStmt*         node);
 
 protected:
   bool outputVector (FILE* fp, std::vector<const char*> vec);

@@ -3,7 +3,6 @@ Initializing Modules:
     CPtr
     CString
     String
-     BaseStringType
      SysCTypes
      StringCasts
     ChapelDebugPrint
@@ -32,16 +31,17 @@ Initializing Modules:
      List
     ChapelIO
      IO
-      Error
-      Regexp
+      SysError
+      FormattedIO
+       Regexp
     LocaleTree
     DefaultAssociative
     ChapelTaskTable
     MemTracking
     ChapelUtil
+    ChapelError
     ChapelDynDispHack
     Assert
-    CommDiagnostics
     AlignedTSupport
     RangeChunk
    printModuleInitOrder

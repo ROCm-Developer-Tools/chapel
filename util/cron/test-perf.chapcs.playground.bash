@@ -9,11 +9,11 @@ source $CWD/common-perf.bash
 
 export CHPL_NIGHTLY_TEST_CONFIG_NAME="perf.chapcs.playground"
 
-# Test performance of limiting tls usage in task spawn
+# Test performance of some jemalloc 5
 GITHUB_USER=ronawho
-GITHUB_BRANCH=avoid-tls-in-task-spawn
-SHORT_NAME=avoidTLS
-START_DATE=01/10/17
+GITHUB_BRANCH=upgrade-jemalloc-5.0
+SHORT_NAME=jemalloc-5
+START_DATE=06/21/17
 
 git branch -D $GITHUB_USER-$GITHUB_BRANCH
 git checkout -b $GITHUB_USER-$GITHUB_BRANCH

@@ -1,0 +1,2 @@
+--strict-errors                    # strict-try.strict.good
+--strict-errors --no-strict-errors # strict-try.default.good

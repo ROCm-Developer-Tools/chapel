@@ -1,15 +1,15 @@
 /*
  * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
- * 
+ *
  * The entirety of this work is licensed under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.
- * 
+ *
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -35,7 +35,7 @@
 */
 module Path {
 
-use Error;
+use SysError;
 
 /* Returns the basename of the file name provided.  For instance, in the
    name `/foo/bar/baz`, this function would return `baz`, while `/foo/bar/`
@@ -187,6 +187,42 @@ proc file.realPath(): string {
    } else {
      return ("", name);
    }
+ }
+
+ /*
+
+ Returns the parent directory of the :type:`~IO.file` record.  For instance,
+ a file with path `/foo/bar/baz` would return `/foo/bar`
+
+  :return: The parent directory of the file
+  :rtype: `string`
+
+ */
+ pragma "no doc"
+ proc file.getParentName(out error:syserr): string {
+   check();
+   var ret: string;
+   var tmp: string;
+   tmp = this.realPath(error);
+   ret = if error then "unknown"
+                  else dirname(new string(tmp));
+   return ret;
+ }
+
+ /*
+ Returns the parent directory of the :type:`~IO.file` record.  For instance,
+ a file with path `/foo/bar/baz` would return `/foo/bar`
+
+ Will halt with an error message if one is detected.
+
+  :return: The parent directory of the file
+  :rtype: `string`
+ */
+ proc file.getParentName(): string {
+   var err: syserr = ENOERR;
+   var ret = getParentName(err);
+   if err != ENOERR then ioerror(err, "in file.getParentName");
+   return ret;
  }
 
 }

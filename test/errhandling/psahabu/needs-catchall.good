@@ -1,0 +1,1 @@
+needs-catchall.chpl:4: error: try without a catchall in a non-throwing function

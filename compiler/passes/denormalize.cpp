@@ -1,15 +1,15 @@
 /*
  * Copyright 2004-2017 Cray Inc.
  * Other additional copyright holders may be indicated within.
- * 
+ *
  * The entirety of this work is licensed under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.
- * 
+ *
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,17 +17,22 @@
  * limitations under the License.
  */
 
+#include "passes.h"
+
+
 #include "astutil.h"
 #include "baseAST.h"
-#include "stlUtil.h"
+#include "CForLoop.h"
+#include "driver.h"
 #include "expr.h"
+#include "exprAnalysis.h"
+#include "LoopStmt.h"
+#include "optimizations.h"
+#include "stlUtil.h"
 #include "stmt.h"
 #include "symbol.h"
 #include "type.h"
-#include "LoopStmt.h"
-#include "CForLoop.h"
 #include "WhileStmt.h"
-#include "exprAnalysis.h"
 
 //helper datastructures/types
 typedef std::pair<Expr*, Type*> DefCastPair;
@@ -38,19 +43,19 @@ bool primMoveGeneratesCommCall(CallExpr* ce);
 inline bool unsafeExprInBetween(Expr* e1, Expr* e2, Expr* exprToMove,
     SafeExprAnalysis& analysisData);
 inline bool requiresCast(Type* t);
-inline bool isIntegerPromotionPrimitive(PrimitiveTag tag);
+inline bool isArithmeticPrimitive(CallExpr *ce);
+inline bool isFloatComparisonPrimitive(CallExpr *ce);
 bool isDenormalizable(Symbol* sym,
-    Map<Symbol*,Vec<SymExpr*>*>& defMap,
-    Map<Symbol*,Vec<SymExpr*>*>& useMap, SymExpr** useOut, Expr** defOut,
+    SymExpr** useOut, Expr** defOut,
     Type** castTo, SafeExprAnalysis& analysisData);
-void findCandidatesInFunc(FnSymbol *fn, UseDefCastMap& candidates, 
+void findCandidatesInFunc(FnSymbol *fn, UseDefCastMap& candidates,
     SafeExprAnalysis& analysisData);
-void findCandidatesInFuncOnlySym(FnSymbol* fn, Vec<Symbol*> symVec,
+void findCandidatesInFuncOnlySym(FnSymbol* fn, std::set<Symbol*> symVec,
     UseDefCastMap& udcMap, SafeExprAnalysis& analysisData);
 void denormalize(void);
 void denormalize(Expr* def, SymExpr* use, Type* castTo);
 void denormalizeOrDeferCandidates(UseDefCastMap& candidates,
-    Vec<Symbol*>& deferredSyms);
+    std::set<Symbol*>& deferredSyms);
 
 /*
  * This function tries to remove temporary variables in function `fn`
@@ -72,11 +77,14 @@ void denormalizeOrDeferCandidates(UseDefCastMap& candidates,
 void denormalize(void) {
 
   UseDefCastMap candidates;
-  Vec<Symbol*> deferredSyms;
+  std::set<Symbol*> deferredSyms;
   SafeExprAnalysis analysisData;
 
   if(fDenormalize) {
     forv_Vec(FnSymbol, fn, gFnSymbols) {
+      // remove unused epilogue labels
+      removeUnnecessaryGotos(fn, true);
+
       bool isFirstRound = true;
       do {
         candidates.clear();
@@ -96,7 +104,7 @@ void denormalize(void) {
         denormalizeOrDeferCandidates(candidates, deferredSyms);
 
         isFirstRound = false;
-      } while(deferredSyms.count() > 0);
+      } while(deferredSyms.size() > 0);
     }
   }
 }
@@ -145,7 +153,7 @@ void denormalize(void) {
  *   denormalize(void)
  */
 void denormalizeOrDeferCandidates(UseDefCastMap& candidates,
-    Vec<Symbol*>& deferredSyms) {
+    std::set<Symbol*>& deferredSyms) {
 
   for(UseDefCastMap::iterator it = candidates.begin() ;
       it != candidates.end() ; ++it) {
@@ -156,25 +164,20 @@ void denormalizeOrDeferCandidates(UseDefCastMap& candidates,
     Type* castTo = defCastPair.second;
 
     if(def->parentExpr == NULL) {
-      deferredSyms.add(use->symbol());
+      deferredSyms.insert(use->symbol());
       continue;
     }
     denormalize(def, use, castTo);
   }
 }
 
-void findCandidatesInFuncOnlySym(FnSymbol* fn, Vec<Symbol*> symVec,
+void findCandidatesInFuncOnlySym(FnSymbol* fn, std::set<Symbol*> symVec,
     UseDefCastMap& udcMap, SafeExprAnalysis& analysisData) {
-
-  Map<Symbol*,Vec<SymExpr*>*> defMap;
-  Map<Symbol*,Vec<SymExpr*>*> useMap;
-
-  buildDefUseMaps(fn, defMap, useMap);
 
   bool cachedGlobalManip = analysisData.isRegisteredGlobalManip(fn);
   bool cachedExternManip = analysisData.isRegisteredExternManip(fn);
 
-  forv_Vec(Symbol, sym, symVec) {
+  for_set(Symbol, sym, symVec) {
 
     SymExpr *use = NULL;
     Expr *def = NULL;
@@ -201,8 +204,7 @@ void findCandidatesInFuncOnlySym(FnSymbol* fn, Vec<Symbol*> symVec,
 
     }
 
-    if(isDenormalizable(sym, defMap, useMap, &use, &def, &castTo,
-          analysisData)) {
+    if(isDenormalizable(sym, &use, &def, &castTo, analysisData)) {
 
       // Initially I used to defer denormalizing actuals and have
       // special treatment while denormalizing actuals of a function
@@ -235,39 +237,32 @@ void findCandidatesInFuncOnlySym(FnSymbol* fn, Vec<Symbol*> symVec,
   }
 }
 
-void findCandidatesInFunc(FnSymbol *fn, UseDefCastMap& udcMap, 
+void findCandidatesInFunc(FnSymbol *fn, UseDefCastMap& udcMap,
     SafeExprAnalysis& analysisData) {
 
-  Vec<Symbol*> symSet;
-  Map<Symbol*,Vec<SymExpr*>*> defMap;
-  Map<Symbol*,Vec<SymExpr*>*> useMap;
+  std::set<Symbol*> symSet;
 
   collectSymbolSet(fn, symSet);
-  buildDefUseMaps(symSet, defMap, useMap);
 
   findCandidatesInFuncOnlySym(fn, symSet, udcMap, analysisData);
-
-  freeDefUseMaps(defMap, useMap);
 }
 
 bool isDenormalizable(Symbol* sym,
-    Map<Symbol*,Vec<SymExpr*>*> & defMap,
-    Map<Symbol*,Vec<SymExpr*>*> & useMap, 
     SymExpr** useOut, Expr** defOut, Type** castTo,
     SafeExprAnalysis& analysisData) {
 
   if(sym && !(toFnSymbol(sym) || toArgSymbol(sym) || toTypeSymbol(sym))) {
-    if(strcmp(sym->name, "this") != 0) { //avoid issue with --baseline
+    if(sym->name != astrThis) { //avoid issue with --baseline
       SymExpr *use = NULL;
       Expr *usePar = NULL;
       Expr *def = NULL;
       Expr *defPar = NULL;
 
-      Vec<SymExpr*>* defs = defMap.get(sym);
-      Vec<SymExpr*>* uses = useMap.get(sym);
+      SymExpr* singleDef = sym->getSingleDef();
+      SymExpr* singleUse = sym->getSingleUse();
 
-      if(defs && defs->n == 1 && uses && uses->n == 1) { // check def-use counts
-        SymExpr* se = defs->first();
+      if(singleDef != NULL && singleUse != NULL) { // check def-use counts
+        SymExpr* se = singleDef;
         defPar = se->parentExpr;
 
         //defPar has to be a move without any coercion
@@ -297,10 +292,9 @@ bool isDenormalizable(Symbol* sym,
                       //at this point we now that def is fine
                       def = ce->get(2);
 
-                      //now check if we need to case it when we move it
+                      //now check if we need to cast it when we move it
                       if(CallExpr* defCe = toCallExpr(def)) {
-                        if(defCe->isPrimitive() &&
-                            isIntegerPromotionPrimitive(defCe->primitive->tag)) {
+                        if(isArithmeticPrimitive(defCe)) {
                           if(requiresCast(lhsType)) {
                             *castTo = lhsType;
                           }
@@ -317,7 +311,7 @@ bool isDenormalizable(Symbol* sym,
         if(def) {
           *defOut = def;
           // we have def now find where the value is used
-          SymExpr* se = uses->first();
+          SymExpr* se = singleUse;
           usePar = se->parentExpr;
           if(CallExpr* ce = toCallExpr(usePar)) {
             if( !(ce->isPrimitive(PRIM_ADDR_OF) ||
@@ -329,14 +323,27 @@ bool isDenormalizable(Symbol* sym,
                   // FnSymbol expects to return one symbol, so it's easier to
                   // just not denormalize the returned symbol.
                   //
+                  // PRIM_ARRAY_SHIFT_BASE_POINTER sets its first argument, so
+                  // we should not denormalize if 'se' is the first actual in
+                  // case of AST like this:
+                  //   var ret = (cast ddata(...) nil)
+                  //   shift_base_pointer(ret, ...)
+                  // turning into this:
+                  //   shift_base_pointer((cast ddata nil), ...)
+                  //
+                  // TODO: Have PRIM_ARRAY_SHIFT_BASE_POINTER return instead of
+                  // setting its first arg, then we can rely on PRIM_MOVE logic.
+                  //
                   ce->isPrimitive(PRIM_ARRAY_GET) ||
                   ce->isPrimitive(PRIM_GET_MEMBER) ||
                   ce->isPrimitive(PRIM_DEREF) ||
                   ce->isPrimitive(PRIM_GET_MEMBER_VALUE) ||
                   ce->isPrimitive(PRIM_RETURN) ||
-                  (ce->isPrimitive(PRIM_MOVE) && 
+                  (ce->isPrimitive(PRIM_ARRAY_SHIFT_BASE_POINTER) && ce->get(1) == se) ||
+                  (ce->isPrimitive(PRIM_MOVE) &&
                    ce->get(1)->typeInfo() !=
-                   ce->get(2)->typeInfo()))) {
+                   ce->get(2)->typeInfo()) ||
+                   isFloatComparisonPrimitive(ce))) {
               use = se;
             }
           }
@@ -380,8 +387,8 @@ bool isDenormalizable(Symbol* sym,
                   return false;
                 }
               }
-              else if(enclLoop->isWhileStmt() || 
-                  enclLoop->isDoWhileStmt() || 
+              else if(enclLoop->isWhileStmt() ||
+                  enclLoop->isDoWhileStmt() ||
                   enclLoop->isWhileDoStmt()) {
                 if(toWhileStmt(enclLoop)->condExprGet()->contains(ce)) {
                   return false;
@@ -420,26 +427,51 @@ void denormalize(Expr* def, SymExpr* use, Type* castTo) {
 }
 
 inline bool requiresCast(Type* t) {
-  if(is_int_type(t) || is_uint_type(t)) {
+  if(is_int_type(t) || is_uint_type(t) || is_real_type(t)) {
     return true;
   }
   return false;
 }
 
-inline bool isIntegerPromotionPrimitive(PrimitiveTag tag) {
-  switch(tag) {
-    case PRIM_ADD:
-    case PRIM_SUBTRACT:
-    case PRIM_MULT:
-    case PRIM_DIV:
-    case PRIM_MOD:
-    case PRIM_LSH:
-    case PRIM_RSH:
-      return true;
-      break;
-    default:
-      return false;
-      break;
+inline bool isFloatComparisonPrimitive(CallExpr *ce) {
+  if(ce->isPrimitive()) {
+    switch(ce->primitive->tag) {
+      case PRIM_EQUAL:
+      case PRIM_NOTEQUAL:
+      case PRIM_LESSOREQUAL:
+      case PRIM_GREATEROREQUAL:
+      case PRIM_LESS:
+      case PRIM_GREATER:
+        if(is_real_type(ce->get(1)->typeInfo()) ||
+           is_real_type(ce->get(2)->typeInfo())) {
+          return true;
+        }
+        break;
+      default:
+        return false;
+        break;
+    }
+  }
+  return false;
+}
+
+inline bool isArithmeticPrimitive(CallExpr *ce) {
+  if(ce->isPrimitive()) {
+    switch(ce->primitive->tag) {
+      case PRIM_ADD:
+      case PRIM_SUBTRACT:
+      case PRIM_MULT:
+      case PRIM_DIV:
+      case PRIM_MOD:
+      case PRIM_LSH:
+      case PRIM_RSH:
+      case PRIM_UNARY_NOT:
+        return true;
+        break;
+      default:
+        return false;
+        break;
+    }
   }
   return false;
 }
@@ -479,7 +511,7 @@ bool primMoveGeneratesCommCall(CallExpr* ce) {
         case PRIM_SET_SVEC_MEMBER:
         case PRIM_GET_SVEC_MEMBER:
         case PRIM_GET_SVEC_MEMBER_VALUE:
-          if(rhsCe->get(1)->typeInfo()->symbol->hasEitherFlag(FLAG_WIDE_REF, 
+          if(rhsCe->get(1)->typeInfo()->symbol->hasEitherFlag(FLAG_WIDE_REF,
                 FLAG_WIDE_CLASS) || rhsCe->get(1)->isWideRef()) {
             return true;
           }
@@ -504,7 +536,7 @@ inline bool unsafeExprInBetween(Expr* e1, Expr* e2, Expr* exprToMove,
     if(! analysisData.exprHasNoSideEffects(e, exprToMove)) {
       return true;
     }
-    
+
     // implementation of this function is suboptimal as it's
     // asymptotically O(N**2). This if is a stopgap measure to prevent
     // it running for too long.  So, currently we give up when there is

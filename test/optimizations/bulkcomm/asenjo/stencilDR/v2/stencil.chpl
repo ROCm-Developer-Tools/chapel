@@ -36,8 +36,8 @@ const allx = ldx * gx,
       ally = ldy * gy;
 
 // for neighbor-cache pointers
-var auxArr: [1..1] elType;
-type cacheType = auxArr._value.type; // a class type, so it can be nil
+var auxArr: [1..1, 1..1] elType;
+type cacheType = auxArr[1,..]._value.type; // a class type, so it can be nil
 
 ///////////
 
@@ -125,7 +125,7 @@ proc GlobalData.GlobalData(nameArg: string) {
       on nbr {
 	msg1("  ", ind, "  slice at [", slicex, ",", slicey, "]");
         pragma "no auto destroy"
-	var slice => nbr.ldata[slicex, slicey];
+	ref slice = nbr.ldata[slicex, slicey];
 	result = slice._value;
       }
       return result;

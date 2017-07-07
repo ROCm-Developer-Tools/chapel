@@ -37,7 +37,7 @@ module ChapelDistribution {
                                   // has been destroyed
     var pid:int = nullPid; // privatized ID, if privatization is supported
   
-    proc ~BaseDist() {
+    proc deinit() {
     }
 
     // Returns a distribution that should be freed or nil.
@@ -90,6 +90,18 @@ module ChapelDistribution {
       return (count==0);
     }
 
+    //
+    // TODO: There may be some opportunities to optimize out the
+    // locking here, as in the add_arr() case.  For example, the
+    // construction of the distribution and domain used for rank change
+    // slicing could use an unlocked version because that operation
+    // creates a new distribution followed immediately by a domain
+    // over the distribution. It's unclear how important this
+    // optimization is, though, because rank change slices are
+    // arguably less common (and already more expensive in most cases
+    // due to the creation of distribution and domain objects) than
+    // rank-preserving slicing.
+    //
     inline proc add_dom(x:BaseDom) {
       on this {
         _lock_doms();
@@ -110,7 +122,7 @@ module ChapelDistribution {
       _domsLock.clear();
     }
   
-    proc dsiNewRectangularDom(param rank: int, type idxType, param stridable: bool) {
+    proc dsiNewRectangularDom(param rank: int, type idxType, param stridable: bool, inds) {
       compilerError("rectangular domains not supported by this distribution");
     }
   
@@ -136,7 +148,7 @@ module ChapelDistribution {
   
     proc dsiDestroyDist() { }
   
-    proc dsiDisplayRepresentation() { }
+    proc dsiDisplayRepresentation() { writeln("<no way to display representation>"); }
 
     // Does the distribution keep a list of domains? Can the domains
     // keep the distribution alive longer? false for DefaultDist.
@@ -167,7 +179,7 @@ module ChapelDistribution {
     var _free_when_no_arrs: bool;
     var pid:int = nullPid; // privatized ID, if privatization is supported
   
-    proc ~BaseDom() {
+    proc deinit() {
     }
 
     proc dsiMyDist(): BaseDist {
@@ -307,13 +319,25 @@ module ChapelDistribution {
     proc dsiLinksDistribution() return true;
 
     // Overload to to customize domain destruction
-    proc dsiDestroyDom() { }
+    //
+    // BHARSH 2017-02-05: Making dsiDestroyDom a virtual method 'tricks' the
+    // compiler into thinking there's recursion for dsiDestroyDom when there is
+    // none. This can result in incorrect generated code if recursive iterators
+    // are inlined. See GitHub issue #5311 for more.
+    //
+    //proc dsiDestroyDom() { }
 
-    proc dsiDisplayRepresentation() { }
+    proc dsiDisplayRepresentation() { writeln("<no way to display representation>"); }
+
+    proc isDefaultRectangular() param return false;
+
+    proc isSliceDomainView() param return false; // likely unnecessary?
+    proc isRankChangeDomainView() param return false;
+    proc isReindexDomainView() param return false;
   }
   
   class BaseRectangularDom : BaseDom {
-    proc ~BaseRectangularDom() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -336,7 +360,7 @@ module ChapelDistribution {
 
     var nnzDom = {1..nnz};
 
-    proc ~BaseSparseDomImpl() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -367,11 +391,58 @@ module ChapelDistribution {
       }
     }
 
-    inline proc _bulkGrow(size: int) {
+    // This method assumes nnz is updated according to the size
+    // requested. So, a bulk addition into a sparse domain should: (1)
+    // calculate new nnz and update it, (2) call this method, (3) add
+    // indices
+    inline proc _bulkGrow() {
       if (nnz > nnzDom.size) {
         const _newNNZDomSize = (exp2(log2(nnz)+1.0)):int;
 
         nnzDom = {1.._newNNZDomSize};
+      }
+    }
+
+    inline proc _countDuplicates(arr) where isArray(arr) {
+      var dupCount = -1;
+      var prev = arr[arr.domain.low];
+      for a in arr {
+        if a == prev then
+          dupCount += 1;
+        else
+          prev = a;;
+      }
+      return dupCount;
+    }
+
+    // (1) sorts indices if !dataSorted
+    // (2) verifies the flags are set correctly if boundsChecking
+    // (3) checks OOB if boundsChecking
+    proc bulkAdd_prepareInds(inds, dataSorted, isUnique) {
+      use Sort;
+      if !dataSorted then sort(inds);
+
+      //verify sorted and no duplicates if not --fast
+      if boundsChecking {
+        if dataSorted && !isSorted(inds) then
+          halt("bulkAdd: Data not sorted, call the function with \
+              dataSorted=false");
+
+        //check duplicates assuming sorted
+        if isUnique {
+          const indsStart = inds.domain.low;
+          const indsEnd = inds.domain.high;
+          var lastInd = inds[indsStart];
+          for i in indsStart+1..indsEnd {
+            if inds[i] == lastInd then
+              halt("bulkAdd: There are duplicates, call the function \
+                  with isUnique=false");
+            else lastInd = inds[i];
+          }
+        }
+
+        //check OOB
+        for i in inds do boundsCheck(i);
       }
     }
 
@@ -380,17 +451,12 @@ module ChapelDistribution {
     // indices. If, for some reason it changes, this function and bulkAdds have to
     // be refactored. (I think it is a safe assumption at this point and keeps the
     // function a bit cleaner than some other approach. -Engin)
-    proc __getActualInsertPts(d, inds, 
-        dataSorted, isUnique) /* where isSparseDom(d) */ {
-
-      use Sort;
+    proc __getActualInsertPts(d, inds, isUnique) {
 
       //find individual insert points
       //and eliminate duplicates between inds and dom
       var indivInsertPts: [inds.domain] int;
       var actualInsertPts: [inds.domain] int; //where to put in newdom
-
-      if !dataSorted then sort(inds);
 
       //eliminate duplicates --assumes sorted
       if !isUnique {
@@ -400,24 +466,6 @@ module ChapelDistribution {
           if i == lastInd then p = -1;
           else lastInd = i;
         }
-      }
-
-      //verify sorted and no duplicates if not --fast
-      if boundsChecking {
-        if !isSorted(inds) then
-          halt("bulkAdd: Data not sorted, call the function with dataSorted=false");
-
-        //check duplicates assuming sorted
-        const indsStart = inds.domain.low;
-        const indsEnd = inds.domain.high;
-        var lastInd = inds[indsStart];
-        for i in indsStart+1..indsEnd {
-          if inds[i] == lastInd && indivInsertPts[i] != -1 then 
-            halt("There are duplicates, call the function with isUnique=false"); 
-        }
-
-        for i in inds do d.boundsCheck(i);
-
       }
 
       forall (i,p) in zip(inds, indivInsertPts) {
@@ -461,7 +509,7 @@ module ChapelDistribution {
 
     var nnz = 0; //: int;
 
-    proc ~BaseSparseDom() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -541,7 +589,7 @@ module ChapelDistribution {
   // end BaseSparseDom operators
   
   class BaseAssociativeDom : BaseDom {
-    proc ~BaseAssociativeDom() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -557,7 +605,7 @@ module ChapelDistribution {
   }
   
   class BaseOpaqueDom : BaseDom {
-    proc ~BaseOpaqueDom() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -577,8 +625,20 @@ module ChapelDistribution {
     // atomics are available
     var _arrAlias: BaseArr;    // reference to base array if an alias
     var pid:int = nullPid; // privatized ID, if privatization is supported
+
+    proc isSliceArrayView() param {
+      return false;
+    }
+
+    proc isRankChangeArrayView() param {
+      return false;
+    }
   
-    proc ~BaseArr() {
+    proc isReindexArrayView() param {
+      return false;
+    }
+
+    proc deinit() {
     }
 
     proc dsiStaticFastFollowCheck(type leadType) param return false;
@@ -649,7 +709,7 @@ module ChapelDistribution {
     }
   
     // methods for associative arrays
-    proc clearEntry(idx, haveLock:bool = false) {
+    proc clearEntry(idx) {
       halt("clearEntry() not supported for non-associative arrays");
     }
   
@@ -672,14 +732,14 @@ module ChapelDistribution {
   
     proc dsiSupportsBulkTransfer() param return false;
     proc doiCanBulkTransfer() param return false;
-    proc doiBulkTransfer(B){ 
+    proc doiBulkTransfer(B, viewDom) {
       halt("This array type does not support bulk transfer.");
     }
   
-    proc dsiDisplayRepresentation() { }
+    proc dsiDisplayRepresentation() { writeln("<no way to display representation>"); }
     proc isDefaultRectangular() param return false;
     proc dsiSupportsBulkTransferInterface() param return false;
-    proc doiCanBulkTransferStride() param return false;
+    proc doiCanBulkTransferStride(viewDom) param return false;
   }
 
   /*
@@ -699,7 +759,7 @@ module ChapelDistribution {
 
     proc dsiGetBaseDom() return dom;
 
-    proc ~BaseSparseArr() {
+    proc deinit() {
       // this is a bug workaround
     }
   }
@@ -710,7 +770,7 @@ module ChapelDistribution {
    */
   class BaseSparseArrImpl: BaseSparseArr {
 
-    proc ~BaseSparseArrImpl() {
+    proc deinit() {
       // this is a bug workaround
     }
 
@@ -781,8 +841,16 @@ module ChapelDistribution {
     delete dist;
   }
 
-  proc _delete_dom(dom:BaseDom, param privatized:bool) {
-    dom.dsiDestroyDom();
+  proc _delete_dom(dom, param privatized:bool) {
+
+    // This is a workaround for the recursive iterator bug discussed in
+    // GitHub issue #5311. Implementing 'dsiDestroyDom' on 'BaseDom' leads
+    // the compiler into thinking there's recursion due to virtual methods,
+    // when in fact there is no recursion at all.
+    use Reflection;
+    if canResolveMethod(dom, "dsiDestroyDom") {
+      dom.dsiDestroyDom();
+    }
 
     if privatized {
       _freePrivatizedClass(dom.pid, dom);
@@ -794,7 +862,7 @@ module ChapelDistribution {
   // that arr.eltType is meaningful.
   proc _delete_arr(arr, param privatized:bool) {
     // decide whether or not the array is an alias
-    var isalias = (arr._arrAlias != nil);
+    var isalias = (arr._arrAlias != nil) || chpl__isArrayView(arr);
 
     // array implementation can destroy data or other members
     arr.dsiDestroyArr(isalias);
@@ -816,4 +884,12 @@ module ChapelDistribution {
     // runs the array destructor
     delete arr;
   }
+
+  // These are used in ChapelLocale.chpl. They are here to
+  // prevent an order-of-resolution issue.
+  pragma "no doc"
+  const chpl_emptyLocaleSpace: domain(1) = {1..0};
+  pragma "no doc"
+  const chpl_emptyLocales: [chpl_emptyLocaleSpace] locale;
+
 }
