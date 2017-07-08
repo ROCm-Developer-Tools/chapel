@@ -675,7 +675,6 @@ static void create_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, BundleArgsFnD
                                             dtCVoidPtr->refType );
     taskGroupArg->addFlag(FLAG_NO_CODEGEN);
     wrap_fn->insertFormalAtTail(taskGroupArg);
-    ArgSymbol *taskListNode = new ArgSymbol( INTENT_IN, "dummy_taskListNode", 
     ArgSymbol *taskListNode = new ArgSymbol( INTENT_IN, "dummy_taskListNode",
                                              dtInt[INT_SIZE_DEFAULT]);
     taskListNode->addFlag(FLAG_NO_CODEGEN);

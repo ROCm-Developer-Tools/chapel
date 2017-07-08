@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "driver.h"
 #include "astutil.h"
 #include "build.h"
 #include "passes.h"
@@ -40,7 +41,7 @@ static bool isGPUOffloadRequested(CForLoop *cForLoop)
     FnSymbol* caller = NULL;
     forv_Vec(CallExpr, call, gCallExprs) {
       if (call->inTree()) {
-        if (FnSymbol* cfn = call->isResolved()) {
+        if (FnSymbol* cfn = call->resolvedFunction()) {
           if (cfn == fn) {
             caller = toFnSymbol(call->parentSymbol);
             break;
@@ -299,7 +300,7 @@ createArgBundleClass(SymbolMap& vars, ModuleSymbol *mod, FnSymbol *fn)
       //call->insertAtTail(sym);
       VarSymbol* field = new VarSymbol(astr("_", istr(i), "_", sym->name),
           sym->type);
-      ctype->addDeclarations(new DefExpr(field), true);
+      ctype->addDeclarations(new DefExpr(field));
       ++i;
     }
   }

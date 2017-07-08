@@ -16,6 +16,7 @@
 
 #include "GPUForLoop.h"
 
+#include "expr.h"
 #include "astutil.h"
 #include "AstVisitor.h"
 #include "build.h"

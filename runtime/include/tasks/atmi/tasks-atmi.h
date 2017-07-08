@@ -21,7 +21,6 @@
 #include "chpl-atmi.h"
 #include "chpl-tasks-prvdata.h"
 #include "chpltypes.h"
-#include "chpl-mem.h"
 #include "qthread.h"
 #include "qthread-chapel.h"
 
@@ -43,6 +42,9 @@ void chpl_task_yield(void);
 //
 typedef uint64_t chpl_taskID_t;
 #define chpl_nullTaskID ATMI_TASK_HANDLE(0xFFFFFFFFFFFFFFFF) 
+#ifndef CHPL_TASK_ID_STRING_MAX_LEN
+#define CHPL_TASK_ID_STRING_MAX_LEN 21
+#endif
 
 //
 // Sync variables

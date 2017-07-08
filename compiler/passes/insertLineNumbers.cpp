@@ -129,15 +129,15 @@ static void
 insertLineNumber(CallExpr* call) {
   SET_LINENO(call);
 
-#ifdef TARGET_HSA
-  if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU) || fn->hasFlag(FLAG_INTERNAL_GPU_FN))
-    return;
-#endif
-
   FnSymbol*     fn   = call->getFunction();
   ModuleSymbol* mod  = fn->getModule();
   ArgSymbol*    file = filenameMap.get(fn);
   ArgSymbol*    line = linenoMap.get(fn);
+
+#ifdef TARGET_HSA
+  if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU) || fn->hasFlag(FLAG_INTERNAL_GPU_FN))
+    return;
+#endif
 
 
   if (call->isPrimitive(PRIM_GET_USER_FILE) ||

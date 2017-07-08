@@ -2154,15 +2154,7 @@ CallExpr* buildCPUReduceExpr(ArgSymbol* data,
   //buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
 
 
-  // If we can handle it via a forall with a reduce intent, do so.
-  CallExpr* forallExpr = buildReduceViaForall(fn, opExpr, dataExpr,
-                                              data, eltType, zippered);
-  if (forallExpr)
-    return forallExpr;
-
-  VarSymbol* globalOp = newTempConst("chpl_globalOp");
-  buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
-
+  
   BlockStmt* serialBlock = buildChapelStmt();
   VarSymbol* index = newTemp("_index");
   serialBlock->insertAtTail(new DefExpr(index));
