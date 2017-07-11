@@ -2026,7 +2026,10 @@ buildReduceViaForall(Expr* opExpr, Expr* dataExpr,
   fn->addFlag(FLAG_DONT_DISABLE_REMOTE_VALUE_FORWARDING);
   fn->addFlag(FLAG_INLINE);
 
+  fn->addFlag(FLAG_COMPILER_NESTED_FUNCTION);
   VarSymbol* globalOp = newTempConst("chpl_reduceGlob");
+
+  buildReduceScanPreface1(fn, data, eltType, opExpr, dataExpr, zippered);
   buildReduceScanPreface2(fn, eltType, globalOp, opExpr);
 
   VarSymbol* result = newTemp("chpl_reduceResult");
