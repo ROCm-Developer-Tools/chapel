@@ -100,7 +100,7 @@ static BundleArgsFnData bundleArgsFnDataInit = { true, NULL, NULL };
 static void insertEndCounts();
 static void passArgsToNestedFns();
 static void create_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, BundleArgsFnData &baData);
-static void call_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, VarSymbol* args_buf, VarSymbol* args_buf_len, VarSymbol* tempc, FnSymbol *wrap_fn, Symbol* taskList, Symbol* taskListNode, Symbol *taskGroup);
+static void call_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, VarSymbol* args_buf, VarSymbol* args_buf_len, VarSymbol* tempc, FnSymbol *wrap_fn, Symbol* taskList, Symbol* taskListNode, Symbol *taskGroup = NULL);
 static void findBlockRefActuals(Vec<Symbol*>& refSet, Vec<Symbol*>& refVec);
 static void findHeapVarsAndRefs(Map<Symbol*,Vec<SymExpr*>*>& defMap,
                                 Vec<Symbol*>& refSet, Vec<Symbol*>& refVec,
@@ -482,6 +482,7 @@ bundleArgs(CallExpr* fcall, BundleArgsFnData &baData) {
 
     // Now get the taskGroup field out of the end count.
 
+#ifdef TARGET_HSA    
     taskGroup = newTemp(astr("_taskGroup", fn->name), dtCVoidPtr);
 
     fcall->insertBefore(new DefExpr(taskGroup));
@@ -489,7 +490,7 @@ bundleArgs(CallExpr* fcall, BundleArgsFnData &baData) {
                                      new CallExpr(PRIM_GET_MEMBER,
                                                   endCount,
                                                   endCount->typeInfo()->getField("taskGroup"))));
-
+#endif
 
     // Now get the node ID field for the end count,
     // which is where the task list is stored.
@@ -671,10 +672,12 @@ static void create_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, BundleArgsFnD
                                             dtCVoidPtr->refType );
     taskListArg->addFlag(FLAG_NO_CODEGEN);
     wrap_fn->insertFormalAtTail(taskListArg);
+#ifdef TARGET_HSA    
     ArgSymbol *taskGroupArg = new ArgSymbol( INTENT_IN, "dummy_taskGroup", 
                                             dtCVoidPtr->refType );
     taskGroupArg->addFlag(FLAG_NO_CODEGEN);
     wrap_fn->insertFormalAtTail(taskGroupArg);
+#endif    
     ArgSymbol *taskListNode = new ArgSymbol( INTENT_IN, "dummy_taskListNode",
                                              dtInt[INT_SIZE_DEFAULT]);
     taskListNode->addFlag(FLAG_NO_CODEGEN);
@@ -791,7 +794,8 @@ static void call_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, VarSymbol*
     // (so that codegen can find it).
     // We need the taskList.
     INT_ASSERT(taskList);
-    fcall->insertBefore(new CallExpr(wrap_fn, new SymExpr(taskList), new SymExpr(taskListNode), args_buf, args_buf_len, tempc, new SymExpr(taskGroup)));
+    fcall->insertBefore(new CallExpr(wrap_fn, new SymExpr(taskList), new SymExpr(taskListNode), args_buf, args_buf_len, tempc, 
+            taskGroup ? new SymExpr(taskGroup) : NULL));
   }
 
   fcall->remove();                     // rm orig. call
