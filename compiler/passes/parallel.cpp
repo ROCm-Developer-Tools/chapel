@@ -480,9 +480,9 @@ bundleArgs(CallExpr* fcall, BundleArgsFnData &baData) {
                                                   endCount,
                                                   endCount->typeInfo()->getField("taskList"))));
 
+#ifdef TARGET_HSA
     // Now get the taskGroup field out of the end count.
 
-#ifdef TARGET_HSA    
     taskGroup = newTemp(astr("_taskGroup", fn->name), dtCVoidPtr);
 
     fcall->insertBefore(new DefExpr(taskGroup));
@@ -794,8 +794,8 @@ static void call_block_fn_wrapper(FnSymbol* fn, CallExpr* fcall, VarSymbol*
     // (so that codegen can find it).
     // We need the taskList.
     INT_ASSERT(taskList);
-    fcall->insertBefore(new CallExpr(wrap_fn, new SymExpr(taskList), new SymExpr(taskListNode), args_buf, args_buf_len, tempc, 
-            taskGroup ? new SymExpr(taskGroup) : NULL));
+    fcall->insertBefore(new CallExpr(wrap_fn, new SymExpr(taskList), new SymExpr(taskListNode), args_buf, args_buf_len,
+            taskGroup ? new SymExpr(taskGroup) : NULL, tempc));
   }
 
   fcall->remove();                     // rm orig. call

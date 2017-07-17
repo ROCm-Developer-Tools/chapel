@@ -62,7 +62,9 @@ module LocaleModelHelpHSA {
       return false; // need to move to different node
     } else {
       var origSubloc = chpl_task_getRequestedSubloc();
-      if (dsubloc==c_sublocid_any || dsubloc==origSubloc) {
+      if (dsubloc==origSubloc ||
+          (dsubloc==c_sublocid_any &&
+           chpl_localeModel_sublocToExecutionSubloc(origSubloc)==origSubloc)) {
         return true;
       } else {
         return false; // need to move to different sublocale
@@ -94,9 +96,11 @@ module LocaleModelHelpHSA {
     } else {
       // run directly on this node
       var origSubloc = chpl_task_getRequestedSubloc();
-      if (dsubloc==c_sublocid_any || dsubloc==origSubloc) {
+      if (dsubloc==origSubloc ||
+          (dsubloc==c_sublocid_any &&
+           chpl_localeModel_sublocToExecutionSubloc(origSubloc)==origSubloc)) {
         chpl_ftable_call(fn, args);
-      } else {        
+      } else {
         // move to a different sublocale
         chpl_task_setSubloc(dsubloc);
         chpl_ftable_call(fn, args);
@@ -122,7 +126,9 @@ module LocaleModelHelpHSA {
       chpl_comm_execute_on_fast(dnode, dsubloc, fn, args, args_size);
     } else {
       var origSubloc = chpl_task_getRequestedSubloc();
-      if (dsubloc==c_sublocid_any || dsubloc==origSubloc) {
+      if (dsubloc==origSubloc ||
+          (dsubloc==c_sublocid_any &&
+           chpl_localeModel_sublocToExecutionSubloc(origSubloc)==origSubloc)) {
         chpl_ftable_call(fn, args);
       } else {
         // move to a different sublocale

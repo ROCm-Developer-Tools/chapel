@@ -1591,22 +1591,29 @@ static BlockStmt* buildLoweredCoforall(Expr* indices,
 #ifndef TARGET_HSA
     block->insertAtHead(new CallExpr("_upEndCount", coforallCount, countRunningTasks, numTasks));
 #else
-    block->insertAtHead(new CallExpr("_initTaskGroup", coforallCount, countRunningTasks, numTasks));
+    if(onBlock) block->insertAtHead(new CallExpr("_upEndCount", coforallCount, countRunningTasks, numTasks));
+    else block->insertAtHead(new CallExpr("_initTaskGroup", coforallCount, countRunningTasks, numTasks));
 #endif
     block->insertAtHead(new CallExpr(PRIM_MOVE, numTasks, new CallExpr(".", iterator,  new_CStringSymbol("size"))));
     block->insertAtHead(new DefExpr(numTasks));
 #ifndef TARGET_HSA
     block->insertAtTail(new CallExpr("_waitEndCount", coforallCount, countRunningTasks, numTasks));
 #else
-    block->insertAtTail(new CallExpr("_finalizeTaskGroup", coforallCount, countRunningTasks, numTasks));
+    if(onBlock) block->insertAtTail(new CallExpr("_waitEndCount", coforallCount, countRunningTasks, numTasks));
+    else block->insertAtTail(new CallExpr("_finalizeTaskGroup", coforallCount, countRunningTasks, numTasks));
 #endif
   } else {
 #ifndef TARGET_HSA
     taskBlk->insertBefore(new CallExpr("_upEndCount", coforallCount, countRunningTasks));
     block->insertAtTail(new CallExpr("_waitEndCount", coforallCount, countRunningTasks));
 #else
+    if(onBlock) {
+    taskBlk->insertBefore(new CallExpr("_upEndCount", coforallCount, countRunningTasks));
+    block->insertAtTail(new CallExpr("_waitEndCount", coforallCount, countRunningTasks));
+    } else {
     taskBlk->insertBefore(new CallExpr("_initTaskGroup", coforallCount, countRunningTasks));
     block->insertAtTail(new CallExpr("_finalizeTaskGroup", coforallCount, countRunningTasks));
+    }
 #endif
   }
   block->insertAtTail(new CallExpr("_endCountFree", coforallCount));

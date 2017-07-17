@@ -127,12 +127,11 @@ static ArgSymbol* newFile(FnSymbol* fn) {
 //
 static void
 insertLineNumber(CallExpr* call) {
+  FnSymbol* fn = call->getFunction();
+  ModuleSymbol* mod = fn->getModule();
+  ArgSymbol* file = filenameMap.get(fn);
+  ArgSymbol* line = linenoMap.get(fn);
   SET_LINENO(call);
-
-  FnSymbol*     fn   = call->getFunction();
-  ModuleSymbol* mod  = fn->getModule();
-  ArgSymbol*    file = filenameMap.get(fn);
-  ArgSymbol*    line = linenoMap.get(fn);
 
 #ifdef TARGET_HSA
   if (fn->hasFlag(FLAG_OFFLOAD_TO_GPU) || fn->hasFlag(FLAG_INTERNAL_GPU_FN))
@@ -354,8 +353,13 @@ static void moveLinenoInsideArgBundle()
     //  than the expected number.  Both block types below expect an
     //  argument bundle, and the on-block expects an additional argument
     //  that is the locale on which it should be executed.
+#ifdef TARGET_HSA
     if ((fn->numFormals() > 5 && fn->hasFlag(FLAG_ON_BLOCK)) ||
         (fn->numFormals() > 6 && !fn->hasFlag(FLAG_ON_BLOCK) &&
+#else
+    if ((fn->numFormals() > 4 && fn->hasFlag(FLAG_ON_BLOCK)) ||
+        (fn->numFormals() > 5 && !fn->hasFlag(FLAG_ON_BLOCK) &&
+#endif
          (fn->hasFlag(FLAG_BEGIN_BLOCK) ||
           fn->hasFlag(FLAG_COBEGIN_OR_COFORALL_BLOCK)))) {
 

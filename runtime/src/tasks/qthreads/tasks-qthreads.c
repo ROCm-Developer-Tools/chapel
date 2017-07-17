@@ -887,6 +887,22 @@ int chpl_task_createCommTask(chpl_fn_p fn,
                           NULL, comm_task_wrapper, &wrapper_info);
 }
 
+void *chpl_taskGroupGet() {
+    return NULL;
+}
+
+void *chpl_taskGroupInit(int lineno, int32_t filename) {
+    return NULL;
+}
+
+void chpl_taskGroupComplete() {
+    // no-op in ATMI. down count in other tasking layers
+}
+
+void chpl_taskGroupFinalize(void *tg) {
+}
+
+
 void chpl_task_addToTaskList(chpl_fn_int_t       fid,
                              chpl_task_bundle_t *arg,
                              size_t              arg_size,
@@ -894,6 +910,7 @@ void chpl_task_addToTaskList(chpl_fn_int_t       fid,
                              void              **task_list,
                              int32_t             task_list_locale,
                              chpl_bool           is_begin_stmt,
+                             void                *dummy_task_group,
                              int                 lineno,
                              int32_t             filename)
 {

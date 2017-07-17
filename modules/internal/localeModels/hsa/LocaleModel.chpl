@@ -27,6 +27,23 @@ module LocaleModel {
 
   use LocaleModelHelpHSA;
   use LocaleModelHelpMem;
+  //
+  // The task layer calls these to convert between full sublocales and
+  // execution sublocales.  Full sublocales may contain more information
+  // in some locale models, but not in this one.
+  //
+  export
+  proc chpl_localeModel_sublocToExecutionSubloc(full_subloc:chpl_sublocID_t)
+  {
+    return full_subloc;  // execution sublocale is same as full sublocale
+  }
+
+  export
+  proc chpl_localeModel_sublocMerge(full_subloc:chpl_sublocID_t,
+                                    execution_subloc:chpl_sublocID_t)
+  {
+    return execution_subloc;  // no info needed from full sublocale
+  }
 
   class CPULocale : AbstractLocaleModel {
     const sid: chpl_sublocID_t;
@@ -78,8 +95,8 @@ module LocaleModel {
     proc GPULocale() {
     }
     proc ~GPULocale() {
-     extern proc hsa_shutdown(): void ;
-     hsa_shutdown();
+     //extern proc hsa_shutdown(): void ;
+     //hsa_shutdown();
     }
 
 
@@ -196,6 +213,11 @@ module LocaleModel {
       helpSetupLocaleHSA(this, local_name, numSublocales);
     }
     //------------------------------------------------------------------------}
+
+    proc deinit() {
+      delete CPU;
+      delete GPU;
+    }
  }
 
   //
@@ -263,10 +285,15 @@ module LocaleModel {
     proc localeIDtoLocale(id : chpl_localeID_t) {
       const node = chpl_nodeFromLocaleID(id);
       const subloc = chpl_sublocFromLocaleID(id);
-      if (subloc == c_sublocid_none) || (subloc == c_sublocid_any) then
-        return (myLocales[node:int]):locale;
-      else
+      if chpl_isActualSublocID(subloc) then
         return (myLocales[node:int].getChild(subloc:int)):locale;
+      else
+        return (myLocales[node:int]):locale;
+    }
+
+    proc deinit() {
+      for loc in myLocales do
+        delete loc;
     }
   }
 }
