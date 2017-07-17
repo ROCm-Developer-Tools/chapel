@@ -147,7 +147,7 @@ module LocaleModelHelpRuntime {
   //
   pragma "insert line file info"
   export
-  proc chpl_taskListAddCoStmt(subloc_id: int,        // target sublocale
+  proc chpl_taskListAddCoStmt_HSA(subloc_id: int,        // target sublocale
                               fn: int,               // task body function idx
                               args: chpl_task_bundle_p,      // function args
                               args_size: size_t,     // args size
@@ -158,6 +158,25 @@ module LocaleModelHelpRuntime {
     warning("cobegin fn : ", fn);
     chpl_task_addToTaskList(fn, args, args_size,
                             subloc_id, tlist, tlist_node_id, false, tgroup);
+   }
+
+  //
+  // add a task to a list of tasks being built for a cobegin or coforall
+  // statement
+  //
+  pragma "insert line file info"
+  export
+  proc chpl_taskListAddCoStmt(subloc_id: int,        // target sublocale
+                              fn: int,               // task body function idx
+                              args: chpl_task_bundle_p,      // function args
+                              args_size: size_t,     // args size
+                              ref tlist: c_void_ptr, // task list
+                              tlist_node_id: int     // task list owner node
+                             ) {
+    warning("cobegin fn : ", fn);
+    chpl_task_addToTaskList(fn, args, args_size,
+                            subloc_id, tlist, tlist_node_id, false,
+                            _defaultOf(c_void_ptr));
    }
 
   //

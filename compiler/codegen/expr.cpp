@@ -3363,7 +3363,11 @@ GenRet CallExpr::codegen() {
     codegenInvokeTaskFun("chpl_taskListAddBegin");
 
   } else if (fn->hasFlag(FLAG_COBEGIN_OR_COFORALL_BLOCK) == true)  {
+#ifdef TARGET_HSA
+    codegenInvokeTaskFun("chpl_taskListAddCoStmt_HSA");
+#else
     codegenInvokeTaskFun("chpl_taskListAddCoStmt");
+#endif
 
   } else if (fn->hasFlag(FLAG_NO_CODEGEN)                == false) {
     std::vector<GenRet> args(numActuals());
@@ -5514,7 +5518,7 @@ void CallExpr::codegenInvokeTaskFun(const char* name) {
   FnSymbol*           fn            = resolvedFunction();
   GenRet              taskList      = codegenValue(get(1));
 #ifdef TARGET_HSA  
-  GenRet              taskGroup     = codegenValue(get(6));
+  GenRet              taskGroup     = codegenValue(get(5));
 #endif  
   GenRet              taskListNode;
   GenRet              taskBundle;
