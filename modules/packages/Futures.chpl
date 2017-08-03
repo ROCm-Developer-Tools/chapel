@@ -103,6 +103,9 @@ The following example demonstrate bundling of futures.
  */
 
 module Futures {
+  extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64), args: c_void_ptr) : uint(64);
+  extern proc chpl_taskWaitFor(handle: uint(64));
+  extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
 
   use Reflection;
   use ExplicitRefCount;
@@ -115,10 +118,12 @@ module Futures {
     var valid: bool = false;
     var value: retType;
     var state: atomic bool;
+    var handle: uint(64);
 
     proc FutureClass(type retType) {
       refcnt.write(0);
       state.clear();
+      handle = 0;
     }
 
   } // class FutureClass
@@ -158,7 +163,8 @@ module Futures {
      */
     proc get(): retType {
       if !isValid() then halt("get() called on invalid future");
-      classRef.state.waitFor(true);
+      chpl_taskWaitFor(classRef.handle);
+      //classRef.state.waitFor(true);
       return classRef.value;
     }
 
@@ -261,6 +267,16 @@ module Futures {
     lhs.acquire(rhs.classRef);
   }
 
+  pragma "no doc"
+  proc getArgs(arg) {
+    return (arg,);
+  }
+ 
+  pragma "no doc"
+  proc getArgs(arg, args...) {
+    return (arg, (...getArgs((...args))));
+  }
+
   /*
     Asynchronously execute a function (taking no arguments) and return a
     :record:`Future` that will eventually hold the result of the function call.
@@ -273,9 +289,16 @@ module Futures {
       compilerError("async() task function (expecting arguments) provided without arguments");
     if !canResolveMethod(taskFn, "retType") then
       compilerError("cannot determine return type of andThen() task function");
+    if !canResolveMethod(taskFn, "cFnPtr") then
+      compilerError("cannot determine return C Function Pointer of async() task function");
     var f: Future(taskFn.retType);
     f.classRef.valid = true;
-    begin f.set(taskFn());
+    var n: c_uint = 0;
+    var args_sizes: [1..n+1] uint(64);
+    args_sizes(n+1) = numBytes(taskFn.retType);
+    var args_list = (c_ptrTo(f.classRef.value));
+    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cFnPtr), n+1, args_sizes, c_ptrTo(args_list));
+    //begin f.set(taskFn());
     return f;
   }
 
@@ -287,14 +310,29 @@ module Futures {
     :arg args...: Arguments to `taskFn`
     :returns: A future of the return type of `taskFn`
    */
-  proc async(taskFn, args...) {
+  proc async(taskFn, args...?n) {
     if !canResolveMethod(taskFn, "this", (...args)) then
       compilerError("async() task function provided with mismatching arguments");
     if !canResolveMethod(taskFn, "retType") then
       compilerError("cannot determine return type of async() task function");
+    if !canResolveMethod(taskFn, "cFnPtr") then
+      compilerError("cannot determine return C Function Pointer of async() task function");
     var f: Future(taskFn.retType);
     f.classRef.valid = true;
-    begin f.set(taskFn((...args)));
+    var args_sizes: [1..n+1] uint(64);
+    for param i in 1..n {
+      var t: bool = isStringType(args(i).type);
+      if isStringType(args(i).type) {
+        compilerError("async() task function doesn't take string types");
+      }
+      else {
+        args_sizes(i) = numBytes(args(i).type);
+      }
+    }
+    args_sizes(n+1) = numBytes(taskFn.retType);
+    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
+    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cFnPtr), n+1, args_sizes, c_ptrTo(args_list));
+    //begin f.set(taskFn((...args)));
     return f;
   }
 

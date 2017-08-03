@@ -963,6 +963,53 @@ int chpl_task_createCommTask(chpl_fn_p fn,
                           NULL, comm_task_wrapper, &wrapper_info);
 }
 
+bool try_get_kernel(callback_function fn, atmi_kernel_t *k) {
+    // check to see if map has fn
+    // *k = 
+}
+
+atmi_kernel_t init_kernel(callback_function fn, unsigned int n, uint64_t *args_sizes) {
+    atmi_kernel_t kernel;
+    atmi_kernel_create_empty(&kernel, n, args_sizes);
+    atmi_kernel_add_cpu_impl(kernel, (atmi_generic_fp)fn, CPU_FUNCTION_IMPL);
+    // add fn to some kernel map
+    return kernel;
+}
+
+uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_sizes,
+        void *args) {
+    // n-1: return_addr
+    // setup fn as an ATMI CPU task
+    int cpu_id = 0;//subloc;
+    ATMI_LPARM_CPU(lparm, cpu_id);
+    lparm->kernel_id = CPU_FUNCTION_IMPL;
+    lparm->synchronous = ATMI_FALSE;
+    lparm->groupable = ATMI_FALSE;
+    //if(task_group) { 
+    //    lparm->group = (atmi_task_group_t *)task_group;
+    //}
+
+    void *kernargs[n];
+    char *args_ptr = (char *)args;
+    for(unsigned int i = 0; i < n; i++) {
+        kernargs[i] = args_ptr;
+        args_ptr += args_sizes[i];
+    }
+    // arg n-1 is the ptr to the return value, so pass as-is
+    //assert(args_sizes[n-1] == sizeof(void *));
+    //kernargs[n-1] = *(void **)args_ptr;
+    atmi_kernel_t kernel;
+    //if(!try_get_kernel(fn, &kernel)) {
+        kernel = init_kernel(fn, n, args_sizes);
+    //}
+    return atmi_task_launch(lparm, kernel, kernargs);
+    //return ATMI_NULL_TASK_HANDLE;
+}
+
+void chpl_taskWaitFor(uint64_t handle) {
+    atmi_task_wait((atmi_task_handle_t)handle);
+}
+
 void *chpl_taskGroupGet() {
     void *ret = (void *)get_atmi_task_group();
     return ret;

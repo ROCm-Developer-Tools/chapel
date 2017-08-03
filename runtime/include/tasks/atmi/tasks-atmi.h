@@ -183,7 +183,7 @@ static inline
 c_sublocid_t chpl_task_getRequestedSubloc(void)
 {
     chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
-    if (data) {
+    if (data && data->bundle) {
         return data->bundle->requestedSubloc;
     }
     
