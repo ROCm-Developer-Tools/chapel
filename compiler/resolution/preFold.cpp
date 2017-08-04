@@ -1456,13 +1456,13 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
 
   ModuleSymbol *mainModule = ModuleSymbol::mainModule();
   SET_LINENO(mainModule);
-  FnSymbol* parent_wrapper_method = new FnSymbol(astr("atmi_", captured_fn->cname));
+  FnSymbol* asyncWrapperMethod = new FnSymbol(astr("async_wrapper_", captured_fn->cname));
   {
   // add a wrapper function that takes all references of the given function arguments
-  parent_wrapper_method->addFlag(FLAG_METHOD);
-  parent_wrapper_method->addFlag(FLAG_EXPORT);
-  //parent_wrapper_method->addFlag(FLAG_INVISIBLE_FN);
-  parent_wrapper_method->addFlag(FLAG_COMPILER_GENERATED);
+  asyncWrapperMethod->addFlag(FLAG_METHOD);
+  asyncWrapperMethod->addFlag(FLAG_EXPORT);
+  //asyncWrapperMethod->addFlag(FLAG_INVISIBLE_FN);
+  asyncWrapperMethod->addFlag(FLAG_COMPILER_GENERATED);
 
   int i = 0, alength = arg_list.length;
   // We handle the arg list differently depending on if it's a list of
@@ -1481,12 +1481,12 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
         if (fArg->typeExpr)
           newFormal->typeExpr = fArg->typeExpr->copy();
 
-        parent_wrapper_method->insertFormalAtTail(newFormal);
+        asyncWrapperMethod->insertFormalAtTail(newFormal);
       }
     }
     // insert return placeholder
     ArgSymbol* retFormal = new ArgSymbol(INTENT_BLANK, "retVal", dtCVoidPtr->refType);
-    parent_wrapper_method->insertFormalAtTail(retFormal);
+    asyncWrapperMethod->insertFormalAtTail(retFormal);
 
   } else {
     char name_buffer[100];
@@ -1502,7 +1502,7 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
           ArgSymbol* newFormal = new ArgSymbol(INTENT_BLANK,
                                                name_buffer,
                                                sExpr->symbol()->type->refType);
-          parent_wrapper_method->insertFormalAtTail(newFormal);
+          asyncWrapperMethod->insertFormalAtTail(newFormal);
         }
       }
 
@@ -1510,7 +1510,7 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
     }
     // insert return placeholder
     ArgSymbol* retFormal = new ArgSymbol(INTENT_OUT, "retVal", dtCVoidPtr->refType);
-    parent_wrapper_method->insertFormalAtTail(retFormal);
+    asyncWrapperMethod->insertFormalAtTail(retFormal);
   }
   // Create a call to the original function where each argument 
   // of the wrapper is dereferenced and passed to the original
@@ -1520,7 +1520,7 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
   i = 0;
   if (isFormal) {
 
-    Expr *exp_wrap = parent_wrapper_method->formals.head;
+    Expr *exp_wrap = asyncWrapperMethod->formals.head;
     for_alist(formalExpr, arg_list) {
       DefExpr* dExp = toDefExpr(formalExpr);
       ArgSymbol* fArg = toArgSymbol(dExp->sym);
@@ -1530,8 +1530,8 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
           DefExpr *dExp_wrap = toDefExpr(exp_wrap);
           ArgSymbol *fArg_wrap = toArgSymbol(dExp_wrap->sym);
           VarSymbol* tmp = newTemp(fArg->name, fArg->type);
-          parent_wrapper_method->insertAtTail(new DefExpr(tmp));
-          parent_wrapper_method->insertAtTail(
+          asyncWrapperMethod->insertAtTail(new DefExpr(tmp));
+          asyncWrapperMethod->insertAtTail(
                       new CallExpr(PRIM_MOVE, tmp,
                       new CallExpr(PRIM_DEREF, fArg_wrap)
                       ));
@@ -1542,44 +1542,44 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
     }
 
     // inject a reference to the return type and memcpy the value to its address
-    DefExpr *defExpr_ret = toDefExpr(parent_wrapper_method->formals.tail);
+    DefExpr *defExpr_ret = toDefExpr(asyncWrapperMethod->formals.tail);
     ArgSymbol *fArg_ret = toArgSymbol(defExpr_ret->sym);
     CallExpr *call_helper = new CallExpr("memcpy");
 
     // destination pointer
     VarSymbol* dest_ptr = newTemp(astr("dest_ptr_", fArg_ret->name), 
                                            dtCVoidPtr);
-    parent_wrapper_method->insertAtTail(new DefExpr(dest_ptr));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE, dest_ptr, 
+    asyncWrapperMethod->insertAtTail(new DefExpr(dest_ptr));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, dest_ptr, 
                                         new CallExpr(PRIM_DEREF, fArg_ret)));
     call_helper->insertAtTail(dest_ptr);
 
     // return value
     VarSymbol *src_value = newTempConst(astr("ret_value_", fArg_ret->name), retType);
-    parent_wrapper_method->insertAtTail(new DefExpr(src_value));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE,
+    asyncWrapperMethod->insertAtTail(new DefExpr(src_value));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE,
                                         src_value, 
                                         call_orig));
 
     // source pointer
     VarSymbol *src_ptr = newTempConst(astr("ret_ptr_", fArg_ret->name), dtCVoidPtr);
-    parent_wrapper_method->insertAtTail(new DefExpr(src_ptr));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_ASSIGN, src_ptr,
+    asyncWrapperMethod->insertAtTail(new DefExpr(src_ptr));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_ASSIGN, src_ptr,
                                 new CallExpr(PRIM_CAST_TO_VOID_STAR,
                                 new CallExpr(PRIM_ADDR_OF, src_value))));
     call_helper->insertAtTail(src_ptr);
 
     // memcpy size
     VarSymbol *size_value = newTemp(astr("sz_", fArg_ret->name), dtUInt[INT_SIZE_DEFAULT]);
-    parent_wrapper_method->insertAtTail(new DefExpr(size_value));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE, size_value, 
+    asyncWrapperMethod->insertAtTail(new DefExpr(size_value));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, size_value, 
                                         new CallExpr(PRIM_SIZEOF, retType->symbol)));
     call_helper->insertAtTail(size_value);
 
     // insert call to memcpy(dest_ptr, src_ptr, sz);
-    parent_wrapper_method->insertAtTail(call_helper);
+    asyncWrapperMethod->insertAtTail(call_helper);
   } else {
-    Expr *exp_wrap = parent_wrapper_method->formals.head;
+    Expr *exp_wrap = asyncWrapperMethod->formals.head;
 
     char name_buffer[100];
     int  name_index = 0;
@@ -1594,8 +1594,8 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
         if (sExpr->symbol()->type != dtVoid) {
           // insert args
           VarSymbol* tmp = newTemp(sExpr->symbol()->name, sExpr->symbol()->type);
-          parent_wrapper_method->insertAtTail(new DefExpr(tmp));
-          parent_wrapper_method->insertAtTail(
+          asyncWrapperMethod->insertAtTail(new DefExpr(tmp));
+          asyncWrapperMethod->insertAtTail(
                       new CallExpr(PRIM_MOVE, tmp,
                       new CallExpr(PRIM_DEREF, sExpr_wrap->symbol())));
 
@@ -1608,81 +1608,331 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
     }
 
     // inject a reference to the return type and memcpy the value to its address
-    SymExpr *retExpr = toSymExpr(parent_wrapper_method->formals.tail);
+    SymExpr *retExpr = toSymExpr(asyncWrapperMethod->formals.tail);
     ArgSymbol *fArg_ret = toArgSymbol(retExpr->symbol());
     CallExpr *call_helper = new CallExpr("memcpy");
 
     // destination pointer
     VarSymbol* dest_ptr = newTemp(astr("dest_ptr_", fArg_ret->name), 
                                            dtCVoidPtr);
-    parent_wrapper_method->insertAtTail(new DefExpr(dest_ptr));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE, dest_ptr, 
+    asyncWrapperMethod->insertAtTail(new DefExpr(dest_ptr));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, dest_ptr, 
                                         new CallExpr(PRIM_DEREF, fArg_ret)));
     call_helper->insertAtTail(dest_ptr);
 
     // return value
     VarSymbol *src_value = newTempConst(astr("ret_value_", fArg_ret->name), retType);
-    parent_wrapper_method->insertAtTail(new DefExpr(src_value));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE,
+    asyncWrapperMethod->insertAtTail(new DefExpr(src_value));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE,
                                         src_value, 
                                         call_orig));
 
     // source pointer
     VarSymbol *src_ptr = newTempConst(astr("ret_ptr_", fArg_ret->name), dtCVoidPtr);
-    parent_wrapper_method->insertAtTail(new DefExpr(src_ptr));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_ASSIGN, src_ptr,
+    asyncWrapperMethod->insertAtTail(new DefExpr(src_ptr));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_ASSIGN, src_ptr,
                                 new CallExpr(PRIM_CAST_TO_VOID_STAR,
                                 new CallExpr(PRIM_ADDR_OF, src_value))));
     call_helper->insertAtTail(src_ptr);
 
     // memcpy size
     VarSymbol *size_value = newTemp(astr("sz_", fArg_ret->name), dtUInt[INT_SIZE_DEFAULT]);
-    parent_wrapper_method->insertAtTail(new DefExpr(size_value));
-    parent_wrapper_method->insertAtTail(new CallExpr(PRIM_MOVE, size_value, 
+    asyncWrapperMethod->insertAtTail(new DefExpr(size_value));
+    asyncWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, size_value, 
                                         new CallExpr(PRIM_SIZEOF, retType->symbol)));
     call_helper->insertAtTail(size_value);
 
     // insert call to memcpy(dest_ptr, src_ptr, sz);
-    parent_wrapper_method->insertAtTail(call_helper);
+    asyncWrapperMethod->insertAtTail(call_helper);
   }
   // Because this function type needs to be globally visible
   // (because we don't know the modules it will be passed to), we put
   // it at the highest scope
-  parent_wrapper_method->retType = dtVoid;
-  normalize(parent_wrapper_method);
-  mainModule->block->insertAtTail(new DefExpr(parent_wrapper_method));
+  asyncWrapperMethod->retType = dtVoid;
+  normalize(asyncWrapperMethod);
+  mainModule->block->insertAtTail(new DefExpr(asyncWrapperMethod));
   }
   {
-    FnSymbol* cFnGetter = new FnSymbol("cFnPtr");
+    FnSymbol* cAsyncFnGetter = new FnSymbol("cAsyncFnPtr");
 
-    cFnGetter->addFlag(FLAG_NO_IMPLICIT_COPY);
-    cFnGetter->addFlag(FLAG_INLINE);
-    cFnGetter->retTag = RET_VALUE;
-    cFnGetter->insertFormalAtTail(new ArgSymbol(INTENT_BLANK,
+    cAsyncFnGetter->addFlag(FLAG_NO_IMPLICIT_COPY);
+    cAsyncFnGetter->addFlag(FLAG_INLINE);
+    cAsyncFnGetter->retTag = RET_VALUE;
+    cAsyncFnGetter->insertFormalAtTail(new ArgSymbol(INTENT_BLANK,
                                                "_mt",
                                                dtMethodToken));
 
     ArgSymbol* _this = new ArgSymbol(INTENT_BLANK, "this", parent);
 
     _this->addFlag(FLAG_ARG_THIS);
-    cFnGetter->insertFormalAtTail(_this);
-    SymExpr *fnExpr = new SymExpr(parent_wrapper_method);
-    cFnGetter->insertAtTail(new CallExpr(PRIM_RETURN, fnExpr));
+    cAsyncFnGetter->insertFormalAtTail(_this);
+    SymExpr *fnExpr = new SymExpr(asyncWrapperMethod);
+    cAsyncFnGetter->insertAtTail(new CallExpr(PRIM_RETURN, fnExpr));
 
-    DefExpr* def = new DefExpr(cFnGetter);
+    DefExpr* def = new DefExpr(cAsyncFnGetter);
 
     parent->symbol->defPoint->insertBefore(def);
-    normalize(cFnGetter);
-    parent->methods.add(cFnGetter);
+    normalize(cAsyncFnGetter);
+    parent->methods.add(cAsyncFnGetter);
 
-    cFnGetter->addFlag(FLAG_METHOD);
-    cFnGetter->addFlag(FLAG_METHOD_PRIMARY);
-    cFnGetter->cname = astr("chpl_get_",
+    cAsyncFnGetter->addFlag(FLAG_METHOD);
+    cAsyncFnGetter->addFlag(FLAG_METHOD_PRIMARY);
+    cAsyncFnGetter->cname = astr("chpl_get_",
                            parent->symbol->cname,
                            "_",
-                           cFnGetter->cname);
-    cFnGetter->addFlag(FLAG_NO_PARENS);
-    cFnGetter->_this = _this;
+                           cAsyncFnGetter->cname);
+    cAsyncFnGetter->addFlag(FLAG_NO_PARENS);
+    cAsyncFnGetter->_this = _this;
+  } 
+  //SET_LINENO(mainModule);
+  // the current future/async/andThen model assumes that all procs/lambdas 
+  // that are passed to andThen should be of the form "y = f(x)"
+  if(arg_list.length == 1) {
+  FnSymbol* andThenWrapperMethod = new FnSymbol(astr("andThen_wrapper_", captured_fn->cname));
+  {
+  // add a wrapper function that takes all references of the given function arguments
+  andThenWrapperMethod->addFlag(FLAG_METHOD);
+  andThenWrapperMethod->addFlag(FLAG_EXPORT);
+  //andThenWrapperMethod->addFlag(FLAG_INVISIBLE_FN);
+  andThenWrapperMethod->addFlag(FLAG_COMPILER_GENERATED);
+
+  int i = 0, alength = arg_list.length;
+  // assert(alength == 1 && "andThen proc should have just 1 argument");
+  // We handle the arg list differently depending on if it's a list of
+  // formal args or actual args
+  if (isFormal) {
+
+    for_alist(formalExpr, arg_list) {
+      DefExpr* dExp = toDefExpr(formalExpr);
+      ArgSymbol* fArg = toArgSymbol(dExp->sym);
+
+      if (fArg->type != dtVoid) {
+        ArgSymbol* newFormal = new ArgSymbol(INTENT_BLANK,
+                                             astr(fArg->name, "_ptr"),
+                                             dtCVoidPtr->refType);
+
+        if (fArg->typeExpr)
+          newFormal->typeExpr = fArg->typeExpr->copy();
+
+        andThenWrapperMethod->insertFormalAtTail(newFormal);
+      }
+    }
+    // insert return placeholder
+    ArgSymbol* retFormal = new ArgSymbol(INTENT_BLANK, "retVal", dtCVoidPtr->refType);
+    andThenWrapperMethod->insertFormalAtTail(retFormal);
+
+  } else {
+    char name_buffer[100];
+    int  name_index = 0;
+
+    for_alist(actualExpr, arg_list) {
+      sprintf(name_buffer, "name%i", name_index++);
+
+      if (i != (alength-1)) {
+        SymExpr* sExpr = toSymExpr(actualExpr);
+
+        if (sExpr->symbol()->type != dtVoid) {
+          ArgSymbol* newFormal = new ArgSymbol(INTENT_BLANK,
+                                               name_buffer,
+                                               dtCVoidPtr->refType);
+          andThenWrapperMethod->insertFormalAtTail(newFormal);
+        }
+      }
+
+      ++i;
+    }
+    // insert return placeholder
+    ArgSymbol* retFormal = new ArgSymbol(INTENT_OUT, "retVal", dtCVoidPtr->refType);
+    andThenWrapperMethod->insertFormalAtTail(retFormal);
+  }
+  // Create a call to the original function where each argument 
+  // of the wrapper is dereferenced and passed to the original
+  // function. The return value is also passed by reference and 
+  // memcpy-ed at the end before returning
+  CallExpr *call_orig = new CallExpr(captured_fn);
+  i = 0;
+  if (isFormal) {
+    Expr *exp1_wrap = andThenWrapperMethod->formals.head;
+    Expr *exp1_orig = arg_list.head;
+    Expr *exp_ret_wrap = andThenWrapperMethod->formals.tail;
+
+    DefExpr* dExp1_wrap = toDefExpr(exp1_wrap);
+    DefExpr* dExp1_orig = toDefExpr(exp1_orig);
+    DefExpr* dExp_ret_wrap = toDefExpr(exp_ret_wrap);
+    
+    ArgSymbol* x_wrap = toArgSymbol(dExp1_wrap->sym);
+    ArgSymbol* x_orig = toArgSymbol(dExp1_orig->sym);
+    ArgSymbol* ret_wrap = toArgSymbol(dExp_ret_wrap->sym);
+
+    // void *x_ptr;
+    VarSymbol* x_ptr = newTemp("x_ptr", dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(x_ptr));
+    // void *ret_ptr;
+    VarSymbol* ret_ptr = newTemp("ret_ptr", dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(ret_ptr));
+    // x_ptr = *x_wrap;
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, x_ptr, 
+                                        new CallExpr(PRIM_DEREF, x_wrap)));
+    // ret_ptr = *ret_wrap;                                       
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, ret_ptr, 
+                                        new CallExpr(PRIM_DEREF, ret_wrap)));
+
+    // TYPE_X x_val;
+    VarSymbol* x_val = newTemp(x_orig->name, x_orig->type);
+    andThenWrapperMethod->insertAtTail(new DefExpr(x_val));
+    // void *x_val_ptr;
+    VarSymbol *x_val_ptr = newTemp("x_val_ptr", dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(x_val_ptr));
+    // x_val_ptr = (void *)(&x_val);
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_ASSIGN, x_val_ptr,
+                                new CallExpr(PRIM_CAST_TO_VOID_STAR,
+                                new CallExpr(PRIM_ADDR_OF, x_val))));
+
+    // x_size = sizeof(TYPE_X);
+    VarSymbol *x_size = newTemp("x_size", dtUInt[INT_SIZE_DEFAULT]);
+    andThenWrapperMethod->insertAtTail(new DefExpr(x_size));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, x_size, 
+                                        new CallExpr(PRIM_SIZEOF, x_orig->type->symbol)));
+    // memcpy(x_val_ptr, x_ptr, sizeof(TYPE_X);                                 
+    CallExpr *memcpy1 = new CallExpr("memcpy");
+    memcpy1->insertAtTail(x_val_ptr);
+    memcpy1->insertAtTail(x_ptr);
+    memcpy1->insertAtTail(x_size);
+    andThenWrapperMethod->insertAtTail(memcpy1);
+
+    // call to original 
+    // RET_TYPE ret_val;
+    VarSymbol* ret_val = newTemp("ret_val", retType);
+    andThenWrapperMethod->insertAtTail(new DefExpr(ret_val));
+    // ret_val = fn(x_val);
+    call_orig->insertAtTail(x_val);
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, ret_val, call_orig));
+
+    // void *ret_val_ptr;
+    VarSymbol *ret_val_ptr = newTemp("ret_val_ptr", dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(ret_val_ptr));
+    // ret_val_ptr = (void *)(&ret_val);
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_ASSIGN, ret_val_ptr,
+                                new CallExpr(PRIM_CAST_TO_VOID_STAR,
+                                new CallExpr(PRIM_ADDR_OF, ret_val))));
+    // ret_size = sizeof(RET_TYPE);
+    VarSymbol *ret_size = newTemp("ret_size", dtUInt[INT_SIZE_DEFAULT]);
+    andThenWrapperMethod->insertAtTail(new DefExpr(ret_size));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, ret_size, 
+                                        new CallExpr(PRIM_SIZEOF, retType->symbol)));
+
+    // memcpy(ret_ptr, ret_val_ptr, sizeof(RET_TYPE));                                 
+    CallExpr *memcpy2 = new CallExpr("memcpy");
+    memcpy2->insertAtTail(ret_ptr);
+    memcpy2->insertAtTail(ret_val_ptr);
+    memcpy2->insertAtTail(ret_size);
+    andThenWrapperMethod->insertAtTail(memcpy2);
+  } else {
+    Expr *exp_wrap = andThenWrapperMethod->formals.head;
+
+    char name_buffer[100];
+    int  name_index = 0;
+
+    for_alist(actualExpr, arg_list) {
+      sprintf(name_buffer, "name%i", name_index++);
+
+      if (i != (alength-1)) {
+        SymExpr* sExpr = toSymExpr(actualExpr);
+        SymExpr* sExpr_wrap = toSymExpr(exp_wrap);
+
+        if (sExpr->symbol()->type != dtVoid) {
+          // insert args
+          VarSymbol* tmp = newTemp(sExpr->symbol()->name, sExpr->symbol()->type);
+          andThenWrapperMethod->insertAtTail(new DefExpr(tmp));
+          andThenWrapperMethod->insertAtTail(
+                      new CallExpr(PRIM_MOVE, tmp,
+                      new CallExpr(PRIM_DEREF, sExpr_wrap->symbol())));
+
+          call_orig->insertAtTail(tmp);
+        }
+      }
+      exp_wrap = exp_wrap->next;
+
+      ++i;
+    }
+
+    // inject a reference to the return type and memcpy the value to its address
+    SymExpr *retExpr = toSymExpr(andThenWrapperMethod->formals.tail);
+    ArgSymbol *fArg_ret = toArgSymbol(retExpr->symbol());
+    CallExpr *call_helper = new CallExpr("memcpy");
+
+    // destination pointer
+    VarSymbol* dest_ptr = newTemp(astr("dest_ptr_", fArg_ret->name), 
+                                           dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(dest_ptr));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, dest_ptr, 
+                                        new CallExpr(PRIM_DEREF, fArg_ret)));
+    call_helper->insertAtTail(dest_ptr);
+
+    // return value
+    VarSymbol *src_value = newTempConst(astr("ret_value_", fArg_ret->name), retType);
+    andThenWrapperMethod->insertAtTail(new DefExpr(src_value));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE,
+                                        src_value, 
+                                        call_orig));
+
+    // source pointer
+    VarSymbol *src_ptr = newTempConst(astr("ret_ptr_", fArg_ret->name), dtCVoidPtr);
+    andThenWrapperMethod->insertAtTail(new DefExpr(src_ptr));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_ASSIGN, src_ptr,
+                                new CallExpr(PRIM_CAST_TO_VOID_STAR,
+                                new CallExpr(PRIM_ADDR_OF, src_value))));
+    call_helper->insertAtTail(src_ptr);
+
+    // memcpy size
+    VarSymbol *size_value = newTemp(astr("sz_", fArg_ret->name), dtUInt[INT_SIZE_DEFAULT]);
+    andThenWrapperMethod->insertAtTail(new DefExpr(size_value));
+    andThenWrapperMethod->insertAtTail(new CallExpr(PRIM_MOVE, size_value, 
+                                        new CallExpr(PRIM_SIZEOF, retType->symbol)));
+    call_helper->insertAtTail(size_value);
+
+    // insert call to memcpy(dest_ptr, src_ptr, sz);
+    andThenWrapperMethod->insertAtTail(call_helper);
+  }
+  // Because this function type needs to be globally visible
+  // (because we don't know the modules it will be passed to), we put
+  // it at the highest scope
+  andThenWrapperMethod->retType = dtVoid;
+  normalize(andThenWrapperMethod);
+  mainModule->block->insertAtTail(new DefExpr(andThenWrapperMethod));
+  }
+  {
+    FnSymbol* cAndThenFnGetter = new FnSymbol("cAndThenFnPtr");
+
+    cAndThenFnGetter->addFlag(FLAG_NO_IMPLICIT_COPY);
+    cAndThenFnGetter->addFlag(FLAG_INLINE);
+    cAndThenFnGetter->retTag = RET_VALUE;
+    cAndThenFnGetter->insertFormalAtTail(new ArgSymbol(INTENT_BLANK,
+                                               "_mt",
+                                               dtMethodToken));
+
+    ArgSymbol* _this = new ArgSymbol(INTENT_BLANK, "this", parent);
+
+    _this->addFlag(FLAG_ARG_THIS);
+    cAndThenFnGetter->insertFormalAtTail(_this);
+    SymExpr *fnExpr = new SymExpr(andThenWrapperMethod);
+    cAndThenFnGetter->insertAtTail(new CallExpr(PRIM_RETURN, fnExpr));
+
+    DefExpr* def = new DefExpr(cAndThenFnGetter);
+
+    parent->symbol->defPoint->insertBefore(def);
+    normalize(cAndThenFnGetter);
+    parent->methods.add(cAndThenFnGetter);
+
+    cAndThenFnGetter->addFlag(FLAG_METHOD);
+    cAndThenFnGetter->addFlag(FLAG_METHOD_PRIMARY);
+    cAndThenFnGetter->cname = astr("chpl_get_",
+                           parent->symbol->cname,
+                           "_",
+                           cAndThenFnGetter->cname);
+    cAndThenFnGetter->addFlag(FLAG_NO_PARENS);
+    cAndThenFnGetter->_this = _this;
+  } 
   } 
 
   // Add a "getter" method that returns the tuple of argument types

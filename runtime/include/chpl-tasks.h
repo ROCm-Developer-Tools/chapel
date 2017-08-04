@@ -171,7 +171,7 @@ void chpl_taskGroupComplete();
 typedef void (*callback_function)(void);
 
 uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_sizes,
-        void *args);
+        void *args, chpl_taskID_t dep_handle);
 void chpl_taskWaitFor(uint64_t handle);
 //
 // Call a chpl_ftable[] function in a task.

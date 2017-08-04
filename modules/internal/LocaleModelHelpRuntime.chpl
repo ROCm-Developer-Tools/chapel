@@ -35,7 +35,9 @@ module LocaleModelHelpRuntime {
   // interface for assembling and disassembling chpl_localeID_t values.  This
   // module then provides the interface the compiler-emitted code uses to do
   // the same.
-
+  
+  extern type chpl_taskID_t;
+  extern var chpl_nullTaskID: uint(64);
   extern record chpl_localeID_t {
     // We need to know that this is a record type in order to pass it to and
     // return it from runtime functions properly, but we don't need or want

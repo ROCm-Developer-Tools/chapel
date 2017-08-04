@@ -103,7 +103,8 @@ The following example demonstrate bundling of futures.
  */
 
 module Futures {
-  extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64), args: c_void_ptr) : uint(64);
+  extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64),
+              args: c_void_ptr, dependent_task_handle: uint(64)) : uint(64);
   extern proc chpl_taskWaitFor(handle: uint(64));
   extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
 
@@ -214,9 +215,20 @@ module Futures {
       if !isValid() then halt("andThen() called on invalid future");
       if !canResolveMethod(taskFn, "retType") then
         compilerError("cannot determine return type of andThen() task function");
+      if !canResolveMethod(taskFn, "cAndThenFnPtr") then
+        compilerError("cannot determine return C Function Pointer of async() task function");
       var f: Future(taskFn.retType);
       f.classRef.valid = true;
-      begin f.set(taskFn(this.get()));
+      var n: c_uint = 1;
+      var args_sizes: [1..n+1] uint(64);
+      args_sizes(1) = numBytes(this.retType);
+      args_sizes(n+1) = numBytes(taskFn.retType);
+      var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
+      f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+1, 
+                          args_sizes, c_ptrTo(args_list),
+                          this.classRef.handle);
+
+      //begin f.set(taskFn(this.get()));
       return f;
     }
 
@@ -289,7 +301,7 @@ module Futures {
       compilerError("async() task function (expecting arguments) provided without arguments");
     if !canResolveMethod(taskFn, "retType") then
       compilerError("cannot determine return type of andThen() task function");
-    if !canResolveMethod(taskFn, "cFnPtr") then
+    if !canResolveMethod(taskFn, "cAsyncFnPtr") then
       compilerError("cannot determine return C Function Pointer of async() task function");
     var f: Future(taskFn.retType);
     f.classRef.valid = true;
@@ -297,7 +309,8 @@ module Futures {
     var args_sizes: [1..n+1] uint(64);
     args_sizes(n+1) = numBytes(taskFn.retType);
     var args_list = (c_ptrTo(f.classRef.value));
-    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cFnPtr), n+1, args_sizes, c_ptrTo(args_list));
+    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes, c_ptrTo(args_list), 
+                        chpl_nullTaskID);
     //begin f.set(taskFn());
     return f;
   }
@@ -315,7 +328,7 @@ module Futures {
       compilerError("async() task function provided with mismatching arguments");
     if !canResolveMethod(taskFn, "retType") then
       compilerError("cannot determine return type of async() task function");
-    if !canResolveMethod(taskFn, "cFnPtr") then
+    if !canResolveMethod(taskFn, "cAsyncFnPtr") then
       compilerError("cannot determine return C Function Pointer of async() task function");
     var f: Future(taskFn.retType);
     f.classRef.valid = true;
@@ -331,7 +344,8 @@ module Futures {
     }
     args_sizes(n+1) = numBytes(taskFn.retType);
     var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
-    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cFnPtr), n+1, args_sizes, c_ptrTo(args_list));
+    f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes,
+                        c_ptrTo(args_list), chpl_nullTaskID);
     //begin f.set(taskFn((...args)));
     return f;
   }
