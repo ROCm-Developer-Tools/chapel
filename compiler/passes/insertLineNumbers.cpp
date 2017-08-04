@@ -353,11 +353,10 @@ static void moveLinenoInsideArgBundle()
     //  than the expected number.  Both block types below expect an
     //  argument bundle, and the on-block expects an additional argument
     //  that is the locale on which it should be executed.
+    if ((fn->numFormals() > 4 && fn->hasFlag(FLAG_ON_BLOCK)) ||
 #ifdef TARGET_HSA
-    if ((fn->numFormals() > 5 && fn->hasFlag(FLAG_ON_BLOCK)) ||
         (fn->numFormals() > 6 && !fn->hasFlag(FLAG_ON_BLOCK) &&
 #else
-    if ((fn->numFormals() > 4 && fn->hasFlag(FLAG_ON_BLOCK)) ||
         (fn->numFormals() > 5 && !fn->hasFlag(FLAG_ON_BLOCK) &&
 #endif
          (fn->hasFlag(FLAG_BEGIN_BLOCK) ||
