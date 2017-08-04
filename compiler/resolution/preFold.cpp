@@ -71,7 +71,8 @@ static bool           isNormalField(Symbol* field);
 
 static std::string    buildParentName(AList& argList,
                                       bool   isFormal,
-                                      Type*  retType);
+                                      Type*  retType,
+                                      const char *fn_name);
 
 static AggregateType* createAndInsertFunParentClass(CallExpr*   call,
                                                     const char* name);
@@ -1075,7 +1076,8 @@ static Expr* createFunctionAsValue(CallExpr *call) {
   AggregateType *parent;
   FnSymbol *thisParentMethod;
 
-  std::string parent_name = buildParentName(captured_fn->formals, true, captured_fn->retType);
+  std::string parent_name = buildParentName(captured_fn->formals, true, 
+                                captured_fn->retType, captured_fn->name);
 
   if (functionTypeMap.find(parent_name) != functionTypeMap.end()) {
     std::pair<AggregateType*, FnSymbol*> ctfs = functionTypeMap[parent_name];
@@ -1218,7 +1220,7 @@ static AggregateType* createOrFindFunTypeFromAnnotation(AList&     argList,
   AggregateType* parent      = NULL;
   SymExpr*       retTail     = toSymExpr(argList.tail);
   Type*          retType     = retTail->symbol()->type;
-  std::string    parent_name = buildParentName(argList, false, retType);
+  std::string    parent_name = buildParentName(argList, false, retType, "");
 
   if (functionTypeMap.find(parent_name) != functionTypeMap.end()) {
     parent = functionTypeMap[parent_name].first;
@@ -1307,11 +1309,13 @@ static bool isNormalField(Symbol* field)
 */
 static std::string buildParentName(AList& arg_list,
                                    bool   isFormal,
-                                   Type*  retType) {
+                                   Type*  retType,
+                                   const char* fn_name) {
   std::ostringstream oss;
   bool               isFirst = true;
 
   oss << "chpl__fcf_type_";
+  oss << fn_name;
 
   if (isFormal) {
     if (arg_list.length == 0) {
