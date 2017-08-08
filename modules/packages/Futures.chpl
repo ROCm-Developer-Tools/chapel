@@ -221,8 +221,21 @@ module Futures {
       f.classRef.valid = true;
       var n: c_uint = 1;
       var args_sizes: [1..n+1] uint(64);
-      args_sizes(1) = numBytes(this.retType);
-      args_sizes(n+1) = numBytes(taskFn.retType);
+      if isStringType(this.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(1) = numBytes(this.retType);
+      }
+      if isStringType(taskFn.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(n+1) = c_sizeof(c_void_ptr);
+      } else {
+        args_sizes(n+1) = numBytes(taskFn.retType);
+      }
       var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
@@ -309,7 +322,14 @@ module Futures {
     f.classRef.valid = true;
     var n: c_uint = 0;
     var args_sizes: [1..n+1] uint(64);
-    args_sizes(n+1) = numBytes(taskFn.retType);
+    if isStringType(taskFn.retType) {
+      // strings will be c_ptr(c_char) so size will be the same as that of
+      // c_void_ptr
+      args_sizes(n+1) = c_sizeof(c_void_ptr);
+    }
+    else {
+      args_sizes(n+1) = numBytes(taskFn.retType);
+    }
     var args_list = (c_ptrTo(f.classRef.value));
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
