@@ -977,7 +977,7 @@ atmi_kernel_t init_kernel(callback_function fn, unsigned int n, uint64_t *args_s
 }
 
 uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_sizes,
-        void *args, chpl_taskID_t dep_handle) {
+        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps) {
     // n-1: return_addr
     // setup fn as an ATMI CPU task
     int cpu_id = 0;//subloc;
@@ -985,11 +985,9 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
     lparm->kernel_id = CPU_FUNCTION_IMPL;
     lparm->synchronous = ATMI_FALSE;
     lparm->groupable = ATMI_FALSE;
-    if(dep_handle != chpl_nullTaskID) {
-        printf("Dependent handle: %lu\n", dep_handle);
-        lparm->num_required = 1;
-        atmi_task_handle_t requires[1] = {(atmi_task_handle_t) dep_handle};
-        lparm->requires = &dep_handle;//requires;
+    if(num_deps > 0) {
+        lparm->num_required = num_deps;
+        lparm->requires = dep_handles;
     }
     //if(task_group) { 
     //    lparm->group = (atmi_task_group_t *)task_group;
@@ -1009,7 +1007,6 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
         kernel = init_kernel(fn, n, args_sizes);
     //}
     return atmi_task_launch(lparm, kernel, kernargs);
-    //return ATMI_NULL_TASK_HANDLE;
 }
 
 void chpl_taskWaitFor(uint64_t handle) {

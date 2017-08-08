@@ -283,7 +283,7 @@ module CPtr {
 
   private extern const CHPL_RT_MD_ARRAY_ELEMENTS:chpl_mem_descInt_t;
 
-  private inline proc c_sizeof(type x): size_t {
+  inline proc c_sizeof(type x): size_t {
     extern proc sizeof(type x): size_t;
     return sizeof(x);
   }

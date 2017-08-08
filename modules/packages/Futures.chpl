@@ -104,7 +104,7 @@ The following example demonstrate bundling of futures.
 
 module Futures {
   extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64),
-              args: c_void_ptr, dependent_task_handle: uint(64)) : uint(64);
+              args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
   extern proc chpl_taskWaitFor(handle: uint(64));
   extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
 
@@ -168,7 +168,7 @@ module Futures {
       //classRef.state.waitFor(true);
       return classRef.value;
     }
-
+    
     pragma "no doc"
     proc set(value: retType) {
       if !isValid() then halt("set() called on invalid future");
@@ -224,9 +224,11 @@ module Futures {
       args_sizes(1) = numBytes(this.retType);
       args_sizes(n+1) = numBytes(taskFn.retType);
       var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
+      var dep_handles: [1..2] uint(64);
+      dep_handles[1] = this.classRef.handle;
       f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+1, 
                           args_sizes, c_ptrTo(args_list),
-                          this.classRef.handle);
+                          dep_handles, 1);
 
       //begin f.set(taskFn(this.get()));
       return f;
@@ -309,8 +311,10 @@ module Futures {
     var args_sizes: [1..n+1] uint(64);
     args_sizes(n+1) = numBytes(taskFn.retType);
     var args_list = (c_ptrTo(f.classRef.value));
+    var dep_handles: [1..2] uint(64);
+    dep_handles[1] = chpl_nullTaskID;
     f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes, c_ptrTo(args_list), 
-                        chpl_nullTaskID);
+                        dep_handles, 0);
     //begin f.set(taskFn());
     return f;
   }
@@ -336,18 +340,47 @@ module Futures {
     for param i in 1..n {
       var t: bool = isStringType(args(i).type);
       if isStringType(args(i).type) {
-        compilerError("async() task function doesn't take string types");
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(i) = c_sizeof(c_void_ptr);
       }
       else {
         args_sizes(i) = numBytes(args(i).type);
       }
     }
-    args_sizes(n+1) = numBytes(taskFn.retType);
+    if isStringType(taskFn.retType) {
+      // strings will be c_ptr(c_char) so size will be the same as that of
+      // c_void_ptr
+      args_sizes(n+1) = c_sizeof(c_void_ptr);
+    }
+    else {
+      args_sizes(n+1) = numBytes(taskFn.retType);
+    }
     var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
+    var dep_handles: [1..2] uint(64);
+    dep_handles[1] = chpl_nullTaskID;
     f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes,
-                        c_ptrTo(args_list), chpl_nullTaskID);
+                        c_ptrTo(args_list), dep_handles, 0);
     //begin f.set(taskFn((...args)));
     return f;
+  }
+
+  pragma "no doc"
+  proc copyFutureValues(N: int, x:c_ptr(c_char), y: c_ptr(c_void_ptr), 
+                        sz: c_ptr(uint(64))) {
+    var cur_sz: uint(64) = 0;
+    for i in 0..N-1 {
+      memcpy(x + cur_sz, y[i], sz[i]);
+      cur_sz += sz[i];
+    }
+    c_free(y);
+    c_free(sz);
+    return _defaultOf(int);
+  }
+
+  pragma "no doc"
+  proc getAsyncFnPtr(taskFn) {
+    return taskFn.cAsyncFnPtr;
   }
 
   pragma "no doc"
@@ -358,6 +391,36 @@ module Futures {
   pragma "no doc"
   proc getRetTypes(arg, args...) type {
     return (arg.retType, (...getRetTypes((...args))));
+  }
+   
+  pragma "no doc"
+  proc getRetHandles(arg) {
+    return (arg.classRef.handle,);
+  }
+
+  pragma "no doc"
+  proc getRetHandles(arg, args...) {
+    return (arg.classRef.handle, (...getRetHandles((...args))));
+  }
+  
+  pragma "no doc"
+  proc getRetValuePtrs(arg) {
+    return (c_ptrTo(arg.classRef.value),);
+  }
+
+  pragma "no doc"
+  proc getRetValuePtrs(arg, args...) {
+    return (c_ptrTo(arg.classRef.value), (...getRetValuePtrs((...args))));
+  }
+
+  pragma "no doc"
+  proc getRetSizes(arg) {
+    return (c_sizeof(arg.retType),);
+  }
+
+  pragma "no doc"
+  proc getRetSizes(arg, args...) {
+    return (c_sizeof(arg.retType), (...getRetSizes((...args))));
   }
 
   /*
@@ -370,14 +433,46 @@ module Futures {
    */
   proc waitAll(futures...?N) {
     type retTypes = getRetTypes((...futures));
+    var retValuePtrs = getRetValuePtrs((...futures));
+    var retSizes = getRetSizes((...futures));
+    var retHandles = getRetHandles((...futures));
     var f: Future(retTypes);
     f.classRef.valid = true;
-    begin {
+    /*begin {
       var result: retTypes;
       for param i in 1..N do
         result[i] = futures[i].get();
       f.set(result);
+    }*/
+
+    var dep_handles: [1..N] uint(64);
+    var cp_args_sizes: c_ptr(uint(64)) = c_malloc(uint(64), N);
+    for i in 1..N {
+      dep_handles[i] = retHandles[i];
+      cp_args_sizes[i-1] = retSizes[i];
     }
+    var cp_args_ptrs: c_ptr(c_void_ptr) = c_malloc(c_void_ptr, N);
+    c_memcpy(cp_args_ptrs, c_ptrTo(retValuePtrs), N * c_sizeof(c_void_ptr)); 
+
+    var dummy_ret: int;
+    var args_list = (N, 
+                    c_ptrTo(f.classRef.value), 
+                    cp_args_ptrs, 
+                    cp_args_sizes,
+                    c_ptrTo(dummy_ret));
+    var args_count: c_uint = args_list.size;
+    var args_sizes: [1..args_count] uint(64) = (
+                    c_sizeof(N.type),
+                    c_sizeof(c_void_ptr),
+                    c_sizeof(c_void_ptr),
+                    c_sizeof(c_void_ptr),
+                    c_sizeof(c_void_ptr));
+
+    f.classRef.handle = chpl_taskLaunch(c_ptrTo(getAsyncFnPtr(copyFutureValues)), 
+                          args_count, 
+                          args_sizes, c_ptrTo(args_list),
+                          dep_handles, N);
+
     return f;
   }
 
