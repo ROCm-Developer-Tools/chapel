@@ -105,11 +105,17 @@ The following example demonstrate bundling of futures.
 module Futures {
   extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64),
               args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
+  extern proc chpl_gpuTaskLaunch(fileName: c_string, kernelName: c_string,
+              n: c_uint, args_sizes: [] uint(64),
+              args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
   extern proc chpl_taskWaitFor(handle: uint(64));
   extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
+  extern proc chpl_buildProgram(const filename: c_string): c_int;
 
   use Reflection;
   use ExplicitRefCount;
+
+  var gpuFiles: domain(string);
 
   pragma "no doc"
   class FutureClass: RefCountBase {
@@ -227,21 +233,74 @@ module Futures {
         args_sizes(1) = c_sizeof(c_void_ptr);
       }
       else {
-        args_sizes(1) = numBytes(this.retType);
+        args_sizes(1) = c_sizeof(c_void_ptr);
+        //args_sizes(1) = numBytes(this.retType);
       }
-      if isStringType(taskFn.retType) {
-        // strings will be c_ptr(c_char) so size will be the same as that of
-        // c_void_ptr
-        args_sizes(n+1) = c_sizeof(c_void_ptr);
-      } else {
-        args_sizes(n+1) = numBytes(taskFn.retType);
-      }
+      // return value will be a c_void_ptr
+      args_sizes(n+1) = c_sizeof(c_void_ptr);
       var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
       f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+1, 
                           args_sizes, c_ptrTo(args_list),
                           dep_handles, 1);
+
+      //begin f.set(taskFn(this.get()));
+      return f;
+    }
+
+    /*
+      Asynchronously execute a function as a continuation of the future.
+
+      The function argument `taskFn` must take a single argument of type
+      `retType` (i.e., the return type of the parent future) and will be
+      executed when the parent future's value is available.
+
+      If the parent future is not valid, this call will :proc:`~ChapelIO.halt()`.
+
+      :arg taskFn: The function to invoke as a continuation.
+      :returns: A future of the return type of `taskFn`
+     */
+    proc andThen(fileName: string, kernelName: string, type retType) {
+      /*
+      if !canResolveMethod(taskFn, "this", retType) then
+        compilerError("andThen() task function arguments are incompatible with parent future return type");
+      */
+      if !isValid() then halt("andThen() called on invalid future");
+      var f: Future(retType);
+      f.classRef.valid = true;
+      var n: c_uint = 1;
+      var args_sizes: [1..n+1] uint(64);
+      if isStringType(this.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(1) = c_sizeof(c_void_ptr);
+        // args_sizes(1) = numBytes(this.retType);
+      }
+      // return value will be a c_void_ptr
+      args_sizes(n+1) = c_sizeof(c_void_ptr);
+      var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
+      var dep_handles: [1..2] uint(64);
+      dep_handles[1] = this.classRef.handle;
+
+      var wrap_fileName = "wrap_" + fileName;
+      var file_found = gpuFiles.member(wrap_fileName);
+      if file_found {
+        //writeln(wrap_fileName, " is found");
+      } else {
+        //writeln(wrap_fileName, " not found");
+        gpuFiles += wrap_fileName;
+        var err = chpl_buildProgram(wrap_fileName.c_str());
+      }
+      var hsacoName = wrap_fileName.replace(".cl", ".hsaco");
+      var hsaco_kernelName = "wrap_kernel_" + kernelName;
+      f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), 
+                              hsaco_kernelName.c_str(), 
+                              n+1, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 1);
 
       //begin f.set(taskFn(this.get()));
       return f;
@@ -322,14 +381,8 @@ module Futures {
     f.classRef.valid = true;
     var n: c_uint = 0;
     var args_sizes: [1..n+1] uint(64);
-    if isStringType(taskFn.retType) {
-      // strings will be c_ptr(c_char) so size will be the same as that of
-      // c_void_ptr
-      args_sizes(n+1) = c_sizeof(c_void_ptr);
-    }
-    else {
-      args_sizes(n+1) = numBytes(taskFn.retType);
-    }
+    // return value will be a c_void_ptr
+    args_sizes(n+1) = c_sizeof(c_void_ptr);
     var args_list = (c_ptrTo(f.classRef.value));
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
@@ -368,20 +421,59 @@ module Futures {
         args_sizes(i) = numBytes(args(i).type);
       }
     }
-    if isStringType(taskFn.retType) {
-      // strings will be c_ptr(c_char) so size will be the same as that of
-      // c_void_ptr
-      args_sizes(n+1) = c_sizeof(c_void_ptr);
-    }
-    else {
-      args_sizes(n+1) = numBytes(taskFn.retType);
-    }
+    // return value will be a c_void_ptr
+    args_sizes(n+1) = c_sizeof(c_void_ptr);
     var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
     f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes,
                         c_ptrTo(args_list), dep_handles, 0);
     //begin f.set(taskFn((...args)));
+    return f;
+  }
+
+  /*
+    Asynchronously execute a function (taking arguments) and return a
+    :record:`Future` that will eventually hold the result of the function call.
+
+    :arg fileName: OpenCL file name
+    :arg kernelName: OpenCL kernel name
+    :arg args...: Arguments to `kernelName`
+    :returns: A future of the return type of `kernelName`
+   */
+  proc async(fileName: string, kernelName: string, type retType, args...?n) {
+    var f: Future(retType);
+    f.classRef.valid = true;
+    var args_sizes: [1..n+1] uint(64);
+    for param i in 1..n {
+      var t: bool = isStringType(args(i).type);
+      if isStringType(args(i).type) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(i) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(i) = numBytes(args(i).type);
+      }
+    }
+    // return value will be a c_void_ptr
+    args_sizes(n+1) = c_sizeof(c_void_ptr);
+    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
+    var dep_handles: [1..2] uint(64);
+    dep_handles[1] = chpl_nullTaskID;
+
+    var file_found = gpuFiles.member(fileName);
+    if file_found {
+      //writeln(fileName, " is found");
+    } else {
+      //writeln(fileName, " not found");
+      gpuFiles += fileName;
+      var err = chpl_buildProgram(fileName.c_str());
+    }
+    var hsacoName = fileName.replace(".cl", ".hsaco");
+    f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), kernelName.c_str(), 
+                              n+1, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 0);
     return f;
   }
 

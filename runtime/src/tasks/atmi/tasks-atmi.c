@@ -968,10 +968,81 @@ bool try_get_kernel(callback_function fn, atmi_kernel_t *k) {
     // *k = 
 }
 
-atmi_kernel_t init_kernel(callback_function fn, unsigned int n, uint64_t *args_sizes) {
+void exec(const char* cmd, char *result) {
+    /* SO: how to execute a command and get output of command within c
+     *      */
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) {
+        strcpy(result, "ERROR");
+        return;
+    }
+    char buffer[128];
+    char *result_ptr = result;
+    while(!feof(pipe)) {
+        if(fgets(buffer, 128, pipe) != NULL) {
+            strcpy(result_ptr, buffer);
+            result_ptr += strlen(buffer);
+        }
+    }
+    pclose(pipe);
+    return;
+}
+
+int chpl_buildProgram(const char *filename) {
+    char cmd_c[2048] = {'"', '"'};
+    exec("which cloc.sh", cmd_c);
+    if(!strcmp(cmd_c, "") || !strcmp(cmd_c, "ERROR")) {
+        fprintf(stderr, "cloc.sh not found in the PATH\n");
+        chpl_exit_any(-1);
+    }
+    printf("CLOC Str: %s\n", cmd_c);
+    // popen returns a newline. remove it.
+    strtok(cmd_c, "\n");
+    strcat(cmd_c, " ");
+    //keep the temp files?
+    //strcat(cmd_c, " -k ");
+    const char *amdllvm_path = "/home/aaji/opt/amd/llvm";
+    const char *atmi_path = "/home/aaji/opt";
+    strcat(cmd_c, " -vv -amdllvm ");
+    strcat(cmd_c, amdllvm_path);
+    strcat(cmd_c, " -atmipath ");
+    strcat(cmd_c, atmi_path);
+    strcat(cmd_c, " -libgcn ");
+    strcat(cmd_c, amdllvm_path);
+    strcat(cmd_c, " ");
+    //strcat(cmd_c, " -vv -amdllvm ${AMDLLVM_PATH} -atmipath ${ATMI_RUNTIME_PATH} -libgcn ${AMDLLVM_PATH}");
+    strcat(cmd_c, filename);
+    printf("Executing cmd: %s\n", cmd_c);
+    int ret = system(cmd_c);
+    if(WIFEXITED(ret) == 0 || WEXITSTATUS(ret) != 0) {
+        fprintf(stderr, "\"%s\" returned with error %d\n", cmd_c, WEXITSTATUS(ret));
+        chpl_exit_any(-1);
+    }
+    char filename_hsaco[1024] = {0};
+    strcpy(filename_hsaco, filename);
+    strtok(filename_hsaco, ".");
+    strcat(filename_hsaco, ".hsaco");
+    printf("HSACO: %s\n", filename_hsaco);
+    atmi_platform_type_t platform = AMDGCN;
+    const char *f = (const char *)filename_hsaco;
+    atmi_status_t err = atmi_module_register(&f, &platform, 1);
+    if(err != ATMI_STATUS_SUCCESS)
+        return -1;
+    return 0;        
+}
+
+atmi_kernel_t init_cpu_kernel(callback_function fn, unsigned int n, uint64_t *args_sizes) {
     atmi_kernel_t kernel;
     atmi_kernel_create_empty(&kernel, n, args_sizes);
     atmi_kernel_add_cpu_impl(kernel, (atmi_generic_fp)fn, CPU_FUNCTION_IMPL);
+    // add fn to some kernel map
+    return kernel;
+}
+
+atmi_kernel_t init_gpu_kernel(const char *k, unsigned int n, uint64_t *args_sizes) {
+    atmi_kernel_t kernel;
+    atmi_kernel_create_empty(&kernel, n, args_sizes);
+    atmi_kernel_add_gpu_impl(kernel, k, GPU_KERNEL_IMPL);
     // add fn to some kernel map
     return kernel;
 }
@@ -1004,7 +1075,41 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
     //kernargs[n-1] = *(void **)args_ptr;
     atmi_kernel_t kernel;
     //if(!try_get_kernel(fn, &kernel)) {
-        kernel = init_kernel(fn, n, args_sizes);
+        kernel = init_cpu_kernel(fn, n, args_sizes);
+    //}
+    return atmi_task_launch(lparm, kernel, kernargs);
+}
+
+uint64_t chpl_gpuTaskLaunch(const char *filename, const char *kernelName, 
+        unsigned int n, uint64_t *args_sizes,
+        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps) {
+    // n-1: return_addr
+    // setup kernelName as an ATMI GPU task
+    int gpu_id = 0;//subloc;
+    ATMI_LPARM_GPU_1D(lparm, gpu_id, 1);
+    lparm->kernel_id = GPU_KERNEL_IMPL;
+    lparm->synchronous = ATMI_FALSE;
+    lparm->groupable = ATMI_FALSE;
+    if(num_deps > 0) {
+        lparm->num_required = num_deps;
+        lparm->requires = dep_handles;
+    }
+    //if(task_group) { 
+    //    lparm->group = (atmi_task_group_t *)task_group;
+    //}
+
+    void *kernargs[n];
+    char *args_ptr = (char *)args;
+    for(unsigned int i = 0; i < n; i++) {
+        kernargs[i] = args_ptr;
+        args_ptr += args_sizes[i];
+    }
+    // arg n-1 is the ptr to the return value, so pass as-is
+    //assert(args_sizes[n-1] == sizeof(void *));
+    //kernargs[n-1] = *(void **)args_ptr;
+    atmi_kernel_t kernel;
+    //if(!try_get_gpu_kernel(filename, kernelName, &kernel)) {
+        kernel = init_gpu_kernel(kernelName, n, args_sizes);
     //}
     return atmi_task_launch(lparm, kernel, kernargs);
 }
