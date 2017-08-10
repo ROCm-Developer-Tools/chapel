@@ -286,16 +286,15 @@ module Futures {
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
 
-      var wrap_fileName = "wrap_" + fileName;
-      var file_found = gpuFiles.member(wrap_fileName);
+      var hsacoName = fileName.replace(".cl", ".hsaco");
+      var file_found = gpuFiles.member(fileName);
       if file_found {
         //writeln(wrap_fileName, " is found");
       } else {
         //writeln(wrap_fileName, " not found");
-        gpuFiles += wrap_fileName;
-        var err = chpl_buildProgram(wrap_fileName.c_str());
+        gpuFiles += fileName;
+        var err = chpl_buildProgram(hsacoName.c_str());
       }
-      var hsacoName = wrap_fileName.replace(".cl", ".hsaco");
       var hsaco_kernelName = "wrap_kernel_" + kernelName;
       f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), 
                               hsaco_kernelName.c_str(), 
@@ -462,15 +461,15 @@ module Futures {
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
 
+    var hsacoName = fileName.replace(".cl", ".hsaco");
     var file_found = gpuFiles.member(fileName);
     if file_found {
       //writeln(fileName, " is found");
     } else {
       //writeln(fileName, " not found");
       gpuFiles += fileName;
-      var err = chpl_buildProgram(fileName.c_str());
+      var err = chpl_buildProgram(hsacoName.c_str());
     }
-    var hsacoName = fileName.replace(".cl", ".hsaco");
     f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), kernelName.c_str(), 
                               n+1, args_sizes,
                               c_ptrTo(args_list), dep_handles, 0);
@@ -586,6 +585,11 @@ module Futures {
                           dep_handles, N);
 
     return f;
+  }
+
+  pragma "no doc"
+  inline proc &(f, g) {
+    return waitAll(f, g);
   }
 
 } // module Futures

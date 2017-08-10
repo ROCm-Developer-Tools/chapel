@@ -30,6 +30,7 @@
 extern char executableFilename[FILENAME_MAX+1];
 extern char saveCDir[FILENAME_MAX+1];
 extern std::string ccflags;
+extern std::string clfiles;
 extern std::string ldflags;
 extern bool ccwarnings;
 extern Vec<const char*> incDirs;

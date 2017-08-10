@@ -40,6 +40,11 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <string>
+#include <sstream>
+#include <vector>
+#include <iterator>
+
 #include <cstring>
 #include <cstdlib>
 #include <cerrno>
@@ -53,6 +58,7 @@ char               executableFilename[FILENAME_MAX + 1] = "a.out";
 char               saveCDir[FILENAME_MAX + 1]           = "";
 
 std::string ccflags;
+std::string clfiles;
 std::string ldflags;
 
 int                numLibFlags                          = 0;
@@ -572,6 +578,24 @@ void genIncludeCommandLineHeaders(FILE* outfile) {
 
 
 #ifdef TARGET_HSA
+// SO link:
+// https://stackoverflow.com/questions/236129/most-elegant-way-to-split-a-string
+template<typename Out>
+void split(const std::string &s, char delim, Out result) {
+    std::stringstream ss;
+    ss.str(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        *(result++) = item;
+    }
+}
+
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    split(s, delim, std::back_inserter(elems));
+    return elems;
+}
+
 void codegen_makefile(fileinfo* mainfile, fileinfo *gpusrcfile, const char** tmpbinname, bool skip_compile_link, const std::vector<const char*>& splitFiles) {
 #else
 void codegen_makefile(fileinfo* mainfile, const char** tmpbinname, bool skip_compile_link, const std::vector<const char*>& splitFiles) {
@@ -674,6 +698,12 @@ void codegen_makefile(fileinfo* mainfile, const char** tmpbinname, bool skip_com
 #ifdef TARGET_HSA
     fprintf(makefile.fptr, "CHPL_GPU_SRC = \\\n");
     fprintf(makefile.fptr, "\t%s \\\n\n", gpusrcfile->pathname);
+    fprintf(makefile.fptr, "\n");
+    fprintf(makefile.fptr, "CHPL_CL_FILES = \\\n");
+    std::vector<std::string> clFiles = split(clfiles, ' ');
+    for(int i=0; i<(int)clFiles.size(); i++)
+        fprintf(makefile.fptr, "\t%s \\\n", clFiles[i].c_str());
+    fprintf(makefile.fptr, "\n");
 #endif
   fprintf(makefile.fptr, "CHPLUSEROBJ = \\\n");
   for(int i=0; i<(int)splitFiles.size(); i++)

@@ -507,6 +507,17 @@ static void setCCFlags(const ArgumentDescription* desc, const char* arg) {
   ccflags += arg;
 }
 
+static void setCLFiles(const ArgumentDescription* desc, const char* arg) {
+  // Append arg to the end of clfiles.
+
+  // add a space if there are already arguments here
+  if( clfiles.length() > 0 )
+    clfiles += ' ';
+
+  clfiles += arg;
+}
+
+
 // similar to setCCFlags
 static void setLDFlags(const ArgumentDescription* desc, const char* arg) {
   // Append arg to the end of ldflags.
@@ -824,6 +835,7 @@ static ArgumentDescription arg_desc[] = {
 
  {"", ' ', NULL, "C Code Compilation Options", NULL, NULL, NULL, NULL},
  {"ccflags", ' ', "<flags>", "Back-end C compiler flags (can be specified multiple times)", "S", NULL, "CHPL_CC_FLAGS", setCCFlags},
+ {"clfiles", ' ', "<CL files>", "CL Files (can specify multiple files)", "S", NULL, "CHPL_CL_FILES", setCLFiles},
  {"debug", 'g', NULL, "[Don't] Support debugging of generated C code", "N", &debugCCode, "CHPL_DEBUG", setChapelDebug},
  {"dynamic", ' ', NULL, "Generate a dynamically linked binary", "F", &fLinkStyle, NULL, setDynamicLink},
  {"hdr-search-path", 'I', "<directory>", "C header search path", "P", incFilename, NULL, handleIncDir},

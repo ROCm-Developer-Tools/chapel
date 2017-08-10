@@ -989,43 +989,8 @@ void exec(const char* cmd, char *result) {
 }
 
 int chpl_buildProgram(const char *filename) {
-    char cmd_c[2048] = {'"', '"'};
-    exec("which cloc.sh", cmd_c);
-    if(!strcmp(cmd_c, "") || !strcmp(cmd_c, "ERROR")) {
-        fprintf(stderr, "cloc.sh not found in the PATH\n");
-        chpl_exit_any(-1);
-    }
-    printf("CLOC Str: %s\n", cmd_c);
-    // popen returns a newline. remove it.
-    strtok(cmd_c, "\n");
-    strcat(cmd_c, " ");
-    //keep the temp files?
-    //strcat(cmd_c, " -k ");
-    const char *amdllvm_path = "/home/aaji/opt/amd/llvm";
-    const char *atmi_path = "/home/aaji/opt";
-    strcat(cmd_c, " -vv -amdllvm ");
-    strcat(cmd_c, amdllvm_path);
-    strcat(cmd_c, " -atmipath ");
-    strcat(cmd_c, atmi_path);
-    strcat(cmd_c, " -libgcn ");
-    strcat(cmd_c, amdllvm_path);
-    strcat(cmd_c, " ");
-    //strcat(cmd_c, " -vv -amdllvm ${AMDLLVM_PATH} -atmipath ${ATMI_RUNTIME_PATH} -libgcn ${AMDLLVM_PATH}");
-    strcat(cmd_c, filename);
-    printf("Executing cmd: %s\n", cmd_c);
-    int ret = system(cmd_c);
-    if(WIFEXITED(ret) == 0 || WEXITSTATUS(ret) != 0) {
-        fprintf(stderr, "\"%s\" returned with error %d\n", cmd_c, WEXITSTATUS(ret));
-        chpl_exit_any(-1);
-    }
-    char filename_hsaco[1024] = {0};
-    strcpy(filename_hsaco, filename);
-    strtok(filename_hsaco, ".");
-    strcat(filename_hsaco, ".hsaco");
-    printf("HSACO: %s\n", filename_hsaco);
     atmi_platform_type_t platform = AMDGCN;
-    const char *f = (const char *)filename_hsaco;
-    atmi_status_t err = atmi_module_register(&f, &platform, 1);
+    atmi_status_t err = atmi_module_register(&filename, &platform, 1);
     if(err != ATMI_STATUS_SUCCESS)
         return -1;
     return 0;        
