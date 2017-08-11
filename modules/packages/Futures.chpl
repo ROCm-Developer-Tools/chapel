@@ -571,4 +571,49 @@ module Futures {
     return waitAll(f, g);
   }
 
+  proc _tuple.andThen(taskFn) where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    return waitAll((...f)).andThen(taskFn);
+  }
+    
+  proc _tuple.andThen(kernelName: string, type retType) where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    return waitAll((...f)).andThen(kernelName, retType);
+  }
+
+  proc _tuple.get() where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    return waitAll((...f)).get();
+  }
+
+  proc isFuture(t) param where t:Future {
+    return true;
+  }
+
+  proc isFuture(t) param {
+    return false;
+  }
+
+  proc isTupleOfFutures(t) param {
+    for param i in 1..t.size {
+      if !isFuture(t(i)) then return false;
+    }
+    return true;
+  }
+
 } // module Futures
