@@ -105,12 +105,11 @@ The following example demonstrate bundling of futures.
 module Futures {
   extern proc chpl_taskLaunch(fn: c_fn_ptr, n: c_uint, args_sizes: [] uint(64),
               args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
-  extern proc chpl_gpuTaskLaunch(fileName: c_string, kernelName: c_string,
+  extern proc chpl_gpuTaskLaunch(kernelName: c_string,
               n: c_uint, args_sizes: [] uint(64),
               args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
   extern proc chpl_taskWaitFor(handle: uint(64));
   extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
-  extern proc chpl_buildProgram(const filename: c_string): c_int;
 
   use Reflection;
   use ExplicitRefCount;
@@ -261,7 +260,7 @@ module Futures {
       :arg taskFn: The function to invoke as a continuation.
       :returns: A future of the return type of `taskFn`
      */
-    proc andThen(fileName: string, kernelName: string, type retType) {
+    proc andThen(kernelName: string, type retType) {
       /*
       if !canResolveMethod(taskFn, "this", retType) then
         compilerError("andThen() task function arguments are incompatible with parent future return type");
@@ -286,18 +285,8 @@ module Futures {
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
 
-      var hsacoName = fileName.replace(".cl", ".hsaco");
-      var file_found = gpuFiles.member(fileName);
-      if file_found {
-        //writeln(wrap_fileName, " is found");
-      } else {
-        //writeln(wrap_fileName, " not found");
-        gpuFiles += fileName;
-        var err = chpl_buildProgram(hsacoName.c_str());
-      }
       var hsaco_kernelName = "wrap_kernel_" + kernelName;
-      f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), 
-                              hsaco_kernelName.c_str(), 
+      f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
                               n+1, args_sizes,
                               c_ptrTo(args_list), dep_handles, 1);
 
@@ -435,12 +424,11 @@ module Futures {
     Asynchronously execute a function (taking arguments) and return a
     :record:`Future` that will eventually hold the result of the function call.
 
-    :arg fileName: OpenCL file name
     :arg kernelName: OpenCL kernel name
     :arg args...: Arguments to `kernelName`
     :returns: A future of the return type of `kernelName`
    */
-  proc async(fileName: string, kernelName: string, type retType, args...?n) {
+  proc async(kernelName: string, type retType, args...?n) {
     var f: Future(retType);
     f.classRef.valid = true;
     var args_sizes: [1..n+1] uint(64);
@@ -461,16 +449,7 @@ module Futures {
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
 
-    var hsacoName = fileName.replace(".cl", ".hsaco");
-    var file_found = gpuFiles.member(fileName);
-    if file_found {
-      //writeln(fileName, " is found");
-    } else {
-      //writeln(fileName, " not found");
-      gpuFiles += fileName;
-      var err = chpl_buildProgram(hsacoName.c_str());
-    }
-    f.classRef.handle = chpl_gpuTaskLaunch(hsacoName.c_str(), kernelName.c_str(), 
+    f.classRef.handle = chpl_gpuTaskLaunch(kernelName.c_str(), 
                               n+1, args_sizes,
                               c_ptrTo(args_list), dep_handles, 0);
     return f;

@@ -30,7 +30,10 @@
 extern char executableFilename[FILENAME_MAX+1];
 extern char saveCDir[FILENAME_MAX+1];
 extern std::string ccflags;
+#ifdef TARGET_HSA
 extern std::string clfiles;
+extern std::vector<std::string> gpuModuleVec;
+#endif
 extern std::string ldflags;
 extern bool ccwarnings;
 extern Vec<const char*> incDirs;

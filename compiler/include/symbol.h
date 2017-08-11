@@ -728,6 +728,7 @@ extern std::vector<FnSymbol*> ftableVec;
 #ifdef TARGET_HSA
 extern std::map<FnSymbol*,int> gpuKernelMap;
 extern std::vector<FnSymbol*> gpuKernelVec;
+extern std::vector<std::string> gpuModuleVec;
 #endif
 
 #define FUNC_NAME_MAX 256

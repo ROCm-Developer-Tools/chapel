@@ -268,6 +268,34 @@ genClassIDs(std::vector<TypeSymbol*> & typeSymbol, bool isHeader) {
 
 #ifdef TARGET_HSA
 static void
+genGPUModuleTable(std::vector<std::string> & kernelModules, bool isHeader) {
+  GenInfo* info = gGenInfo;
+  const char* ktable_name = "chpl_gpu_modules";
+  const char* ktable_count = "chpl_num_gpu_modules";
+  if( info->cfile ) {
+    FILE* hdrfile = info->cfile;
+    if(isHeader) {
+      fprintf(hdrfile, "extern const char * %s[];\n", ktable_name);
+      return;
+    }
+    fprintf(hdrfile, "const char * %s[] = {\n", ktable_name);
+    bool first = true;
+    for(std::vector<std::string>::iterator it = kernelModules.begin(); 
+            it != kernelModules.end(); it++) {
+      if (!first)
+        fprintf(hdrfile, ",\n");
+      fprintf(hdrfile, "\"%s\"", it->c_str());
+      first = false;
+    }
+
+    //if (kernelNames.n == 0)
+     // fprintf(hdrfile, "\"\"");
+    fprintf(hdrfile, "\n};\n");
+    genGlobalInt32(ktable_count, kernelModules.size());
+  }
+}
+
+static void
 genGPUKernelTable(std::vector<FnSymbol*> & kernelFns, bool isHeader) {
   GenInfo* info = gGenInfo;
   const char* ktable_name = "chpl_gpu_kernels";
@@ -1439,6 +1467,7 @@ static void codegen_defn(std::set<const char*> & cnames, std::vector<TypeSymbol*
   genFinfo(ftableVec, false);
 #ifdef TARGET_HSA
   genComment("GPU Kernel Name Table");
+  genGPUModuleTable(gpuModuleVec, false);
   genGPUKernelTable(gpuKernelVec, false);
 #endif 
   genComment("Virtual Method Table");
@@ -1801,6 +1830,7 @@ static void codegen_header(std::set<const char*> & cnames, std::vector<TypeSymbo
   genFtable(ftableVec,true);
   genFinfo(ftableVec,true);
 #ifdef TARGET_HSA
+  genGPUModuleTable(gpuModuleVec, true);
   genGPUKernelTable(gpuKernelVec, true);
 #endif
 

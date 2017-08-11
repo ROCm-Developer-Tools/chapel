@@ -172,11 +172,10 @@ typedef void (*callback_function)(void);
 
 uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_sizes,
         void *args, chpl_taskID_t *dep_handles, uint64_t num_deps);
-uint64_t chpl_gpuTaskLaunch(const char *filename, const char *kernelName,
+uint64_t chpl_gpuTaskLaunch(const char *kernelName,
         unsigned int n, uint64_t *args_sizes,
         void *args, chpl_taskID_t *dep_handles, uint64_t num_deps);
 void chpl_taskWaitFor(uint64_t handle);
-int chpl_buildProgram(const char *filename);
 //
 // Call a chpl_ftable[] function in a task.
 //

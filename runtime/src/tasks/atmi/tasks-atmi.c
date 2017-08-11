@@ -988,14 +988,6 @@ void exec(const char* cmd, char *result) {
     return;
 }
 
-int chpl_buildProgram(const char *filename) {
-    atmi_platform_type_t platform = AMDGCN;
-    atmi_status_t err = atmi_module_register(&filename, &platform, 1);
-    if(err != ATMI_STATUS_SUCCESS)
-        return -1;
-    return 0;        
-}
-
 atmi_kernel_t init_cpu_kernel(callback_function fn, unsigned int n, uint64_t *args_sizes) {
     atmi_kernel_t kernel;
     atmi_kernel_create_empty(&kernel, n, args_sizes);
@@ -1044,8 +1036,7 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
     //}
     return atmi_task_launch(lparm, kernel, kernargs);
 }
-
-uint64_t chpl_gpuTaskLaunch(const char *filename, const char *kernelName, 
+uint64_t chpl_gpuTaskLaunch(const char *kernelName, 
         unsigned int n, uint64_t *args_sizes,
         void *args, chpl_taskID_t *dep_handles, uint64_t num_deps) {
     // n-1: return_addr

@@ -85,6 +85,8 @@ extern char* chpl_executionCommand;
 
 /* generated */
 #ifdef TARGET_HSA
+extern const char* chpl_gpu_modules[];
+extern const int32_t chpl_num_gpu_modules;
 extern const char* chpl_gpu_kernels[];
 extern const int32_t chpl_num_gpu_kernels;
 #endif

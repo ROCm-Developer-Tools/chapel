@@ -84,6 +84,13 @@ int chpl_hsa_initialize(void)
     atmi_status_t st = atmi_module_register(modules, module_types, 2);
     OUTPUT_ATMI_STATUS(st, Registering all modules);
 
+    atmi_platform_type_t custom_module_types[chpl_num_gpu_modules];
+    for(int64_t i = 0; i < chpl_num_gpu_modules; i++) {
+        custom_module_types[i] = AMDGCN;
+    }
+    st = atmi_module_register(chpl_gpu_modules, custom_module_types, chpl_num_gpu_modules);
+    OUTPUT_ATMI_STATUS(st, Registering custom modules);
+
     size_t reduction_arg_sizes[] = {sizeof(uint64_t), sizeof(uint64_t), sizeof(uint32_t)};
     const unsigned int num_reduction_args = sizeof(reduction_arg_sizes)/sizeof(reduction_arg_sizes[0]);
     atmi_kernel_create_empty(&reduction_kernel, num_reduction_args, reduction_arg_sizes);

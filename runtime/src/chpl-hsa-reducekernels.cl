@@ -705,7 +705,7 @@ __kernel void reduce_int8( __global char *in, __global char *out,
         out[gid] = scratch[0];
     }
 }
-/*__kernel void reduce_int64_sum( __global long *in, __global long *out,
+__kernel void reduce_int64_sum( __global long *in, __global long *out,
                               const size_t count)
 {
     size_t tid = get_global_id(0);
@@ -757,4 +757,4 @@ __kernel void reduce_int32_sum( __global int *in, __global int *out,
     if (lid == 0) {
         out[gid] = scratch[0];
     }
-}*/
+}

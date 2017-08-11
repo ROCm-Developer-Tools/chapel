@@ -58,7 +58,10 @@ char               executableFilename[FILENAME_MAX + 1] = "a.out";
 char               saveCDir[FILENAME_MAX + 1]           = "";
 
 std::string ccflags;
+#ifdef TARGET_HSA
 std::string clfiles;
+std::vector<std::string> clFilesVec;
+#endif
 std::string ldflags;
 
 int                numLibFlags                          = 0;
@@ -697,12 +700,19 @@ void codegen_makefile(fileinfo* mainfile, const char** tmpbinname, bool skip_com
 
 #ifdef TARGET_HSA
     fprintf(makefile.fptr, "CHPL_GPU_SRC = \\\n");
-    fprintf(makefile.fptr, "\t%s \\\n\n", gpusrcfile->pathname);
+    //if(gpuCodegen)
+        fprintf(makefile.fptr, "\t%s \\\n", gpusrcfile->pathname);
     fprintf(makefile.fptr, "\n");
     fprintf(makefile.fptr, "CHPL_CL_FILES = \\\n");
-    std::vector<std::string> clFiles = split(clfiles, ' ');
-    for(int i=0; i<(int)clFiles.size(); i++)
-        fprintf(makefile.fptr, "\t%s \\\n", clFiles[i].c_str());
+    clFilesVec = split(clfiles, ' ');
+    for(int i=0; i<(int)clFilesVec.size(); i++)
+        fprintf(makefile.fptr, "\t%s \\\n", clFilesVec[i].c_str());
+    // populate gpuModuleVec by replacing .cl with .hsaco
+    gpuModuleVec = clFilesVec;
+    for(int i=0; i<(int)gpuModuleVec.size(); i++) {
+        std::size_t pos = gpuModuleVec[i].find(".cl");
+        gpuModuleVec[i].replace(pos, std::string::npos, ".hsaco");
+    }
     fprintf(makefile.fptr, "\n");
 #endif
   fprintf(makefile.fptr, "CHPLUSEROBJ = \\\n");

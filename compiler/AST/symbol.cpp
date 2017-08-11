@@ -110,6 +110,7 @@ std::vector<FnSymbol*> ftableVec;
 #ifdef TARGET_HSA
 std::map<FnSymbol*,int> gpuKernelMap;
 std::vector<FnSymbol*> gpuKernelVec;
+std::vector<std::string> gpuModuleVec;
 #endif
 
 void verifyInTree(BaseAST* ast, const char* msg) {
