@@ -90,7 +90,7 @@ module LocaleModelHelpSetup {
     here.runningTaskCntSet(0);  // locale init parallelism mis-sets this
   }
 
-  proc helpSetupRootLocaleHSA(dst:RootLocale) {
+  proc helpSetupRootLocaleAPU(dst:RootLocale) {
     var root_accum:chpl_root_locale_accum;
 
     forall locIdx in dst.chpl_initOnLocales() {
@@ -167,7 +167,7 @@ module LocaleModelHelpSetup {
     }
   }
 
-  proc helpSetupLocaleHSA(dst:LocaleModel, out local_name:string, out numSublocales) {
+  proc helpSetupLocaleAPU(dst:LocaleModel, out local_name:string, out numSublocales) {
     const _node_id = chpl_nodeID: int;
 
     helpSetupLocaleFlat(dst, local_name);
@@ -191,6 +191,7 @@ module LocaleModelHelpSetup {
     then local_name = chpl_nodeName():string + "-" + _node_id : string;
     else local_name = chpl_nodeName():string;
 
+    // Hardcode two sublocales, 1 CPU and 1 GPU
     numSublocales = 2;
 
     const origSubloc = chpl_task_getRequestedSubloc();

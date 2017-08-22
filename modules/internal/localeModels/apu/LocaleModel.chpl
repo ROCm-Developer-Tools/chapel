@@ -25,7 +25,7 @@
 //
 module LocaleModel {
 
-  use LocaleModelHelpHSA;
+  use LocaleModelHelpAPU;
   use LocaleModelHelpMem;
 
   class CPULocale : AbstractLocaleModel {
@@ -193,7 +193,7 @@ module LocaleModel {
     proc setup() {
       _node_id = chpl_nodeID: int;
 
-      helpSetupLocaleHSA(this, local_name, numSublocales);
+      helpSetupLocaleAPU(this, local_name, numSublocales);
     }
     //------------------------------------------------------------------------}
  }
@@ -223,7 +223,7 @@ module LocaleModel {
     // parallel) over the locales to set up the LocaleModel object.
     // In addition, the initial 'here' must be set.
     proc setup() {
-      helpSetupRootLocaleHSA(this);
+      helpSetupRootLocaleAPU(this);
     }
 
     // Has to be globally unique and not equal to a node ID.

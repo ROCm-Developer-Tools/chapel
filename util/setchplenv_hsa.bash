@@ -106,8 +106,8 @@ if [ "$1" == "debug" ]; then
 fi
 
 echo -n "Setting CHPL_LOCALE_MODEL"
-export CHPL_LOCALE_MODEL=hsa
-echo " to hsa"
+export CHPL_LOCALE_MODEL=apu
+echo " to apu"
 
 echo -n "Setting CHPL_TARGET_COMPILER"
 export CHPL_TARGET_COMPILER=hsa

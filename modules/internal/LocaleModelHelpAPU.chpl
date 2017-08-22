@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-module LocaleModelHelpHSA {
+module LocaleModelHelpAPU {
 
   param localeModelHasSublocales = true;
 
