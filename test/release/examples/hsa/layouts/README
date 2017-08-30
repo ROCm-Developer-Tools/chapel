@@ -1,0 +1,47 @@
+
+File list
+----------
+
+   README
+
+   modules/
+
+   	LayoutTranspose.chpl	transpose domain map
+   	LayoutCA.chpl		CA domain map 
+
+   examples/
+        
+	trans_ex0.chpl     basic use of transposed array 
+	trans_ex1.chpl     basic use of transposed array of strings
+	trans_ex2.chpl     matrix copy from RMO to CMO 
+                           (includes code for GPU but not functional)
+	trans_ex4.chpl     matrix multiply with transposed
+
+	ca_ex0.chpl        basic use of CA tranformed array 
+	ca_ex1.chpl        basic use of CA transformed array of strings
+	ca_ex2.chpl        matrix copy from RMO to CA 
+                           (includes code for GPU but not functional)
+	ca_ex3.chpl        multiple CA arrays with different tiles sizes
+	ca_ex4.chpl        matrix multiply with CA
+
+     
+ 
+To run examples 
+---------------
+
+    1. Place Layout*.chpl in a module search directory (e.g., pwd or
+       ${CHPL_HOME}/modules/layouts). Alternatively, create symbolic links to
+       these files from a module search directory.  
+
+    2. Build examples
+
+         cd examples 
+         chpl -o ca --set chpl_dl_validate=true ca_ex0.chpl
+
+       To suppress validation results, omit the chpl_dl_validate flag. 
+
+    3. Execute  
+  
+          ./ca
+	  
+
