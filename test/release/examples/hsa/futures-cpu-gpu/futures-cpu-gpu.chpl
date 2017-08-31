@@ -11,12 +11,5 @@ const D = async("test_A", int, X)
           .andThen("test_C", int)
           .andThen(lambda(x: int) { return x+1; });
 
-//const E = waitAll(A, B, C, D);
-const E = (A, B, C, D);
-//const E = (A & B & C & D);
-// writeln(E.get());
-
-// const F = (A & B & C & D).andThen(lambda(x: (int, int, int, int)) {return x(1) + x(2) + x(3) + x(4); } );
 const F = (A, B, C, D).andThen(lambda(x: (int, int, int, int)) {return x(1) + x(2) + x(3) + x(4); } );
-// writeln((A & B & C & D).get());
 writeln(F.get());
