@@ -144,6 +144,8 @@ void check_createTaskFunctions()
 }
 
 #ifdef TARGET_HSA
+void check_createAsyncWrappers() {}
+
 void check_createGPUForLoops()
 {
 

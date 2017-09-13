@@ -4599,6 +4599,15 @@ GenRet CallExpr::codegenPrimitive() {
     break;
   }
 
+  case PRIM_ABS_SIZEOF: {
+    Type*  type = get(1)->typeInfo();
+
+    if(AggregateType *ct = toAggregateType(wideClassMap.get(type)))
+        ret = codegenSizeof(ct);
+    else
+        ret = codegenSizeof(type);
+    break;
+  }
   case PRIM_SIZEOF: {
     Type*  type = get(1)->typeInfo();
     GenRet size;
@@ -4771,6 +4780,15 @@ GenRet CallExpr::codegenPrimitive() {
     break;
   }
 
+  case PRIM_ABS_CAST_TO_VOID_STAR: {
+    GenRet act = get(1);
+    GenRet ptr = codegenValue(get(1));
+
+    ret = codegenCastToVoidStar(ptr);
+
+    break;
+  }
+  
   case PRIM_CAST_TO_VOID_STAR: {
     GenRet act = get(1);
     GenRet ptr;

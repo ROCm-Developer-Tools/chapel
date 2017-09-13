@@ -170,7 +170,7 @@ void chpl_task_setSubloc(c_sublocid_t subloc)
     chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
     if (data) {
         data->bundle->requestedSubloc = subloc;
-        printf("Setting ATMI requested subloc to %d\n", subloc);
+        //printf("Setting ATMI requested subloc to %d\n", subloc);
     }
 }
 

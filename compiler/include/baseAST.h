@@ -35,6 +35,9 @@
 
 #include <ostream>
 #include <string>
+#include <vector>
+#include <map>
+#include <utility>
 
 #include "map.h"
 #include "vec.h"
@@ -116,6 +119,8 @@ foreach_ast(proto_classes);
 #define decl_gvecs(type) extern Vec<type*> g##type##s
 foreach_ast(decl_gvecs);
 #undef decl_gvecs
+
+extern std::vector<FnSymbol *> gCustomWellKnownFns;
 
 //
 // type definitions for common maps

@@ -43,6 +43,8 @@
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <map>
+#include <utility>
 
 //
 // declare global vectors gSymExprs, gCallExprs, gFnSymbols, ...
@@ -50,6 +52,8 @@
 #define decl_gvecs(type) Vec<type*> g##type##s
 foreach_ast(decl_gvecs);
 
+std::vector<FnSymbol *> gCustomWellKnownFns;
+std::map<FnSymbol *, std::tuple<FnSymbol *, FnSymbol *, AList *, Type *, Type *> > gCustomWellKnownFnMap;
 static int uid = 1;
 
 #define decl_counters(type)                                             \

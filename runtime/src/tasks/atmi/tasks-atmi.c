@@ -1352,13 +1352,17 @@ chpl_bool chpl_task_getSerial(void)
 
     PROFILE_INCR(profile_task_getSerial,1);
     
-    return data->bundle->serial_state;
+    if(data && data->bundle)
+        return data->bundle->serial_state;
+    else 
+        return false;
 }
 
 void chpl_task_setSerial(chpl_bool state)
 {
     chpl_atmi_tls_t * data = chpl_atmi_get_tasklocal();
-    data->bundle->serial_state = state;
+    if(data && data->bundle)
+        data->bundle->serial_state = state;
 
     PROFILE_INCR(profile_task_setSerial,1);
 }

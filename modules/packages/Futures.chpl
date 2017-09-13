@@ -129,7 +129,7 @@ module Futures {
     proc FutureClass(type retType) {
       refcnt.write(0);
       state.clear();
-      handle = 0;
+      handle = chpl_nullTaskID;
     }
 
   } // class FutureClass
@@ -176,8 +176,9 @@ module Futures {
     
     pragma "no doc"
     proc set(value: retType) {
-      if !isValid() then halt("set() called on invalid future");
+      //if !isValid() then halt("set() called on invalid future");
       classRef.value = value;
+      classRef.valid = true;
       var oldState = classRef.state.testAndSet();
       if oldState then halt("set() called more than once on a future");
     }
@@ -212,6 +213,52 @@ module Futures {
       :arg taskFn: The function to invoke as a continuation.
       :returns: A future of the return type of `taskFn`
      */
+    proc andThen(taskFn, args...?n) {
+      /*
+      if !canResolveMethod(taskFn, "this", retType) then
+        compilerError("andThen() task function arguments are incompatible with parent future return type");
+      */
+      if !isValid() then halt("andThen() called on invalid future");
+      if !canResolveMethod(taskFn, "retType") then
+        compilerError("cannot determine return type of andThen() task function");
+      if !canResolveMethod(taskFn, "cAndThenFnPtr") then
+        compilerError("cannot determine return C Function Pointer of async() task function");
+      var f: Future(taskFn.retType);
+      f.classRef.valid = true;
+      var args_ref = (...getArgs((...args)));
+      var args_sizes: [1..n+2] uint(64);
+      if isStringType(this.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      for param i in 2..n+1 {
+        if isStringType(args(i-1).type) {
+          // strings will be c_ptr(c_char) so size will be the same as that of
+          // c_void_ptr
+          args_sizes(i) = c_sizeof(c_void_ptr);
+        }
+        else {
+          args_sizes(i) = c_sizeof(args(i-1).type);
+        }
+      }
+      // return value will be a c_void_ptr
+      args_sizes(n+2) = c_sizeof(c_void_ptr);
+      var args_list = (c_ptrTo(this.classRef.value), (...getArgs((...args))), c_ptrTo(f.classRef.value));
+      var dep_handles: [1..2] uint(64);
+      dep_handles[1] = this.classRef.handle;
+      writeln("hack: ", this.classRef.value);
+      f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+2, 
+                          args_sizes, c_ptrTo(args_list),
+                          dep_handles, 1);
+
+      //begin f.set(taskFn(this.get()));
+      return f;
+    }
+    
     proc andThen(taskFn) {
       /*
       if !canResolveMethod(taskFn, "this", retType) then
@@ -224,8 +271,8 @@ module Futures {
         compilerError("cannot determine return C Function Pointer of async() task function");
       var f: Future(taskFn.retType);
       f.classRef.valid = true;
-      var n: c_uint = 1;
-      var args_sizes: [1..n+1] uint(64);
+      var n: c_uint = 0;
+      var args_sizes: [1..n+2] uint(64);
       if isStringType(this.retType) {
         // strings will be c_ptr(c_char) so size will be the same as that of
         // c_void_ptr
@@ -233,14 +280,14 @@ module Futures {
       }
       else {
         args_sizes(1) = c_sizeof(c_void_ptr);
-        //args_sizes(1) = numBytes(this.retType);
       }
       // return value will be a c_void_ptr
-      args_sizes(n+1) = c_sizeof(c_void_ptr);
+      args_sizes(n+2) = c_sizeof(c_void_ptr);
       var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
-      f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+1, 
+      writeln("hack: ", this.classRef.value);
+      f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+2, 
                           args_sizes, c_ptrTo(args_list),
                           dep_handles, 1);
 
@@ -286,6 +333,7 @@ module Futures {
       dep_handles[1] = this.classRef.handle;
 
       var hsaco_kernelName = "wrap_kernel_" + kernelName;
+      writeln("hack: ", this.classRef.value);
       f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
                               n+1, args_sizes,
                               c_ptrTo(args_list), dep_handles, 1);
@@ -406,14 +454,14 @@ module Futures {
         args_sizes(i) = c_sizeof(c_void_ptr);
       }
       else {
-        args_sizes(i) = numBytes(args(i).type);
+        args_sizes(i) = c_sizeof(args(i).type);
       }
     }
     // return value will be a c_void_ptr
     args_sizes(n+1) = c_sizeof(c_void_ptr);
-    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
+    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
     f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes,
                         c_ptrTo(args_list), dep_handles, 0);
     //begin f.set(taskFn((...args)));
@@ -494,6 +542,16 @@ module Futures {
   }
   
   pragma "no doc"
+  proc getRetValues(arg) {
+    return (arg.classRef.value,);
+  }
+
+  pragma "no doc"
+  proc getRetValues(arg, args...) {
+    return (arg.classRef.value, (...getRetValues((...args))));
+  }
+
+  pragma "no doc"
   proc getRetValuePtrs(arg) {
     return (c_ptrTo(arg.classRef.value),);
   }
@@ -504,11 +562,13 @@ module Futures {
   }
 
   pragma "no doc"
+  pragma "async wrapper helper"
   proc getRetSizes(arg) {
     return (c_sizeof(arg.retType),);
   }
 
   pragma "no doc"
+  pragma "async wrapper helper"
   proc getRetSizes(arg, args...) {
     return (c_sizeof(arg.retType), (...getRetSizes((...args))));
   }
@@ -571,6 +631,19 @@ module Futures {
     return waitAll(f, g);
   }
 
+  proc _tuple.andThen(taskFn, args...) where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    var tmp = waitAll((...f));
+    // increment the ref counter
+    tmp.acquire();
+    return tmp.andThen(taskFn, (...args));
+  }
+
   proc _tuple.andThen(taskFn) where isTupleOfFutures(this) {
     if(this.size < 1) then
       compilerError("Tuple of Futures should have at least one object");
@@ -578,7 +651,10 @@ module Futures {
     for i in 1..this.size {
       f(i) = this(i);
     }
-    return waitAll((...f)).andThen(taskFn);
+    var tmp = waitAll((...f));
+    // increment the ref counter
+    tmp.acquire();
+    return tmp.andThen(taskFn);
   }
     
   proc _tuple.andThen(kernelName: string, type retType) where isTupleOfFutures(this) {
@@ -588,7 +664,10 @@ module Futures {
     for i in 1..this.size {
       f(i) = this(i);
     }
-    return waitAll((...f)).andThen(kernelName, retType);
+    var tmp = waitAll((...f));
+    // increment the ref counter
+    tmp.acquire();
+    return tmp.andThen(kernelName, retType);
   }
 
   proc _tuple.get() where isTupleOfFutures(this) {

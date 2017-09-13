@@ -138,6 +138,7 @@ enum PrimitiveTag {
   PRIM_GET_SERIAL,              // get serial state
   PRIM_SET_SERIAL,              // set serial state to true or false
 
+  PRIM_ABS_SIZEOF,
   PRIM_SIZEOF,
 
   PRIM_INIT_FIELDS,             // initialize fields of a temporary record
@@ -230,6 +231,7 @@ enum PrimitiveTag {
   PRIM_CREATE_FN_TYPE,
 
   PRIM_STRING_COPY,
+  PRIM_ABS_CAST_TO_VOID_STAR,
   PRIM_CAST_TO_VOID_STAR,       // Cast the object argument to void*.
 
   PRIM_RT_ERROR,

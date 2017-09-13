@@ -117,8 +117,10 @@ classifyPrimitive(CallExpr *call) {
   case PRIM_START_RMEM_FENCE:
   case PRIM_FINISH_RMEM_FENCE:
 
+  case PRIM_ABS_CAST_TO_VOID_STAR:
   case PRIM_CAST_TO_VOID_STAR:
   case PRIM_SIZEOF:
+  case PRIM_ABS_SIZEOF:
 
   case PRIM_GET_USER_LINE:
   case PRIM_GET_USER_FILE:

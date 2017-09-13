@@ -44,6 +44,7 @@ void codegen();
 void copyPropagation();
 void createTaskFunctions();
 #ifdef TARGET_HSA
+void createAsyncWrappers();
 void createGPUForLoops();
 void createGPUInternalFunctions();
 #endif

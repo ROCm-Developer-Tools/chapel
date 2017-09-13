@@ -63,6 +63,7 @@ struct PassInfo {
 #define LOG_callDestructors                    LOG_NO_SHORT
 #define LOG_lowerIterators                     LOG_NO_SHORT
 #ifdef TARGET_HSA
+#define LOG_createAsyncWrappers                LOG_NEVER
 #define LOG_createGPUForLoops                  LOG_NEVER
 #define LOG_createGPUInternalFunctions         LOG_NEVER
 #endif
@@ -161,6 +162,7 @@ static PassInfo sPassList[] = {
   RUN(createGPUForLoops),       // create fns to offload o.i. for-loops to gpu
   RUN(createGPUInternalFunctions), // create defs for fns called by top-level
                                    // GPU functions
+  RUN(createAsyncWrappers),     // create wraper fns for building DAGs
 #endif
 
   // AST to C or LLVM

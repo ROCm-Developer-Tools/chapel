@@ -119,7 +119,7 @@ endif
 
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 CFLAGS += -DTARGET_HSA
-CXXFLAGS += -DTARGET_HSA
+CXXFLAGS += -std=c++11 -DTARGET_HSA
 endif
 
 ifdef CHPL_ROCM

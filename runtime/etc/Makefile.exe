@@ -45,7 +45,9 @@ ifneq ($(CHPL_MAKE_LAUNCHER),none)
 endif
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 ifdef CHPL_ROCM
+#ifdef CHPL_GPU_SRC
 	$(CLOC) $(CLOC_FLAGS) -I $(CHPL_MAKE_HOME)/runtime/include $(CHPL_GPU_SRC) -o $(notdir $(CHPL_GPU_HSACO))
+#endif
 	$(foreach clFile, $(CHPL_CL_FILES), $(CLOC) $(CLOC_FLAGS) -w -I $(CHPL_MAKE_HOME)/runtime/include $(clFile) -o $(notdir $(patsubst %.cl,%.hsaco,$(clFile))); )
 else
 	$(CLOC) $(CLOC_FLAGS) -I $(CHPL_MAKE_HOME)/runtime/include $(CHPL_GPU_SRC) -o $(CHPL_GPU_BRIG)

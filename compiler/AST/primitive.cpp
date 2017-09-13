@@ -542,6 +542,7 @@ initPrimitive() {
 
   // These are used for task-aware allocation.
   prim_def(PRIM_SIZEOF, "sizeof", returnInfoSizeType);
+  prim_def(PRIM_ABS_SIZEOF, "sizeof", returnInfoSizeType);
 
   prim_def(PRIM_INIT_FIELDS, "chpl_init_record", returnInfoVoid, true);
   prim_def(PRIM_PTR_EQUAL, "ptr_eq", returnInfoBool);
@@ -633,6 +634,7 @@ initPrimitive() {
   prim_def("ascii", returnInfoUInt8);
   prim_def("string_index", returnInfoStringCopy, true, true);
   prim_def(PRIM_STRING_COPY, "string_copy", returnInfoStringCopy, false, true);
+  prim_def(PRIM_ABS_CAST_TO_VOID_STAR, "abs_cast_to_void_star", returnInfoCVoidPtr, true, false);
   prim_def(PRIM_CAST_TO_VOID_STAR, "cast_to_void_star", returnInfoCVoidPtr, true, false);
   prim_def("string_select", returnInfoStringCopy, true, true);
   prim_def("sleep", returnInfoVoid, true);

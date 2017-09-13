@@ -226,6 +226,7 @@ bool SafeExprAnalysis::isSafePrimitive(CallExpr* ce) {
       return !isRefStore;
     }
     case PRIM_SIZEOF:
+    case PRIM_ABS_SIZEOF:
     case PRIM_STRING_COPY:
     case PRIM_GET_SERIAL:
     case PRIM_NOOP:

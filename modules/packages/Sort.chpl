@@ -192,6 +192,8 @@ const defaultComparator: DefaultComparator;
  */
 const reverseComparator: ReverseComparator(DefaultComparator);
 
+const diagonalMajorComparator: DiagonalMajorComparator;
+
 
 /* Private methods */
 
@@ -808,4 +810,19 @@ record ReverseComparator {
     }
   }
 }
+
+record DiagonalMajorComparator {
+  proc key(a: ?t) where isTupleType(t) {
+    var k: int;
+    for i in 1..a.size {
+      k += a(i);
+    }
+    return k;
+  }
+
+  proc key(a) {
+    compilerError("This comparator can be used only for tuple types");
+  }
+}
+
 } // Sort Module

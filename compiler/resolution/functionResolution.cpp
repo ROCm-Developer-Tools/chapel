@@ -4499,6 +4499,13 @@ static void resolveMove(CallExpr* call) {
       INT_ASSERT(sizeSym);
       rhs->replace(new CallExpr(PRIM_SIZEOF, sizeSym->symbol()->typeInfo()->symbol));
       return;
+    } else if (rhsCall->isPrimitive(PRIM_ABS_SIZEOF)) {
+      // Fix up arg to sizeof(), as we may not have known the
+      // type earlier
+      SymExpr* sizeSym = toSymExpr(rhsCall->get(1));
+      INT_ASSERT(sizeSym);
+      rhs->replace(new CallExpr(PRIM_ABS_SIZEOF, sizeSym->symbol()->typeInfo()->symbol));
+      return;
     } else if (rhsCall->isPrimitive(PRIM_CAST_TO_VOID_STAR)) {
       if (isReferenceType(rhsCall->get(1)->typeInfo())) {
         // Add a dereference as needed, as we did not have complete
@@ -7097,7 +7104,7 @@ static void cleanupVoidVarsAndFields() {
   // Remove void formal arguments from functions.
   // Change functions that return ref(void) to just return void.
   forv_Vec(FnSymbol, fn, gFnSymbols) {
-    if (fn->defPoint->inTree()) {
+    if (fn->defPoint && fn->defPoint->inTree()) {
       for_formals(formal, fn) {
         if (isVoidOrVoidTupleType(formal->type)) {
           if (formal == fn->_this) {

@@ -48,6 +48,7 @@ PASSES_SRCS =                                              \
 ifeq ($(strip $(CHPL_MAKE_TARGET_COMPILER)),hsa)
 PASSES_SRCS += createGPUForLoops.cpp
 PASSES_SRCS += createGPUInternalFunctions.cpp
+PASSES_SRCS += createAsyncWrappers.cpp
 endif
 
 SVN_SRCS    = $(PASSES_SRCS)

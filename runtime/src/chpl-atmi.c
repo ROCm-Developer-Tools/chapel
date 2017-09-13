@@ -32,7 +32,6 @@
     if (ATMI_STATUS_SUCCESS != (status)) { \
         fprintf(stderr, "ATMI support: %s failed, error code: 0x%x\n", \
 #msg, status); \
-        atmi_finalize(); \
         return status; \
     } \
 }
@@ -88,8 +87,10 @@ int chpl_hsa_initialize(void)
     for(int64_t i = 0; i < chpl_num_gpu_modules; i++) {
         custom_module_types[i] = AMDGCN;
     }
-    st = atmi_module_register(chpl_gpu_modules, custom_module_types, chpl_num_gpu_modules);
-    OUTPUT_ATMI_STATUS(st, Registering custom modules);
+    if(chpl_num_gpu_modules > 0) {
+        st = atmi_module_register(chpl_gpu_modules, custom_module_types, chpl_num_gpu_modules);
+        OUTPUT_ATMI_STATUS(st, Registering custom modules);
+    }
 
     size_t reduction_arg_sizes[] = {sizeof(uint64_t), sizeof(uint64_t), sizeof(uint32_t)};
     const unsigned int num_reduction_args = sizeof(reduction_arg_sizes)/sizeof(reduction_arg_sizes[0]);
