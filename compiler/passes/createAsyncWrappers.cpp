@@ -9,67 +9,7 @@
 #include <iostream>
 #include <utility>
 extern std::map<FnSymbol *, std::tuple<FnSymbol *, FnSymbol *, AList *, Type *, Type *> > gCustomWellKnownFnMap;
-//
-// Miscellaneous utility functions to help manage the AST
-//
-static bool isTypeFullyWide(BaseAST* bs) {
-  return bs->typeInfo()->symbol->hasEitherFlag(FLAG_WIDE_CLASS, FLAG_WIDE_REF);
-}
 
-
-static bool isFullyWide(BaseAST* bs) {
-  if( Symbol* sym = toSymbol(bs) ) {
-    if (sym->isWideRef())
-      return true;
-  } else if( Expr* e = toExpr(bs) ) {
-    if (e->isWideRef())
-      return true;
-  }
-
-  // Don't return true for a reference to a wide class
-  return isTypeFullyWide(bs) && !bs->isRef();
-}
-
-static bool valIsWideClass(BaseAST* bs) {
-  return bs->getValType()->symbol->hasFlag(FLAG_WIDE_CLASS);
-}
-
-static bool hasSomeWideness(BaseAST* bs) {
-  return isFullyWide(bs) || valIsWideClass(bs);
-}
-
-static bool isRefType(BaseAST* bs)
-{
-  return bs->typeInfo()->symbol->hasEitherFlag(FLAG_REF, FLAG_WIDE_REF);
-}
-
-static bool isArrayRec(BaseAST* bs) {
-  return isRecord(bs->typeInfo()) && bs->typeInfo()->symbol->hasFlag(FLAG_ARRAY) && !fNoInferLocalFields;
-}
-
-static bool isObj(BaseAST* bs) {
-  bool isValidClass = isClass(bs->typeInfo()) || bs->typeInfo()->symbol->hasFlag(FLAG_WIDE_CLASS);
-  return (isValidClass || isArrayRec(bs)) && !bs->isRefOrWideRef();
-}
-
-static bool typeCanBeWide(Symbol *sym) {
-  TypeSymbol* ts = sym->type->symbol;
-
-  // TODO: Special treatment of extern types may be removed in future
-  // AMM work.
-  bool bad = sym->hasFlag(FLAG_EXTERN) ||
-              ts->hasFlag(FLAG_NO_WIDE_CLASS);
-
-  if (!isFullyWide(sym) && !sym->isRefOrWideRef() && !isArrayRec(ts) && isRecord(sym->type)) {
-    bad = true;
-  }
-
-  return !bad &&
-         (isObj(sym) ||
-          sym->isRefOrWideRef() ||
-          isArrayRec(sym) ||
-          ts->hasFlag(FLAG_DATA_CLASS));
-}
 void changeSizeOf(CallExpr *cexpr) {
     if(cexpr) {
         for(int i = 1; i <= cexpr->numActuals(); i++) {
@@ -106,10 +46,8 @@ void createAsyncWrappers(void) {
         Type *retType = std::get<3>(fn_props);
         Type *andThenArgType = std::get<4>(fn_props);
 
-        bool isWide = typeCanBeWide(retType->typeInfo()->symbol);
-        //printf("Is %s Wide? %d\n", retType->typeInfo()->symbol->cname, isWide);
         AggregateType *ct = toAggregateType(wideClassMap.get(retType));
-        if(ct != NULL && isWide) {
+        if(ct != NULL && isClass(retType)) {
             // now we have to edit all wide class references and widen/narrow them
             // as needed. 
             // Define all temps upfront
