@@ -1485,7 +1485,8 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
         ArgSymbol* newFormal = new ArgSymbol(INTENT_BLANK,
                                              astr(fArg->name, "_ptr"),
                                              fArg->type->refType);
-
+        if(isClass(fArg->type))
+            newFormal->addFlag(FLAG_MUST_WIDEN);
         if (fArg->typeExpr)
           newFormal->typeExpr = fArg->typeExpr->copy();
 
@@ -1538,13 +1539,24 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
           DefExpr *dExp_wrap = toDefExpr(exp_wrap);
           ArgSymbol *fArg_wrap = toArgSymbol(dExp_wrap->sym);
           VarSymbol* tmp = newTemp(fArg->name, fArg->type);
+          VarSymbol* tmp2 = newTemp(astr(fArg->name, "2"), fArg->type);
+          if(isClass(fArg->type)) {
+            // fool the compiler to assign wide var to narrow var that is
+            // needed for the wrapper fn. Wrapper passes wide but wrapped
+            // expects narrow.
+            tmp->addFlag(FLAG_MUST_WIDEN);
+            tmp2->addFlag(FLAG_CONCURRENTLY_ACCESSED);
+          }
           asyncWrapperMethod->insertAtTail(new DefExpr(tmp));
+          asyncWrapperMethod->insertAtTail(new DefExpr(tmp2));
           asyncWrapperMethod->insertAtTail(
                       new CallExpr(PRIM_MOVE, tmp,
                       new CallExpr(PRIM_DEREF, fArg_wrap)
                       ));
+          asyncWrapperMethod->insertAtTail(
+                      new CallExpr(PRIM_MOVE, tmp2, tmp));
 
-          call_orig->insertAtTail(tmp);
+          call_orig->insertAtTail(tmp2);
       }
       exp_wrap = exp_wrap->next;
     }
@@ -1723,10 +1735,13 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
             newFormal = new ArgSymbol(INTENT_BLANK,
                                              astr(fArg->name, "_ptr"),
                                              dtCVoidPtr->refType);
-        else
+        else {
             newFormal = new ArgSymbol(INTENT_BLANK,
                                              astr(fArg->name, "_ptr"),
                                              fArg->type->refType);
+            if(isClass(fArg->type))
+                newFormal->addFlag(FLAG_MUST_WIDEN);
+        }
         if (fArg->typeExpr)
           newFormal->typeExpr = fArg->typeExpr->copy();
 
@@ -1852,13 +1867,24 @@ static FnSymbol* createAndInsertFunParentMethod(CallExpr*      call,
           DefExpr *dExp_wrap = toDefExpr(exp_wrap);
           ArgSymbol *fArg_wrap = toArgSymbol(dExp_wrap->sym);
           VarSymbol* tmp = newTemp(fArg->name, fArg->type);
+          VarSymbol* tmp2 = newTemp(astr(fArg->name, "2"), fArg->type);
+          if(isClass(fArg->type)) {
+            // fool the compiler to assign wide var to narrow var that is
+            // needed for the wrapper fn. Wrapper passes wide but wrapped
+            // expects narrow.
+            tmp->addFlag(FLAG_MUST_WIDEN);
+            tmp2->addFlag(FLAG_CONCURRENTLY_ACCESSED);
+          }
           andThenWrapperMethod->insertAtTail(new DefExpr(tmp));
+          andThenWrapperMethod->insertAtTail(new DefExpr(tmp2));
           andThenWrapperMethod->insertAtTail(
                       new CallExpr(PRIM_MOVE, tmp,
                       new CallExpr(PRIM_DEREF, fArg_wrap)
                       ));
+          andThenWrapperMethod->insertAtTail(
+                      new CallExpr(PRIM_MOVE, tmp2, tmp));
 
-          call_orig->insertAtTail(tmp);
+          call_orig->insertAtTail(tmp2);
       }
       exp_wrap = exp_wrap->next;
       ++i;

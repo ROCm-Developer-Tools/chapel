@@ -46,7 +46,8 @@ void createAsyncWrappers(void) {
         Type *retType = std::get<3>(fn_props);
         Type *andThenArgType = std::get<4>(fn_props);
 
-        AggregateType *ct = toAggregateType(wideClassMap.get(retType));
+        Type *wideRetType = wideClassMap.get(retType);
+        AggregateType *ct = toAggregateType(wideRetType);
         if(ct != NULL && isClass(retType)) {
             // now we have to edit all wide class references and widen/narrow them
             // as needed. 
@@ -60,6 +61,31 @@ void createAsyncWrappers(void) {
             VarSymbol *x_class = newTemp("x_class", arg_ct);
             VarSymbol *x_class_addr = newTemp("x_class_addr", andThenArgType);
             
+            // for all formals of this wrapper widen those who should be
+            // as determined in the preFold pass
+            for_formals(arg, asyncWrapperMethod) {
+                if(arg->hasFlag(FLAG_MUST_WIDEN)) {
+                    if(Type *baseType = arg->type->getValType()) {
+                        Type *wideBaseType = wideClassMap.get(baseType);
+                        if(wideBaseType && isClass(baseType))
+                            arg->type = wideBaseType->refType;
+                    }
+                }
+            }
+
+            // for all def exprs widen those who should be
+            // as determined in the preFold pass
+            for_alist(expr, asyncWrapperMethod->body->body) {
+                if(DefExpr *dexpr = toDefExpr(expr)) {
+                    if(VarSymbol *var = toVarSymbol(dexpr->sym))
+                        if(var->hasFlag(FLAG_MUST_WIDEN)) {
+                            Type *wideVarType = wideClassMap.get(var->type);
+                            if(wideVarType && isClass(var->type))
+                                var->type = wideVarType;
+                        }
+                }
+            }
+
             // search through async wrapper, edit return value of wrapped
             // function to wide_class.addr
             for_alist(expr, asyncWrapperMethod->body->body) {
@@ -87,6 +113,31 @@ void createAsyncWrappers(void) {
                             cexpr->get(2)->replace(new SymExpr(ptr_ret_class));
                             break;
                         }
+            }
+
+            // for all formals of this wrapper widen those who should be
+            // as determined in the preFold pass
+            for_formals(arg, andThenWrapperMethod) {
+                if(arg->hasFlag(FLAG_MUST_WIDEN)) {
+                    if(Type *baseType = arg->type->getValType()) {
+                        Type *wideBaseType = wideClassMap.get(baseType);
+                        if(wideBaseType && isClass(baseType))
+                            arg->type = wideBaseType->refType;
+                    }
+                }
+            }
+
+            // for all def exprs widen those who should be
+            // as determined in the preFold pass
+            for_alist(expr, andThenWrapperMethod->body->body) {
+                if(DefExpr *dexpr = toDefExpr(expr)) {
+                    if(VarSymbol *var = toVarSymbol(dexpr->sym))
+                        if(var->hasFlag(FLAG_MUST_WIDEN)) {
+                            Type *wideVarType = wideClassMap.get(var->type);
+                            if(wideVarType && isClass(var->type))
+                                var->type = wideVarType;
+                        }
+                }
             }
 
             // search through andThen wrapper

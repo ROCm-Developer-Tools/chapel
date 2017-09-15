@@ -114,7 +114,11 @@ module Futures {
   use Reflection;
   use ExplicitRefCount;
 
-  var gpuFiles: domain(string);
+  pragma "no doc"
+  pragma "async wrapper helper"
+  proc getSize(arg) {
+    return c_sizeof(arg.type);
+  }
 
   pragma "no doc"
   class FutureClass: RefCountBase {
@@ -242,7 +246,7 @@ module Futures {
           args_sizes(i) = c_sizeof(c_void_ptr);
         }
         else {
-          args_sizes(i) = c_sizeof(args(i-1).type);
+          args_sizes(i) = getSize(args(i-1));
         }
       }
       // return value will be a c_void_ptr
@@ -250,7 +254,6 @@ module Futures {
       var args_list = (c_ptrTo(this.classRef.value), (...getArgs((...args))), c_ptrTo(f.classRef.value));
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
-      writeln("hack: ", this.classRef.value);
       f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+2, 
                           args_sizes, c_ptrTo(args_list),
                           dep_handles, 1);
@@ -286,7 +289,6 @@ module Futures {
       var args_list = (c_ptrTo(this.classRef.value), c_ptrTo(f.classRef.value));
       var dep_handles: [1..2] uint(64);
       dep_handles[1] = this.classRef.handle;
-      writeln("hack: ", this.classRef.value);
       f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAndThenFnPtr), n+2, 
                           args_sizes, c_ptrTo(args_list),
                           dep_handles, 1);
@@ -333,7 +335,6 @@ module Futures {
       dep_handles[1] = this.classRef.handle;
 
       var hsaco_kernelName = "wrap_kernel_" + kernelName;
-      writeln("hack: ", this.classRef.value);
       f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
                               n+1, args_sizes,
                               c_ptrTo(args_list), dep_handles, 1);
@@ -446,6 +447,7 @@ module Futures {
     var f: Future(taskFn.retType);
     f.classRef.valid = true;
     var args_sizes: [1..n+1] uint(64);
+    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
     for param i in 1..n {
       var t: bool = isStringType(args(i).type);
       if isStringType(args(i).type) {
@@ -454,14 +456,13 @@ module Futures {
         args_sizes(i) = c_sizeof(c_void_ptr);
       }
       else {
-        args_sizes(i) = c_sizeof(args(i).type);
+        args_sizes(i) = getSize(args(i));
       }
     }
     // return value will be a c_void_ptr
     args_sizes(n+1) = c_sizeof(c_void_ptr);
     var dep_handles: [1..2] uint(64);
     dep_handles[1] = chpl_nullTaskID;
-    var args_list = ((...getArgs((...args))), c_ptrTo(f.classRef.value));
     f.classRef.handle = chpl_taskLaunch(c_ptrTo(taskFn.cAsyncFnPtr), n+1, args_sizes,
                         c_ptrTo(args_list), dep_handles, 0);
     //begin f.set(taskFn((...args)));
@@ -584,6 +585,10 @@ module Futures {
   proc waitAll(futures...?N) {
     type retTypes = getRetTypes((...futures));
     var retValuePtrs = getRetValuePtrs((...futures));
+    // the below line is critical to force "widen" the future types correctly.
+    // TODO: check if Chapel has a flag to be applied to the types to always widen
+    var retValues = getRetValues((...futures));
+
     var retSizes = getRetSizes((...futures));
     var retHandles = getRetHandles((...futures));
     var f: Future(retTypes);

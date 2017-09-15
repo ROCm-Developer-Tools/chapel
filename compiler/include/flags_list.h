@@ -290,6 +290,7 @@ symbolFlag( FLAG_VOID_NO_RETURN_VALUE, npr, "no return value for void", "functio
 // Used to mark where a compiler generated flag was removed (but is desired
 // elsewhere).
 symbolFlag( FLAG_WAS_COMPILER_GENERATED, npr, "was compiler generated", "used to be marked compiler generated")
+symbolFlag( FLAG_MUST_WIDEN , npr, "must wide" , ncm )
 symbolFlag( FLAG_WIDE_REF , npr, "wide" , ncm )
 symbolFlag( FLAG_WIDE_CLASS , npr, "wide class" , ncm )
 symbolFlag( FLAG_WRAPPER , npr, "wrapper" , "wrapper function" )
