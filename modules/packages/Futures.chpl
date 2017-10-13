@@ -107,7 +107,8 @@ module Futures {
               args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
   extern proc chpl_gpuTaskLaunch(kernelName: c_string,
               n: c_uint, args_sizes: [] uint(64),
-              args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64)) : uint(64);
+              args: c_void_ptr, dep_tasks: [] uint(64), dep_tasks_n: uint(64),
+              synch: bool) : uint(64);
   extern proc chpl_taskWaitFor(handle: uint(64));
   extern proc memcpy (dest: c_void_ptr, const src: c_void_ptr, n: size_t);
 
@@ -229,7 +230,7 @@ module Futures {
         compilerError("cannot determine return C Function Pointer of async() task function");
       var f: Future(taskFn.retType);
       f.classRef.valid = true;
-      var args_ref = (...getArgs((...args)));
+      //var args_ref = (...getArgs((...args)));
       var args_sizes: [1..n+2] uint(64);
       if isStringType(this.retType) {
         // strings will be c_ptr(c_char) so size will be the same as that of
@@ -308,6 +309,116 @@ module Futures {
 
       :arg taskFn: The function to invoke as a continuation.
       :returns: A future of the return type of `taskFn`
+
+     */
+    proc andThen_args(kernelName: string, type retType, 
+                tile: c_void_ptr,
+                A_carray: c_ptr(int(8)), B_carray: c_ptr(int(8))) {
+      /*
+      if !canResolveMethod(taskFn, "this", retType) then
+        compilerError("andThen() task function arguments are incompatible with parent future return type");
+      */
+      if !isValid() then halt("andThen() called on invalid future");
+      var f: Future(retType);
+      var n: c_uint = 3;
+      f.classRef.valid = true;
+      var args_sizes: [1..n+2] uint(64);
+      if isStringType(this.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(1) = c_sizeof(c_void_ptr);
+        // args_sizes(1) = numBytes(this.retType);
+      }
+      args_sizes(2) = c_sizeof(c_void_ptr);
+      args_sizes(3) = c_sizeof(c_void_ptr);
+      args_sizes(4) = c_sizeof(c_void_ptr);
+      // return value will be a c_void_ptr
+      args_sizes(n+2) = c_sizeof(c_void_ptr);
+      var args_list = (c_ptrTo(this.classRef.value), 
+          tile,
+          A_carray, B_carray, 
+          c_ptrTo(f.classRef.value));
+      var dep_handles: [1..2] uint(64);
+      dep_handles[1] = this.classRef.handle;
+
+      var hsaco_kernelName = "wrap_kernel_" + kernelName;
+      f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
+                              n+2, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 1, false);
+
+      //begin f.set(taskFn(this.get()));
+      return f;
+    }
+
+    /*
+      Asynchronously execute a function as a continuation of the future.
+
+      The function argument `taskFn` must take a single argument of type
+      `retType` (i.e., the return type of the parent future) and will be
+      executed when the parent future's value is available.
+
+      If the parent future is not valid, this call will :proc:`~ChapelIO.halt()`.
+
+      :arg taskFn: The function to invoke as a continuation.
+      :returns: A future of the return type of `taskFn`
+     */
+    proc andThen(kernelName: string, type retType, args...?n) {
+      /*
+      if !canResolveMethod(taskFn, "this", retType) then
+        compilerError("andThen() task function arguments are incompatible with parent future return type");
+      */
+      if !isValid() then halt("andThen() called on invalid future");
+      var f: Future(retType);
+      f.classRef.valid = true;
+      //var args_ref = (...getArgs((...args)));
+      var args_sizes: [1..n+2] uint(64);
+      if isStringType(this.retType) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(1) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(1) = c_sizeof(c_void_ptr);
+        // args_sizes(1) = numBytes(this.retType);
+      }
+      for param i in 2..n+1 {
+        if isStringType(args(i-1).type) {
+          // strings will be c_ptr(c_char) so size will be the same as that of
+          // c_void_ptr
+          args_sizes(i) = c_sizeof(c_void_ptr);
+        }
+        else {
+          args_sizes(i) = getSize(args(i-1));
+        }
+      }// return value will be a c_void_ptr
+      args_sizes(n+2) = c_sizeof(c_void_ptr);
+      var args_list = (c_ptrTo(this.classRef.value), (...getArgs((...args))), c_ptrTo(f.classRef.value));
+      var dep_handles: [1..2] uint(64);
+      dep_handles[1] = this.classRef.handle;
+
+      var hsaco_kernelName = "wrap_kernel_" + kernelName;
+      f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
+                              n+2, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 1, true);//false);
+
+      //begin f.set(taskFn(this.get()));
+      return f;
+    }
+
+    /*
+      Asynchronously execute a function as a continuation of the future.
+
+      The function argument `taskFn` must take a single argument of type
+      `retType` (i.e., the return type of the parent future) and will be
+      executed when the parent future's value is available.
+
+      If the parent future is not valid, this call will :proc:`~ChapelIO.halt()`.
+
+      :arg taskFn: The function to invoke as a continuation.
+      :returns: A future of the return type of `taskFn`
      */
     proc andThen(kernelName: string, type retType) {
       /*
@@ -337,7 +448,7 @@ module Futures {
       var hsaco_kernelName = "wrap_kernel_" + kernelName;
       f.classRef.handle = chpl_gpuTaskLaunch(hsaco_kernelName.c_str(), 
                               n+1, args_sizes,
-                              c_ptrTo(args_list), dep_handles, 1);
+                              c_ptrTo(args_list), dep_handles, 1, false);
 
       //begin f.set(taskFn(this.get()));
       return f;
@@ -489,7 +600,7 @@ module Futures {
         args_sizes(i) = c_sizeof(c_void_ptr);
       }
       else {
-        args_sizes(i) = numBytes(args(i).type);
+        args_sizes(i) = getSize(args(i));
       }
     }
     // return value will be a c_void_ptr
@@ -500,8 +611,72 @@ module Futures {
 
     f.classRef.handle = chpl_gpuTaskLaunch(kernelName.c_str(), 
                               n+1, args_sizes,
-                              c_ptrTo(args_list), dep_handles, 0);
+                              c_ptrTo(args_list), dep_handles, 0, false);
     return f;
+  }
+
+  proc chpl_launch(kernelName: string, args...?n) {
+    var args_sizes: [1..n] uint(64);
+    //compilerWarning("Number of args: ", n);
+    for param i in 1..n {
+      var t: bool = isStringType(args(i).type);
+      if isStringType(args(i).type) {
+        // strings will be c_ptr(c_char) so size will be the same as that of
+        // c_void_ptr
+        args_sizes(i) = c_sizeof(c_void_ptr);
+      }
+      else {
+        args_sizes(i) = getSize(args(i));
+      }
+      //compilerWarning("Arg[", i, "] = ", args[i].type);
+    }
+    // return value will be a c_void_ptr
+    // args_sizes(n+1) = c_sizeof(c_void_ptr);
+    var args_list = ((...getArgs((...args))));
+    var dep_handles: [1..2] uint(64);
+    dep_handles[1] = chpl_nullTaskID;
+
+    var handle = chpl_gpuTaskLaunch(kernelName.c_str(), 
+                              n, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 0, true);
+    //chpl_taskWaitFor(handle);
+  }
+
+  proc chpl_launch_args(kernelName: string, 
+                       down: c_ptr(int(64)), 
+                       right: c_ptr(int(64)),
+                       i1: int(64),
+                       j1: int(64),
+                       tileHeight: int(64),
+                       tileWidth: int(64),
+                       aDistrLoc: c_ptr(int(8)),
+                       bDistrLoc: c_ptr(int(8)),
+                       left_right: c_ptr(int(64)), 
+                       above_down: c_ptr(int(64)),
+                       initial_diag_value: int(64)
+                       ) {
+    var n: c_uint = 11;
+    var args_sizes: [1..n] uint(64);
+    
+    args_sizes(1) = c_sizeof(c_void_ptr);
+    args_sizes(2) = c_sizeof(c_void_ptr);
+    for i in 3..n-5 {
+      args_sizes(i) = c_sizeof(int(64));
+    }
+    args_sizes(n-4) = c_sizeof(c_void_ptr);
+    args_sizes(n-3) = c_sizeof(c_void_ptr);
+    args_sizes(n-2) = c_sizeof(c_void_ptr);
+    args_sizes(n-1) = c_sizeof(c_void_ptr);
+    args_sizes(n) = c_sizeof(int(64));
+
+    var args_list = (down, right, i1, j1, tileHeight, tileWidth, aDistrLoc, bDistrLoc, left_right, above_down, initial_diag_value);
+    var dep_handles: [1..2] uint(64);
+    dep_handles[1] = chpl_nullTaskID;
+
+    var handle = chpl_gpuTaskLaunch(kernelName.c_str(), 
+                              n, args_sizes,
+                              c_ptrTo(args_list), dep_handles, 0, true);
+    //chpl_taskWaitFor(handle);
   }
 
   pragma "no doc"
@@ -662,6 +837,35 @@ module Futures {
     return tmp.andThen(taskFn);
   }
     
+  proc _tuple.andThen(kernelName: string, type retType, args...) where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    var tmp = waitAll((...f));
+    // increment the ref counter
+    tmp.acquire();
+    return tmp.andThen(kernelName, retType, (...args));
+  }
+
+  proc _tuple.andThen_args(kernelName: string, type retType, 
+          tile: c_void_ptr,
+          A_carray: c_ptr(int(8)), B_carray: c_ptr(int(8)))  where isTupleOfFutures(this) {
+    if(this.size < 1) then
+      compilerError("Tuple of Futures should have at least one object");
+    var f: this.type;
+    for i in 1..this.size {
+      f(i) = this(i);
+    }
+    var tmp = waitAll((...f));
+    // increment the ref counter
+    tmp.acquire();
+    return tmp.andThen_args(kernelName, retType, tile,
+                  A_carray, B_carray);
+  }
+
   proc _tuple.andThen(kernelName: string, type retType) where isTupleOfFutures(this) {
     if(this.size < 1) then
       compilerError("Tuple of Futures should have at least one object");

@@ -836,7 +836,8 @@ do_computeTupleWithIntent(bool valueOnly, IntentTag intent, AggregateType* at)
           if (intent == INTENT_BLANK || intent == INTENT_CONST) {
             IntentTag concrete = concreteIntent(intent, useType);
             if ( (concrete & INTENT_FLAG_REF) ) {
-              useType = useType->getRefType();
+              if(!(useType->symbol->hasFlag(FLAG_NO_REF)))
+                useType = useType->getRefType();
             }
           }
         }

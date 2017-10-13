@@ -174,7 +174,7 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
         void *args, chpl_taskID_t *dep_handles, uint64_t num_deps);
 uint64_t chpl_gpuTaskLaunch(const char *kernelName,
         unsigned int n, uint64_t *args_sizes,
-        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps);
+        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps, bool sync);
 void chpl_taskWaitFor(uint64_t handle);
 //
 // Call a chpl_ftable[] function in a task.

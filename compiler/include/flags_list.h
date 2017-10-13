@@ -247,6 +247,7 @@ symbolFlag( FLAG_RANGE , ypr, "range" , "indicates the range type" )
 symbolFlag( FLAG_RECURSIVE_ITERATOR , npr, "recursive iterator" , "iterators which call themselves" )
 symbolFlag( FLAG_REDUCESCANOP , ypr, "ReduceScanOp" , "the ReduceScanOp class" )
 symbolFlag( FLAG_REF , ypr, "ref" , ncm )
+symbolFlag( FLAG_NO_REF , ypr, "no ref" , ncm )
 symbolFlag( FLAG_REF_FOR_CONST_FIELD_OF_THIS , npr, "reference to a const field of 'this'" , ncm )
 symbolFlag( FLAG_REF_ITERATOR_CLASS , npr, "ref iterator class" , ncm )
 // Does FLAG_REF_TO_CONST means reference to immutable?

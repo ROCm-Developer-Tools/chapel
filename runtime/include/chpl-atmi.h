@@ -32,6 +32,14 @@ atmi_kernel_t *gpu_kernels;
 atmi_kernel_t main_kernel;
 int g_num_cpu_kernels;
 
+#define g_kernel_map_count 1024
+extern uint_least64_t g_kernel_map_count_max;
+typedef struct g_kernel_map_s {
+    char name[256];
+    atmi_kernel_t kernel;
+} g_kernel_map_t;
+extern g_kernel_map_t g_kernel_map[g_kernel_map_count];
+
 atmi_machine_t *g_machine;
 
 enum {

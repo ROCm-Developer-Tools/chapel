@@ -106,6 +106,9 @@ int chpl_hsa_initialize(void)
         atmi_kernel_create_empty(&gpu_kernels[i], num_kernel_args, kernel_arg_sizes);
         atmi_kernel_add_gpu_impl(gpu_kernels[i], kernel_name, GPU_KERNEL_IMPL);
     }
+    for (int64_t i = 0; i < g_kernel_map_count; i++) {
+        strcpy(g_kernel_map[i].name, "");
+    }
 
     return ATMI_STATUS_SUCCESS;
 }

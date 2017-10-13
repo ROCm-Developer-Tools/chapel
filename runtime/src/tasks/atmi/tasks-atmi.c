@@ -63,6 +63,8 @@
 int cpu_kernels_initialized[max_num_cpu_kernels] = {0}; 
 atmi_kernel_t cpu_kernels[max_num_cpu_kernels];
 atmi_kernel_t dummy_kernel;
+g_kernel_map_t g_kernel_map[g_kernel_map_count];
+uint_least64_t g_kernel_map_count_max = 0;
 static uint_least64_t atmi_tg_id = 0;
 
 
@@ -998,9 +1000,27 @@ atmi_kernel_t init_cpu_kernel(callback_function fn, unsigned int n, uint64_t *ar
 
 atmi_kernel_t init_gpu_kernel(const char *k, unsigned int n, uint64_t *args_sizes) {
     atmi_kernel_t kernel;
-    atmi_kernel_create_empty(&kernel, n, args_sizes);
-    atmi_kernel_add_gpu_impl(kernel, k, GPU_KERNEL_IMPL);
-    // add fn to some kernel map
+    bool kernel_found = false;
+    // search for kernel
+    for(int i = 0; i < g_kernel_map_count_max; i++) {
+        if(!strcmp(g_kernel_map[i].name, k)) {
+            //printf("Kernel %s found!\n", k);
+            kernel = g_kernel_map[i].kernel;
+            kernel_found = true;
+            break;
+        }
+    }
+    if(!kernel_found) {
+        // add fn to some kernel map
+        int next_id = atomic_fetch_add_explicit_uint_least64_t(&g_kernel_map_count_max, 1, memory_order_relaxed);
+        if(next_id >= g_kernel_map_count)
+            fprintf(stderr, "Exceeded kernel type limit!\n");
+        atmi_kernel_create_empty(&kernel, n, args_sizes);
+        atmi_kernel_add_gpu_impl(kernel, k, GPU_KERNEL_IMPL);
+        //printf("Registering kernel %s\n", k);
+        strcpy(g_kernel_map[next_id].name, k);
+        g_kernel_map[next_id].kernel = kernel;
+    }
     return kernel;
 }
 
@@ -1018,7 +1038,8 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
         lparm->requires = dep_handles;
     }
     //if(task_group) { 
-    //    lparm->group = (atmi_task_group_t *)task_group;
+    //    lparm->group = (atmi_task_group_t *) chpl_taskGroupInit(0, 0);
+    //    lparm->groupable = ATMI_TRUE;
     //}
 
     void *kernargs[n];
@@ -1038,21 +1059,22 @@ uint64_t chpl_taskLaunch(callback_function fn, unsigned int n, uint64_t *args_si
 }
 uint64_t chpl_gpuTaskLaunch(const char *kernelName, 
         unsigned int n, uint64_t *args_sizes,
-        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps) {
+        void *args, chpl_taskID_t *dep_handles, uint64_t num_deps, bool sync) {
     // n-1: return_addr
     // setup kernelName as an ATMI GPU task
     int gpu_id = 0;//subloc;
     ATMI_LPARM_GPU_1D(lparm, gpu_id, 1);
     lparm->kernel_id = GPU_KERNEL_IMPL;
-    lparm->synchronous = ATMI_FALSE;
+    lparm->synchronous = sync;
     lparm->groupable = ATMI_FALSE;
     if(num_deps > 0) {
         lparm->num_required = num_deps;
         lparm->requires = dep_handles;
     }
-    //if(task_group) { 
-    //    lparm->group = (atmi_task_group_t *)task_group;
-    //}
+    //if(chpl_task_getId() != 0) { 
+    //    lparm->group = (atmi_task_group_t *) chpl_taskGroupGet();
+    //    lparm->groupable = ATMI_TRUE;
+   // }
 
     void *kernargs[n];
     char *args_ptr = (char *)args;
