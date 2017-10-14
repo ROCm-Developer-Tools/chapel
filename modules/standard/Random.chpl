@@ -131,6 +131,43 @@ module Random {
     :arg algorithm: A param indicating which algorithm to use. Defaults to PCG.
     :type algorithm: :type:`RNG`
   */
+  proc fillRandomWithBounds(arr: [], min, max, seed: int(64) = SeedGenerator.oddCurrentTime, param
+      algorithm=defaultRNG)
+    where isSupportedNumericType(arr.eltType) {
+    var randNums = makeRandomStream(seed, eltType=arr.eltType, parSafe=false, algorithm=algorithm);
+    randNums.fillRandomWithBounds(arr, min, max);
+    delete randNums;
+  }
+
+  pragma "no doc"
+  proc fillRandomWithBounds(arr: [], seed: int(64) = SeedGenerator.oddCurrentTime, param
+      algorithm=defaultRNG) {
+    compilerError("Random.fillRandomWithBounds is only defined for numeric arrays");
+  }
+
+  /*
+
+    Fill an array of numeric elements with pseudorandom values in parallel using
+    a new stream implementing :class:`RandomStreamInterface` created
+    specifically for this call.  The first `arr.size` values from the stream
+    will be assigned to the array's elements in row-major order. The
+    parallelization strategy is determined by the array.
+
+    .. note::
+
+      :mod:`NPBRandom` only supports `real(64)`, `imag(64)`, and `complex(128)`
+      numeric types. :mod:`PCGRandom` supports all primitive numeric types.
+
+    :arg arr: The array to be filled, where T is a primitive numeric type
+    :type arr: `[] T`
+
+    :arg seed: The seed to use for the PRNG.  Defaults to
+     `oddCurrentTime` from :type:`RandomSupport.SeedGenerator`.
+    :type seed: `int(64)`
+
+    :arg algorithm: A param indicating which algorithm to use. Defaults to PCG.
+    :type algorithm: :type:`RNG`
+  */
   proc fillRandom(arr: [], seed: int(64) = SeedGenerator.oddCurrentTime, param
       algorithm=defaultRNG)
     where isSupportedNumericType(arr.eltType) {
@@ -733,6 +770,21 @@ module Random {
         forall (x, r) in zip(arr, iterate(arr.domain, arr.eltType)) do
           x = r;
       }
+     
+     /*
+        Fill the argument array with pseudorandom values.  This method is
+        identical to the standalone :proc:`~Random.fillRandom` procedure,
+        except that it consumes random values from the
+        :class:`RandomStream` object on which it's invoked rather
+        than creating a new stream for the purpose of the call.
+
+        :arg arr: The array to be filled
+        :type arr: [] :type:`eltType`
+      */
+      proc fillRandomWithBounds(arr: [?D] eltType, min, max) {
+        forall (x, r) in zip(arr, iterate(arr.domain, min, max, arr.eltType)) do
+          x = r;
+      }
 
       /* Randomly shuffle a 1-D array. */
       proc shuffle(arr: [?D] ?eltType ) {
@@ -816,6 +868,31 @@ module Random {
                       ") can only be used to fill arrays of ", eltType:string);
       }
 
+      /*
+
+         Returns an iterable expression for generating `D.numIndices` random
+         numbers. The RNG state will be immediately advanced by `D.numIndices`
+         before the iterable expression yields any values.
+
+         The returned iterable expression is useful in parallel contexts,
+         including standalone and zippered iteration. The domain will determine
+         the parallelization strategy.
+
+         :arg D: a domain
+         :arg resultType: the type of number to yield
+         :return: an iterable expression yielding random `resultType` values
+
+       */
+      proc iterate(D: domain, min, max, type resultType=eltType) {
+        if parSafe then
+          PCGRandomStreamPrivate_lock$ = true;
+        const start = PCGRandomStreamPrivate_count;
+        PCGRandomStreamPrivate_count += D.numIndices.safeCast(int(64));
+        PCGRandomStreamPrivate_skipToNth_noLock(PCGRandomStreamPrivate_count);
+        if parSafe then
+          PCGRandomStreamPrivate_lock$;
+        return PCGRandomPrivate_iterate(resultType, D, seed, start, min, max, PCGRandomStreamPrivate_count);
+      }
       /*
 
          Returns an iterable expression for generating `D.numIndices` random
@@ -1129,12 +1206,48 @@ module Random {
 
     pragma "no doc"
     iter PCGRandomPrivate_iterate(type resultType, D: domain, seed: int(64),
+                               start: int(64), min, max, count) {
+      var cursor = randlc_skipto(resultType, seed, start);
+      for i in D do
+        yield randlc_bounded(resultType, cursor, 
+                  seed, count,
+                  min, max);
+    }
+
+    pragma "no doc"
+    iter PCGRandomPrivate_iterate(type resultType, D: domain, seed: int(64),
                                start: int(64), param tag: iterKind)
           where tag == iterKind.leader {
       for block in D._value.these(tag=iterKind.leader) do
         yield block;
     }
 
+    pragma "no doc"
+    iter PCGRandomPrivate_iterate(type resultType, D: domain, seed: int(64),
+                 start: int(64), min, max, count, param tag: iterKind, followThis)
+          where tag == iterKind.follower {
+      param multiplier = 1;
+      const ZD = computeZeroBasedDomain(D);
+      const innerRange = followThis(ZD.rank);
+      for outer in outer(followThis) {
+        var myStart = start;
+        if ZD.rank > 1 then
+          myStart += multiplier * ZD.indexOrder(((...outer), innerRange.low)).safeCast(int(64));
+        else
+          myStart += multiplier * ZD.indexOrder(innerRange.low).safeCast(int(64));
+        if !innerRange.stridable {
+          var cursor = randlc_skipto(resultType, seed, myStart);
+          for i in innerRange do
+            yield randlc_bounded(resultType, cursor, seed, count, min, max);
+        } else {
+          myStart -= innerRange.low.safeCast(int(64));
+          for i in innerRange {
+            var cursor = randlc_skipto(resultType, seed, myStart + i.safeCast(int(64)) * multiplier);
+            yield randlc_bounded(resultType, cursor, seed, count, min, max);
+          }
+        }
+      }
+    }
     pragma "no doc"
     iter PCGRandomPrivate_iterate(type resultType, D: domain, seed: int(64),
                  start: int(64), param tag: iterKind, followThis)
