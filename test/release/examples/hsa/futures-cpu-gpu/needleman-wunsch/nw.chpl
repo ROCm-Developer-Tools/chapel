@@ -21,9 +21,11 @@ use Futures;
 use CyclicDist;
 use BlockCycDist;
 use Atomics;
+use Random;
 
-config const tileWidth = 2;
-config const tileHeight = 2;
+config const tileWidth = 32;
+config const tileHeight = 32;
+config const seqSize = 256;
 
 class ArrayData {
   var down: [0..#tileWidth] int;
@@ -97,37 +99,51 @@ proc printMatrix(array: [] real): void {
   writeln(array);
 }
 
-  const alignmentScoreMatrix: [0..#5, 0..#5] int = (
+const alignmentScoreMatrix: [0..#5, 0..#5] int = (
       ( -1, -1, -1, -1, -1),
       ( -1,  2, -4, -2, -4),
       ( -1, -4,  2, -4, -2),
       ( -1, -2, -4,  2, -4),
-      ( -1, -4, -2, -4,  2)
-      );
+      ( -1, -4, -2, -4,  2));
 
+proc createRandomDNASequence(arr: [?D] ?eltType) {
+  //fillRandom(arr);
+  fillRandomWithBounds(arr, 1, 4);
+}
 
-  proc getIntArrayFromString(line: string) {
-    // initially store the results in an associative domain
-    var myDom: domain(int);
-    var myArray: [myDom] int(8);
-    var myArraySize = 1;
-
-    {
-      var lineLength = line.length;
-      for i in {1..#(lineLength)} do {
-        var loopChar = line(i);
-        myDom += myArraySize;
-        myArray(myArraySize) = charMap(loopChar, i);
-        myArraySize = myArraySize + 1;
-      }
-    }
-
-    var resDom: domain(1) = {1..#(myArraySize - 1)};
-    var resArray: [resDom] int(8);
-    for i in myDom do resArray(i) = myArray(i);
-
-    return resArray;
+proc getCArrayFromChplArray(A) : c_ptr(int(8)) {
+  type t = A._instance.eltType;
+  var A_array: c_ptr(int(8)) = c_malloc(int(8), A.numElements);
+  
+  for i in 0..A.numElements-1 do {
+    A_array(i) = A(i+1);
+    //writeln("A[", i, "] = ", A_array(i));
   }
+  return A_array;
+}
+
+proc getIntArrayFromString(line: string) {
+  // initially store the results in an associative domain
+  var myDom: domain(int);
+  var myArray: [myDom] int(8);
+  var myArraySize = 1;
+
+  {
+    var lineLength = line.length;
+    for i in {1..#(lineLength)} do {
+      var loopChar = line(i);
+      myDom += myArraySize;
+      myArray(myArraySize) = charMap(loopChar, i);
+      myArraySize = myArraySize + 1;
+    }
+  }
+
+  var resDom: domain(1) = {1..#(myArraySize - 1)};
+  var resArray: [resDom] int(8);
+  for i in myDom do resArray(i) = myArray(i);
+
+  return resArray;
+}
 
 config const X = 1;
 
@@ -138,10 +154,16 @@ proc main(): int {
 
   writeln("Main: PARALLEL starts...");
 
-  var A_str = "ACACACTA";
-  var B_str = "AGCACACA";
-  var A = getIntArrayFromString(A_str);
-  var B = getIntArrayFromString(B_str);
+  //var A_str = "ACACACTA";
+  //var B_str = "AGCACACA";
+  //var A = getIntArrayFromString(A_str);
+  //var B = getIntArrayFromString(B_str);
+  var A: [{1..seqSize}] int(8);
+  var B: [{1..seqSize}] int(8);
+  createRandomDNASequence(A);
+  createRandomDNASequence(B);
+  var A_carray: c_ptr(int(8)) = getCArrayFromChplArray(A);
+  var B_carray: c_ptr(int(8)) = getCArrayFromChplArray(B);
 
   var tmWidth = A.numElements / tileWidth;
   var tmHeight = B.numElements / tileHeight;
@@ -280,29 +302,15 @@ proc main(): int {
               tileMatrix(i1 - 0, j1 - 1), 
               tileMatrix(i1 - 1, j1 - 0),
               tileMatrix(i1 - 1, j1 - 1)
-              ).andThen(lambda(depTiles: (Tile, Tile, Tile), i1: int, j1: int, tmHeight: int, tmWidth: int, tileHeight: int, tileWidth: int, A_str: c_string, B_str: c_string)
-                {
+              ).andThen(lambda(depTiles: (Tile, Tile, Tile), i1: int, j1: int,
+                tmHeight: int, tmWidth: int, tileHeight: int, tileWidth: int,
+                A_carray: c_ptr(int(8)), B_carray: c_ptr(int(8))) {
                 const tm_1_2d_domain = {1..tmHeight, 1..tmWidth};
                 const tile_0_2d_domain = {0..tileHeight, 0..tileWidth};
                 const tile_1_2d_domain = {1..tileHeight, 1..tileWidth};
                 const tileHeight_1_domain = {1..tileHeight};
                 const tileWidth_1_domain = {1..tileWidth};
 
-                const distrSpace = {0..(numLocales - 1)};
-                //const distrDom = distrSpace;
-                const distrDom: domain(1) dmapped Cyclic(startIdx=distrSpace.low) = distrSpace;
-
-                var A = getIntArrayFromString(A_str:string);
-                var B = getIntArrayFromString(B_str:string);
-
-                var aDistr: [distrDom] [1..(A.numElements)] int(8);
-                var bDistr: [distrDom] [1..(B.numElements)] int(8);
-
-                for i in distrSpace /* on Locales(i) */ do {
-                //writeln("Main: initializing data on locale-", i); stdout.flush();
-                for j in {1..(A.numElements)} do aDistr(i)(j) = A(j);
-                for j in {1..(B.numElements)} do bDistr(i)(j) = B(j);
-                }
                 var tile = new Tile();
 
                 // retrieve dependent tiles
@@ -313,8 +321,6 @@ proc main(): int {
                 var above = depTiles(2);
                 var diag  = depTiles(3);
 
-                var hereId = here.id;
-
                 // perform computation
                 var localMatrix: [tile_0_2d_domain] int;
 
@@ -322,14 +328,12 @@ proc main(): int {
                 for j2 in tileWidth_1_domain do localMatrix(0 , j2) = above.bottomRow(j2 - 1);
                 localMatrix(0, 0) = diag.diagonal();
 
-                var aDistrLoc = aDistr(hereId);
-                var bDistrLoc = bDistr(hereId);
                 for (ii, jj) in tile_1_2d_domain do {
                   var aIndex = ((j1 - 1) * tileWidth) + jj;
                   var bIndex = ((i1 - 1) * tileHeight) + ii;
 
-                  var aElement = aDistrLoc(aIndex);
-                  var bElement = bDistrLoc(bIndex);
+                  var aElement = A_carray(aIndex);
+                  var bElement = B_carray(bIndex);
 
                   var diagScore = localMatrix(ii - 1, jj - 1) + alignmentScoreMatrix(bElement, aElement);
                   var leftScore = localMatrix(ii - 0, jj - 1) + alignmentScoreMatrix(aElement, 0);
@@ -342,7 +346,7 @@ proc main(): int {
                 for idx in tileWidth_1_domain do tile.bottomRow(idx - 1)   = localMatrix(tileHeight, idx  );
 
                 return tile;
-                }, i1, j1, tmHeight, tmWidth, tileHeight, tileWidth, A_str.c_str(), B_str.c_str());
+              }, i1, j1, tmHeight, tmWidth, tileHeight, tileWidth, A_carray, B_carray);
         }
       }
     } 

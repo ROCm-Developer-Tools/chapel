@@ -21,10 +21,11 @@ use Futures;
 use CyclicDist;
 use BlockCycDist;
 use Atomics;
+use Random;
 
-config param GPU = false;
-config const tileWidth = 2;
-config const tileHeight = 2;
+config const tileWidth = 32;
+config const tileHeight = 32;
+config const seqSize = 256;
 
 pragma "no ref"
 extern record ArrayData {
@@ -106,6 +107,11 @@ var alignmentScoreMatrix: [0..#5, 0..#5] int = (
       ( -1, -2, -4,  2, -4),
       ( -1, -4, -2, -4,  2));
 
+proc createRandomDNASequence(arr: [?D] ?eltType) {
+  //fillRandom(arr);
+  fillRandomWithBounds(arr, 1, 4);
+}
+
 
 proc getIntArrayFromString(line: string) {
   // initially store the results in an associative domain
@@ -151,10 +157,14 @@ proc main(): int {
 
   writeln("Main: PARALLEL starts...");
 
-  var A_str = "ACACACTA";
-  var B_str = "AGCACACA";
-  var A = getIntArrayFromString(A_str);
-  var B = getIntArrayFromString(B_str);
+  //var A_str = "ACACACTA";
+  //var B_str = "AGCACACA";
+  //var A = getIntArrayFromString(A_str);
+  //var B = getIntArrayFromString(B_str);
+  var A: [{1..seqSize}] int(8);
+  var B: [{1..seqSize}] int(8);
+  createRandomDNASequence(A);
+  createRandomDNASequence(B);
   var A_carray: c_ptr(int(8)) = getCArrayFromChplArray(A);
   var B_carray: c_ptr(int(8)) = getCArrayFromChplArray(B);
 
@@ -268,7 +278,7 @@ proc main(): int {
 
     if (diag_id > min_diag_id && diag_id < max_diag_id) {
       // execute on GPU
-      writeln("Tile (", i1, ", ", j1, ") on GPU");
+      //writeln("Tile (", i1, ", ", j1, ") on GPU");
       tileMatrix(i1, j1) = (
           tileMatrix(i1 - 0, j1 - 1), 
           tileMatrix(i1 - 1, j1 - 0),
@@ -278,7 +288,7 @@ proc main(): int {
             A_carray, B_carray);
     } else {
       // execute on CPU
-      writeln("Tile (", i1, ", ", j1, ") on CPU");
+      //writeln("Tile (", i1, ", ", j1, ") on CPU");
       tileMatrix(i1, j1) = (
           tileMatrix(i1 - 0, j1 - 1), 
           tileMatrix(i1 - 1, j1 - 0),

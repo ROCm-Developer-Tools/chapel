@@ -21,10 +21,12 @@ use Futures;
 use CyclicDist;
 use BlockCycDist;
 use Atomics;
+use Random;
 
 config param GPU = false;
-config const tileWidth = 2;
-config const tileHeight = 2;
+config const tileWidth = 32;
+config const tileHeight = 32;
+config const seqSize = 256;
 
 pragma "no ref"
 extern record ArrayData {
@@ -51,7 +53,7 @@ proc diagonal(t: Tile) ref {
   return t.ad.down[tileWidth - 1];
 }
 
-proc createTile() : Tile {
+proc createTile(i, j) : Tile {
   var t = new Tile();
   t.ad.down = c_malloc(int, tileWidth);
   t.ad.right = c_malloc(int, tileHeight);
@@ -96,32 +98,36 @@ var alignmentScoreMatrix: [0..#5, 0..#5] int = (
       ( -1,  2, -4, -2, -4),
       ( -1, -4,  2, -4, -2),
       ( -1, -2, -4,  2, -4),
-      ( -1, -4, -2, -4,  2)
-      );
+      ( -1, -4, -2, -4,  2));
+
+proc createRandomDNASequence(arr: [?D] ?eltType) {
+  //fillRandom(arr);
+  fillRandomWithBounds(arr, 1, 4);
+}
 
 
-  proc getIntArrayFromString(line: string) {
-    // initially store the results in an associative domain
-    var myDom: domain(int);
-    var myArray: [myDom] int(8);
-    var myArraySize = 1;
+proc getIntArrayFromString(line: string) {
+  // initially store the results in an associative domain
+  var myDom: domain(int);
+  var myArray: [myDom] int(8);
+  var myArraySize = 1;
 
-    {
-      var lineLength = line.length;
-      for i in {1..#(lineLength)} do {
-        var loopChar = line(i);
-        myDom += myArraySize;
-        myArray(myArraySize) = charMap(loopChar, i);
-        myArraySize = myArraySize + 1;
-      }
+  {
+    var lineLength = line.length;
+    for i in {1..#(lineLength)} do {
+      var loopChar = line(i);
+      myDom += myArraySize;
+      myArray(myArraySize) = charMap(loopChar, i);
+      myArraySize = myArraySize + 1;
     }
-
-    var resDom: domain(1) = {1..#(myArraySize - 1)};
-    var resArray: [resDom] int(8);
-    for i in myDom do resArray(i) = myArray(i);
-
-    return resArray;
   }
+
+  var resDom: domain(1) = {1..#(myArraySize - 1)};
+  var resArray: [resDom] int(8);
+  for i in myDom do resArray(i) = myArray(i);
+
+  return resArray;
+}
 
 proc getCArrayFromChplArray(A) : c_ptr(int(8)) {
   type t = A._instance.eltType;
@@ -144,8 +150,12 @@ proc main(): int {
 
   var A_str = "ACACACTA";
   var B_str = "AGCACACA";
-  var A = getIntArrayFromString(A_str);
-  var B = getIntArrayFromString(B_str);
+  //var A = getIntArrayFromString(A_str);
+  //var B = getIntArrayFromString(B_str);
+  var A: [{1..seqSize}] int(8);
+  var B: [{1..seqSize}] int(8);
+  createRandomDNASequence(A);
+  createRandomDNASequence(B);
   var A_carray: c_ptr(int(8)) = getCArrayFromChplArray(A);
   var B_carray: c_ptr(int(8)) = getCArrayFromChplArray(B);
 
@@ -189,14 +199,17 @@ proc main(): int {
   var mapped_tile_matrix_space = unmapped_tile_matrix_space dmapped Cyclic(startIdx=unmapped_tile_matrix_space.low);
   //var tileMatrix: [unmapped_tile_matrix_space] Future(Tile);
   var tileMatrix: [mapped_tile_matrix_space] Future(Tile);
-  //var tileStructMatrix: [mapped_tile_matrix_space] Future(TileStruct);
+  var tiles: [mapped_tile_matrix_space] Tile;
+  for (i, j) in mapped_tile_matrix_space do {
+    tiles(i, j) = createTile(i, j);
+  }
 
   const endTimeAlloc = getCurrentTime();
   writeln("Main: allocated tiles in ", (endTimeAlloc - startTimeAlloc), " seconds."); stdout.flush();
 
   const startTimeRow = getCurrentTime();
 
-  var t = createTile();
+  var t = tiles(0, 0); //createTile();
   var i = 0;
   for j in 0..#tileWidth do {
     bottomRow(t, j) = -1 * ((i - 1) * tileWidth + j + 1);
@@ -207,7 +220,7 @@ proc main(): int {
   tileMatrix(0, 0).set(t);
 
   for i in 1..tmWidth do {
-    var t = createTile();
+    var t = tiles(0, i);//createTile();
     for j in 0..#tileWidth do {
       bottomRow(t, j) = -1 * ((i - 1) * tileWidth + j + 1);
     }
@@ -218,18 +231,19 @@ proc main(): int {
 
   const startTimeCol = getCurrentTime();
   for i in 1..tmHeight do
-    {
-      var t = createTile();
-      for j in 0..#tileHeight do {
-        rightColumn(t, j) = -1 * ((i - 1) * tileHeight + j + 1); 
-      }
-      for j in 0..#tileWidth do {
-        bottomRow(t, j) = -1 * ((i - 1) * tileWidth + j + 1);
-      }
-      tileMatrix(i, 0).set(t);
+  {
+    var t = tiles(i, 0); //createTile();
+    for j in 0..#tileHeight do {
+      rightColumn(t, j) = -1 * ((i - 1) * tileHeight + j + 1); 
     }
-    const endTimeCol = getCurrentTime();
-    writeln("Main: initialized columns in ", (endTimeCol - startTimeCol), " seconds."); stdout.flush();
+    for j in 0..#tileWidth do {
+      bottomRow(t, j) = -1 * ((i - 1) * tileWidth + j + 1);
+    }
+    tileMatrix(i, 0).set(t);
+  }
+  const endTimeCol = getCurrentTime();
+  writeln("Main: initialized columns in ", (endTimeCol - startTimeCol), " seconds."); stdout.flush();
+
 
 
     writeln("Main: starting computation..."); stdout.flush();
@@ -289,7 +303,7 @@ proc main(): int {
               tileMatrix(i1 - 0, j1 - 1), 
               tileMatrix(i1 - 1, j1 - 0),
               tileMatrix(i1 - 1, j1 - 1)
-              ).andThen(lambda(depTiles: (Tile, Tile, Tile), i1: int, j1: int, tileHeight: int, tileWidth: int, A_carray: c_ptr(int(8)), B_carray: c_ptr(int(8)))
+              ).andThen(lambda(depTiles: (Tile, Tile, Tile), tile: Tile, i1: int, j1: int, tileHeight: int, tileWidth: int, A_carray: c_ptr(int(8)), B_carray: c_ptr(int(8)))
                 {
                 // retrieve dependent tiles
                 //var left  = tileMatrix(i1 - 0, j1 - 1).get();
@@ -300,7 +314,7 @@ proc main(): int {
                 var diag  = depTiles(3);
 
                 if(GPU) {
-                var tile = createTile();
+                //var tile = tiles(i1, j1);//createTile();
                 chpl_launch_args("compute_tile", tile.ad.down, tile.ad.right,
                     i1, j1,
                     tileHeight, tileWidth,
@@ -316,25 +330,6 @@ proc main(): int {
                 const tileHeight_1_domain = {1..tileHeight};
                 const tileWidth_1_domain = {1..tileWidth};
 
-                const distrSpace = {0..(numLocales - 1)};
-                //const distrDom = distrSpace;
-                const distrDom: domain(1) dmapped Cyclic(startIdx=distrSpace.low) = distrSpace;
-
-                var A = getIntArrayFromString(A_str:string);
-                var B = getIntArrayFromString(B_str:string);
-
-                var aDistr: [distrDom] [1..(A.numElements)] int(8);
-                var bDistr: [distrDom] [1..(B.numElements)] int(8);
-
-                for i in distrSpace /* on Locales(i) */ do {
-                //writeln("Main: initializing data on locale-", i); stdout.flush();
-                for j in {1..(A.numElements)} do aDistr(i)(j) = A(j);
-                for j in {1..(B.numElements)} do bDistr(i)(j) = B(j);
-                }
-                var tile = createTile();
-
-                var hereId = here.id;
-
                 // perform computation
                 var localMatrix: [tile_0_2d_domain] int;
 
@@ -342,14 +337,12 @@ proc main(): int {
                 for j2 in tileWidth_1_domain do localMatrix(0 , j2) = bottomRow(above, j2 - 1);
                 localMatrix(0, 0) = diagonal(diag);
 
-                var aDistrLoc = aDistr(hereId);
-                var bDistrLoc = bDistr(hereId);
                 for (ii, jj) in tile_1_2d_domain do {
                   var aIndex = ((j1 - 1) * tileWidth) + jj;
                   var bIndex = ((i1 - 1) * tileHeight) + ii;
 
-                  var aElement = aDistrLoc(aIndex);
-                  var bElement = bDistrLoc(bIndex);
+                  var aElement = A_carray(aIndex);
+                  var bElement = B_carray(bIndex);
 
                   var diagScore = localMatrix(ii - 1, jj - 1) + alignmentScoreMatrix(bElement, aElement);
                   var leftScore = localMatrix(ii - 0, jj - 1) + alignmentScoreMatrix(aElement, 0);
@@ -363,7 +356,7 @@ proc main(): int {
 
                 return tile;
                 }
-                }, i1, j1, tileHeight, tileWidth, A_carray, B_carray);
+                }, tiles(i1, j1), i1, j1, tileHeight, tileWidth, A_carray, B_carray);
         }
       }
     } 

@@ -21,10 +21,11 @@ use Futures;
 use CyclicDist;
 use BlockCycDist;
 use Atomics;
+use Random;
 
-config param GPU = false;
-config const tileWidth = 2;
-config const tileHeight = 2;
+config const tileWidth = 32;
+config const tileHeight = 32;
+config const seqSize = 256;
 
 pragma "no ref"
 extern record ArrayData {
@@ -106,6 +107,11 @@ var alignmentScoreMatrix: [0..#5, 0..#5] int = (
       ( -1, -2, -4,  2, -4),
       ( -1, -4, -2, -4,  2));
 
+proc createRandomDNASequence(arr: [?D] ?eltType) {
+  //fillRandom(arr);
+  fillRandomWithBounds(arr, 1, 4);
+}
+
 
 proc getIntArrayFromString(line: string) {
   // initially store the results in an associative domain
@@ -136,7 +142,7 @@ proc getCArrayFromChplArray(A) : c_ptr(int(8)) {
   
   for i in 0..A.numElements-1 do {
     A_array(i) = A(i+1);
-    writeln("A[", i, "] = ", A_array(i));
+    //writeln("A[", i, "] = ", A_array(i));
   }
   return A_array;
 }
@@ -151,10 +157,14 @@ proc main(): int {
 
   writeln("Main: PARALLEL starts...");
 
-  var A_str = "ACACACTA";
-  var B_str = "AGCACACA";
-  var A = getIntArrayFromString(A_str);
-  var B = getIntArrayFromString(B_str);
+  //var A_str = "ACACACTA";
+  //var B_str = "AGCACACA";
+  //var A = getIntArrayFromString(A_str);
+  //var B = getIntArrayFromString(B_str);
+  var A: [{1..seqSize}] int(8);
+  var B: [{1..seqSize}] int(8);
+  createRandomDNASequence(A);
+  createRandomDNASequence(B);
   var A_carray: c_ptr(int(8)) = getCArrayFromChplArray(A);
   var B_carray: c_ptr(int(8)) = getCArrayFromChplArray(B);
 

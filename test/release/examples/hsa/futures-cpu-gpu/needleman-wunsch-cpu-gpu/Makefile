@@ -22,7 +22,6 @@ CHPL_C_FLAGS += --clfiles="$(CLFILES)"
 CHPL_C_FLAGS += --ccflags "--include=nw.h"
 CHPL_C_FLAGS += --print-passes
 CHPL_C_FLAGS += --print-commands
-CHPL_C_FLAGS += -sGPU
 #CHPL_C_FLAGS += --no-local-checks
 #CHPL_C_FLAGS += --no-bounds-checks
 CHPL_ENV_FLAGS=CHPL_SAVEC_DIR=tmp
